@@ -1,0 +1,435 @@
+// ==========================================
+// Prisma Schema: ECE Capstone Project Management System
+// Department of Electronics and Communication Engineering (HITK)
+// ==========================================
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  FACULTY
+}
+
+enum TopicSource {
+  SIH
+  UG_RESEARCH
+  FACULTY
+}
+
+enum TopicStatus {
+  DRAFT
+  CONFIRMED
+  ALLOTTED
+  ARCHIVED
+}
+
+enum Kind {
+  WP    // Complex Problem Solving (WP1..WP7)
+  WK    // Engineering Knowledge (WK1..WK9)
+  EA    // Complex Engineering Activities (EA1..EA5)
+}
+
+enum Origin {
+  RULE
+  AI
+  FACULTY
+}
+
+enum Scope {
+  GROUP
+  STUDENT
+}
+
+enum MarkStatus {
+  DRAFT
+  SUBMITTED
+}
+
+// ------------------------------------------
+// 1. People & Identity
+// ------------------------------------------
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String
+  passwordHash String?
+  role         Role
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  topics       Topic[]     @relation("proposer")
+  groups       Group[]     @relation("supervisor")
+  markEntries  MarkEntry[] @relation("enteredBy")
+  auditLogs    AuditLog[]
+
+  @@index([email, role])
+}
+
+model Student {
+  id        String        @id @default(cuid())
+  name      String
+  roll      String        @unique
+  phone     String?
+  email     String?
+  createdAt DateTime      @default(now())
+
+  groups    GroupMember[]
+  marks     MarkEntry[]
+
+  @@index([roll])
+}
+
+// ------------------------------------------
+// 2. Academic Catalogue (Seed Data)
+// ------------------------------------------
+
+model ProgramOutcome {
+  code        String      @id // PO1 .. PO11
+  title       String
+  description String
+  wkMaps      WkPoMap[]
+}
+
+model Attribute {
+  id          Int              @id @default(autoincrement())
+  kind        Kind             // WP, WK, EA
+  code        String           @unique // WP1..WP7, WK1..WK9, EA1..EA5
+  title       String
+  text        String
+  topicAttrs  TopicAttribute[]
+  maps        CriterionMap[]
+}
+
+model WkPoMap {
+  wk   String
+  po   String
+  poRel ProgramOutcome @relation(fields: [po], references: [code], onDelete: Cascade)
+
+  @@id([wk, po])
+}
+
+model Sdg {
+  id          Int         @id // 1 .. 17
+  title       String
+  description String
+  targets     SdgTarget[]
+  topics      TopicSdg[]
+}
+
+model SdgTarget {
+  id          String      @id // e.g. "7.2"
+  sdgId       Int
+  description String
+  sdg         Sdg         @relation(fields: [sdgId], references: [id], onDelete: Cascade)
+
+  @@index([sdgId])
+}
+
+// ------------------------------------------
+// 3. Evaluation Rubrics
+// ------------------------------------------
+
+model Rubric {
+  code        String      @id // 'A', 'B', 'C', 'D', 'E', 'F'
+  semester    Int         // 6, 7, 8
+  title       String
+  maxMarks    Int         // 60, 40, 50, 50, 40, 60
+  criteria    Criterion[]
+}
+
+model Criterion {
+  id          Int            @id @default(autoincrement())
+  rubricCode  String
+  semester    Int
+  key         String         // e.g. "lit_survey", "novelty"
+  label       String
+  maxMarks    Float
+  scope       Scope          // GROUP | STUDENT
+  rubric      Rubric         @relation(fields: [rubricCode], references: [code], onDelete: Cascade)
+  maps        CriterionMap[]
+  markEntries MarkEntry[]
+
+  @@index([rubricCode, semester])
+}
+
+model CriterionMap {
+  criterionId Int
+  kind        String         // WP | WK | EA | PO
+  code        String         // e.g. "WP1", "WK8", "PO3"
+  criterion   Criterion      @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  attribute   Attribute?     @relation(fields: [code], references: [code])
+
+  @@id([criterionId, kind, code])
+}
+
+// ------------------------------------------
+// 4. Topics & Mappings
+// ------------------------------------------
+
+model Topic {
+  id            String               @id @default(cuid())
+  code          String               @unique // SIH26001, UGR-017, FAC-2026-031
+  title         String
+  source        TopicSource
+  category      String               // "Software" | "Hardware" | "Both"
+  domain        String?
+  organization  String?
+  description   String?              @db.Text
+  tags          String[]
+  status        TopicStatus          @default(DRAFT)
+  proposerId    String?
+  proposer      User?                @relation("proposer", fields: [proposerId], references: [id])
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  sdgs          TopicSdg[]
+  attributes    TopicAttribute[]
+  versions      DescriptionVersion[]
+  declarations  ComplexityDeclaration[]
+  groups        Group[]
+  decisions     CapstoneDecision[]
+  snapshots     AttainmentSnapshot[]
+
+  @@index([source, category])
+  @@index([status])
+}
+
+model TopicSdg {
+  topicId String
+  sdgId   Int
+  target  String?
+  reason  String?
+  topic   Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  sdg     Sdg      @relation(fields: [sdgId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, sdgId])
+}
+
+model TopicAttribute {
+  topicId     String
+  attributeId Int
+  level       Int      // 0 .. 3
+  reason      String   @db.Text
+  origin      Origin   // RULE | AI | FACULTY
+  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  attribute   Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, attributeId])
+}
+
+model DescriptionVersion {
+  id          String   @id @default(cuid())
+  topicId     String
+  description String   @db.Text
+  wordCount   Int
+  createdById String
+  createdAt   DateTime @default(now())
+  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+}
+
+model ComplexityDeclaration {
+  id            String   @id @default(cuid())
+  topicId       String
+  attributeCode String   // WP5, WP7, etc.
+  justification String   @db.Text
+  confirmed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, attributeCode])
+}
+
+// ------------------------------------------
+// 5. Allocation & Marks Entry
+// ------------------------------------------
+
+model Batch {
+  id        String   @id // e.g. "2023-2027"
+  active    Boolean  @default(true)
+  groups    Group[]
+}
+
+model Group {
+  id           String        @id @default(cuid())
+  number       Int
+  batchId      String
+  topicId      String
+  supervisorId String
+  createdAt    DateTime      @default(now())
+
+  batch        Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topic        Topic         @relation(fields: [topicId], references: [id])
+  supervisor   User          @relation("supervisor", fields: [supervisorId], references: [id])
+  members      GroupMember[]
+  markEntries  MarkEntry[]
+  snapshots    AttainmentSnapshot[]
+
+  @@unique([batchId, number])
+  @@index([supervisorId, batchId])
+}
+
+model GroupMember {
+  groupId   String
+  studentId String
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, studentId])
+}
+
+model MarkWindow {
+  id        String    @id @default(cuid())
+  semester  Int       // 6, 7, 8
+  rubric    String    // A..F
+  deadline  DateTime
+  isLocked  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+}
+
+model MarkEntry {
+  id           String     @id @default(cuid())
+  criterionId  Int
+  groupId      String
+  studentId    String?    // null for GROUP scope
+  examinerSlot Int        @default(1) // 1..N for Rubric D panel averaging
+  marks        Float
+  status       MarkStatus @default(DRAFT)
+  enteredById  String
+  updatedAt    DateTime   @updatedAt
+
+  criterion    Criterion  @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  group        Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student      Student?   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  enteredBy    User       @relation("enteredBy", fields: [enteredById], references: [id])
+
+  @@unique([criterionId, groupId, studentId, examinerSlot])
+  @@index([groupId, criterionId])
+}
+
+// ------------------------------------------
+// 6. Results, Operations & Logs
+// ------------------------------------------
+
+model AttainmentSnapshot {
+  id          String   @id @default(cuid())
+  topicId     String
+  groupId     String
+  metric      String   // e.g. "PO1", "WP1", "SDG7"
+  attainment  Float    // 0.0 .. 1.0
+  isAttained  Boolean
+  target      Float    // e.g. 0.60
+  calculatedAt DateTime @default(now())
+
+  topic       Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, metric])
+}
+
+model CapstoneDecision {
+  id            String   @id @default(cuid())
+  topicId       String
+  step1Qualify  Boolean
+  step2Panel    Boolean
+  step3External Boolean
+  step4Declared Boolean
+  isCapstone    Boolean
+  status        String   // "CONFIRMED" | "HOLD" | "PENDING"
+  notes         String?
+  confirmedAt   DateTime?
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+}
+
+model AiProvider {
+  id           String   @id @default(cuid())
+  name         String
+  baseUrl      String
+  model        String
+  encryptedKey String   // AES-256-GCM ciphertext + IV + auth tag
+  priority     Int      // Lower number = higher priority
+  enabled      Boolean  @default(true)
+  dailyLimit   Int      @default(500)
+  createdAt    DateTime @default(now())
+
+  @@index([priority, enabled])
+}
+
+model AiCallLog {
+  id           String   @id @default(cuid())
+  providerName String
+  userId       String
+  promptType   String   // "DRAFT" | "MAP" | "REWRITE"
+  tokensUsed   Int?
+  latencyMs    Int
+  success      Boolean
+  errorMessage String?
+  calledAt     DateTime @default(now())
+
+  @@index([providerName, calledAt])
+  @@index([userId, calledAt])
+}
+
+model ReminderLog {
+  id           String   @id @default(cuid())
+  supervisorId String
+  semester     Int
+  groupsCount  Int
+  sentAt       DateTime @default(now())
+  success      Boolean
+  error        String?
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // "UPDATE_MARK", "REOPEN_WINDOW", "CONFIRM_CAPSTONE", etc.
+  entity    String
+  entityId  String
+  payload   Json?
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
+
+model InviteToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  role      Role     @default(FACULTY)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([email])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([email])
+}
