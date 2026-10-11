@@ -1,0 +1,174 @@
+'use server';
+
+import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
+import { Prisma, TopicSource } from '@prisma/client';
+
+export interface SearchFacultyTopicsParams {
+  query?: string;
+  category?: string; // 'Hardware' | 'Software' | 'Both' | 'ALL'
+  source?: string; // 'SIH' | 'UG_RESEARCH' | 'FACULTY' | 'ALL'
+  sdgIds?: number[];
+  page?: number;
+  pageSize?: number;
+}
+
+export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParams) {
+  const session = await auth();
+
+  // Role validation: Must be logged in as FACULTY or ADMIN
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized: You must be logged in to search topics.' };
+  }
+
+  const {
+    query = '',
+    category = 'ALL',
+    source = 'ALL',
+    sdgIds = [],
+    page = 1,
+    pageSize = 12,
+  } = params;
+
+  try {
+    const where: Prisma.TopicWhereInput = {};
+
+    // Source filtering
+    if (source && source !== 'ALL') {
+      where.source = source as TopicSource;
+    }
+
+    // Category filtering
+    if (category && category !== 'ALL') {
+      where.category = {
+        equals: category,
+        mode: 'insensitive',
+      };
+    }
+
+    // SDG filtering (topics must match at least one selected SDG if specified)
+    if (sdgIds && sdgIds.length > 0) {
+      where.sdgs = {
+        some: {
+          sdgId: { in: sdgIds },
+        },
+      };
+    }
+
+    // Query text search across title, description, code, and domain
+    if (query && query.trim().length > 0) {
+      const q = query.trim();
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { code: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { domain: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    const skip = (Math.max(1, page) - 1) * pageSize;
+    const take = pageSize;
+
+    const [totalCount, topics] = await Promise.all([
+      prisma.topic.count({ where }),
+      prisma.topic.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { code: 'asc' },
+        include: {
+          sdgs: {
+            include: {
+              sdg: true,
+            },
+          },
+          attributes: {
+            include: {
+              attribute: true,
+            },
+          },
+          proposer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Fetch all 17 SDGs for filter chips
+    const allSdgs = await prisma.sdg.findMany({
+      orderBy: { id: 'asc' },
+      select: { id: true, title: true },
+    });
+
+    return {
+      topics,
+      totalCount,
+      page,
+      pageSize,
+      totalPages: Math.ceil(totalCount / pageSize),
+      allSdgs,
+    };
+  } catch (err) {
+    return { error: `Failed to search topics: ${(err as Error).message}` };
+  }
+}
+
+export async function getFacultyTopicDetailAction(topicId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized.' };
+  }
+
+  try {
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: {
+        sdgs: {
+          include: {
+            sdg: {
+              include: {
+                targets: true,
+              },
+            },
+          },
+        },
+        attributes: {
+          include: {
+            attribute: true,
+          },
+          orderBy: {
+            attribute: {
+              code: 'asc',
+            },
+          },
+        },
+        versions: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 3,
+        },
+        declarations: true,
+        proposer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!topic) {
+      return { error: 'Topic not found.' };
+    }
+
+    return { topic };
+  } catch (err) {
+    return { error: `Failed to load topic details: ${(err as Error).message}` };
+  }
+}
