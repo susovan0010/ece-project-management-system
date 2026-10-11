@@ -172,3 +172,38 @@ export async function getFacultyTopicDetailAction(topicId: string) {
     return { error: `Failed to load topic details: ${(err as Error).message}` };
   }
 }
+
+export async function getMyConfirmedTopicsAction() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized: You must be logged in.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const topics = await prisma.topic.findMany({
+      where: {
+        OR: [
+          { proposerId: userId },
+          { groups: { some: { supervisorId: userId } } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        sdgs: { include: { sdg: true } },
+        attributes: { include: { attribute: true } },
+        groups: {
+          where: { supervisorId: userId },
+          include: { batch: true },
+        },
+        proposer: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    return { topics };
+  } catch (err) {
+    return { error: `Failed to load confirmed topics: ${(err as Error).message}` };
+  }
+}
+

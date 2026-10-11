@@ -107,4 +107,37 @@ describe('Faculty Topics: Query & Filtering Execution', () => {
     const res = await getFacultyTopicDetailAction('non-existent-id');
     expect(res.error).toBe('Topic not found.');
   });
+
+  it('rejects unauthenticated requests to get my confirmed topics', async () => {
+    vi.mocked(auth).mockResolvedValue(null as any);
+    const { getMyConfirmedTopicsAction } = await import('../app/actions/faculty-topics');
+    const res = await getMyConfirmedTopicsAction();
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Unauthorized');
+  });
+
+  it('retrieves confirmed topics for logged in supervisor', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-user-1', role: 'FACULTY' },
+    } as any);
+
+    const findManySpy = vi.spyOn(prisma.topic, 'findMany').mockResolvedValue([
+      { id: 'top-1', code: 'FAC-2026-001', title: '5G Array' },
+    ] as any);
+
+    const { getMyConfirmedTopicsAction } = await import('../app/actions/faculty-topics');
+    const res = await getMyConfirmedTopicsAction();
+    expect(res.error).toBeUndefined();
+    expect(res.topics).toHaveLength(1);
+    expect(findManySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { proposerId: 'faculty-user-1' },
+            { groups: { some: { supervisorId: 'faculty-user-1' } } },
+          ],
+        },
+      })
+    );
+  });
 });
