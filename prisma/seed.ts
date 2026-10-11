@@ -39,6 +39,25 @@ export async function seedDatabase() {
   });
   console.log(`✓ Admin account verified: ${admin.email}`);
 
+  // 1b. Seed Initial Faculty Supervisor Account
+  const facultyEmail = 'faculty.test@heritageit.edu';
+  const facultyName = 'Dr. Subhashish Roy';
+  const facultyPassword = 'FacultyPass@2026';
+  const facultyHash = await bcrypt.hash(facultyPassword, 10);
+
+  const faculty = await prisma.user.upsert({
+    where: { email: facultyEmail.toLowerCase() },
+    update: { name: facultyName, role: Role.FACULTY, active: true },
+    create: {
+      email: facultyEmail.toLowerCase(),
+      name: facultyName,
+      passwordHash: facultyHash,
+      role: Role.FACULTY,
+      active: true,
+    },
+  });
+  console.log(`✓ Faculty account verified: ${faculty.email}`);
+
   // 2. Seed Default Settings
   await prisma.setting.upsert({
     where: { key: 'ATTAINMENT_TARGET' },
