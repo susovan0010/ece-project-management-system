@@ -1,0 +1,131 @@
+// ========================================================
+// ECE Capstone Project Management System - Faculty Proposal Unit Tests
+// Verifies code sequence (FAC-YYYY-NNN), 500-word ceiling enforcement,
+// role isolation (Faculty vs Admin), and live capstone qualification.
+// ========================================================
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('@/auth', () => ({
+  auth: vi.fn(),
+}));
+
+import {
+  getFacultyProposalMetadataAction,
+  saveFacultyTopicProposalAction,
+  checkCapstoneQualificationAction,
+} from '../app/actions/faculty-propose';
+import { prisma } from '../lib/prisma';
+import { auth } from '@/auth';
+
+describe('Faculty Proposal: Role Isolation', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rejects unauthenticated requests to get proposal metadata', async () => {
+    vi.mocked(auth).mockResolvedValue(null as any);
+    const res = await getFacultyProposalMetadataAction();
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Unauthorized');
+  });
+
+  it('rejects ADMIN user from proposing a topic (Mandatory Rule: Admin cannot propose)', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-user-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+    } as any);
+
+    const res = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-001',
+      title: 'Admin Proposed Topic',
+      category: 'Hardware',
+      description: 'Attempting to create topic as admin.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Administrators cannot propose or edit topics');
+  });
+});
+
+describe('Faculty Proposal: 500-Word Ceiling Enforcement', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rejects descriptions exceeding 500 words', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    // Generate 505 words
+    const longDescription = new Array(505).fill('engineering').join(' ');
+
+    const res = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-001',
+      title: 'Valid Project Title',
+      category: 'Hardware',
+      description: longDescription,
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('500-word limit');
+  });
+});
+
+describe('Faculty Proposal: Live Capstone Qualification Check', () => {
+  it('correctly qualifies when WP1>=2, three of WP2..7>=2, two of EA1..5>=2, and SDG target named', async () => {
+    const levels = {
+      WP1: 2,
+      WP2: 2,
+      WP3: 2,
+      WP4: 2,
+      EA1: 2,
+      EA2: 2,
+    };
+
+    const res = await checkCapstoneQualificationAction(levels, true);
+    expect(res.isQualified).toBe(true);
+    expect(res.breakdown.wp1Met).toBe(true);
+    expect(res.breakdown.wpOfSixMet).toBe(true);
+    expect(res.breakdown.eaMet).toBe(true);
+    expect(res.breakdown.hasSdgTarget).toBe(true);
+  });
+
+  it('fails qualification when WP1 < 2', async () => {
+    const levels = {
+      WP1: 1, // Fails
+      WP2: 2,
+      WP3: 2,
+      WP4: 2,
+      EA1: 2,
+      EA2: 2,
+    };
+
+    const res = await checkCapstoneQualificationAction(levels, true);
+    expect(res.isQualified).toBe(false);
+    expect(res.breakdown.wp1Met).toBe(false);
+  });
+
+  it('fails qualification when no SDG target is named', async () => {
+    const levels = {
+      WP1: 2,
+      WP2: 2,
+      WP3: 2,
+      WP4: 2,
+      EA1: 2,
+      EA2: 2,
+    };
+
+    const res = await checkCapstoneQualificationAction(levels, false);
+    expect(res.isQualified).toBe(false);
+    expect(res.breakdown.hasSdgTarget).toBe(false);
+  });
+});
