@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createInviteAction, createFacultyAccountAction } from '@/app/actions/auth';
 import {
   getAdminDirectoryDataAction,
+  removeSupervisorAction,
   AdminUserItem,
   SupervisorUserItem,
 } from '@/app/actions/admin-directory';
@@ -13,6 +14,7 @@ export default function AdminFacultyPage() {
   const [admins, setAdmins] = useState<AdminUserItem[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorUserItem[]>([]);
   const [loadingDirectory, setLoadingDirectory] = useState(true);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Direct Account Creation State
   const [directName, setDirectName] = useState('');
@@ -44,6 +46,21 @@ export default function AdminFacultyPage() {
   useEffect(() => {
     loadAccounts();
   }, []);
+
+  async function handleRemoveSupervisor(supervisorId: string, name: string) {
+    if (!window.confirm(`Are you sure you want to remove supervisor "${name}"?`)) return;
+    setRemovingId(supervisorId);
+    setDirectError(null);
+    setDirectSuccess(null);
+    const res = await removeSupervisorAction(supervisorId);
+    if (res.error) {
+      setDirectError(res.error);
+    } else {
+      setDirectSuccess(res.message || `Supervisor ${name} removed.`);
+      await loadAccounts();
+    }
+    setRemovingId(null);
+  }
 
   async function handleCreateDirectAccount(e: React.FormEvent) {
     e.preventDefault();
@@ -390,18 +407,19 @@ export default function AdminFacultyPage() {
                 <th className="px-6 py-3 text-center">Proposed Topics</th>
                 <th className="px-6 py-3">Allotted Groups</th>
                 <th className="px-6 py-3 text-center">Password Status</th>
+                <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loadingDirectory ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
                     Loading supervisors...
                   </td>
                 </tr>
               ) : supervisors.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
                     No faculty supervisors registered yet.
                   </td>
                 </tr>
@@ -440,6 +458,16 @@ export default function AdminFacultyPage() {
                       >
                         {sup.mustChangePassword ? 'FIRST LOGIN PENDING' : 'CHANGED'}
                       </span>
+                    </td>
+                    <td className="px-6 py-3.5 text-right">
+                      <button
+                        type="button"
+                        disabled={removingId === sup.id}
+                        onClick={() => handleRemoveSupervisor(sup.id, sup.name)}
+                        className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
+                      >
+                        {removingId === sup.id ? 'Removing...' : 'Remove'}
+                      </button>
                     </td>
                   </tr>
                 ))

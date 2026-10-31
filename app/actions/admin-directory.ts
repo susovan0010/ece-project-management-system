@@ -2,6 +2,7 @@
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { revalidatePath } from 'next/cache';
 
 export interface AdminUserItem {
   id: string;
@@ -222,5 +223,133 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
     };
   } catch (err) {
     return { error: `Failed to load department directory: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 2. Remove a Faculty Supervisor (Admin Only)
+// ----------------------------------------------------
+export async function removeSupervisorAction(supervisorId: string) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string } | undefined;
+
+  // Rule 1: Strict server-side ADMIN role check
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can remove supervisors.' };
+  }
+
+  try {
+    const supervisor = await prisma.user.findUnique({
+      where: { id: supervisorId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    if (!supervisor) {
+      return { error: 'Supervisor account not found.' };
+    }
+
+    if (supervisor.role !== 'FACULTY') {
+      return { error: 'Only faculty supervisor accounts can be removed via this action.' };
+    }
+
+    // Detach topics, remove mark entries, groups, and user audit logs, then delete the supervisor user
+    await prisma.topic.updateMany({
+      where: { proposerId: supervisorId },
+      data: { proposerId: null },
+    });
+
+    await prisma.markEntry.deleteMany({
+      where: { enteredById: supervisorId },
+    });
+
+    await prisma.group.deleteMany({
+      where: { supervisorId },
+    });
+
+    await prisma.auditLog.deleteMany({
+      where: { userId: supervisorId },
+    });
+
+    await prisma.user.delete({
+      where: { id: supervisorId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'REMOVE_SUPERVISOR',
+        entity: 'User',
+        entityId: supervisorId,
+        payload: {
+          removedName: supervisor.name,
+          removedEmail: supervisor.email,
+        },
+      },
+    });
+
+    revalidatePath('/admin/dashboard');
+    revalidatePath('/admin/faculty');
+    revalidatePath('/admin/allocation');
+    revalidatePath('/admin/confirmed');
+
+    return {
+      success: true,
+      message: `Supervisor ${supervisor.name} (${supervisor.email}) has been removed.`,
+    };
+  } catch (err) {
+    return { error: `Failed to remove supervisor: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 3. Remove a Student (Admin Only)
+// ----------------------------------------------------
+export async function removeStudentAction(studentId: string) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string } | undefined;
+
+  // Rule 1: Strict server-side ADMIN role check
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can remove students.' };
+  }
+
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true, name: true, roll: true, email: true },
+    });
+
+    if (!student) {
+      return { error: 'Student not found.' };
+    }
+
+    // Deleting Student cascades GroupMember and student-scoped MarkEntry rows
+    await prisma.student.delete({
+      where: { id: studentId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'REMOVE_STUDENT',
+        entity: 'Student',
+        entityId: studentId,
+        payload: {
+          removedName: student.name,
+          removedRoll: student.roll,
+          removedEmail: student.email,
+        },
+      },
+    });
+
+    revalidatePath('/admin/dashboard');
+    revalidatePath('/admin/allocation');
+
+    return {
+      success: true,
+      message: `Student ${student.name} (Roll: ${student.roll}) has been removed.`,
+    };
+  } catch (err) {
+    return { error: `Failed to remove student: ${(err as Error).message}` };
   }
 }

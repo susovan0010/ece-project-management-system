@@ -6,11 +6,19 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}));
+
 vi.mock('@/auth', () => ({
   auth: vi.fn(),
 }));
 
-import { getAdminDirectoryDataAction } from '../app/actions/admin-directory';
+import {
+  getAdminDirectoryDataAction,
+  removeSupervisorAction,
+  removeStudentAction,
+} from '../app/actions/admin-directory';
 import { prisma } from '../lib/prisma';
 import { auth } from '@/auth';
 
@@ -123,5 +131,70 @@ describe('Admin Directory: Admins, Supervisors, and Students with Groups', () =>
       topicCode: 'SIH26001',
       supervisorName: 'Dr. Subhashish Roy',
     });
+  });
+
+  it('rejects non-ADMIN from removing a supervisor or student', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY' },
+    } as any);
+
+    const supRes = await removeSupervisorAction('sup-1');
+    expect(supRes.error).toContain('Only Project Committee Admins');
+
+    const stuRes = await removeStudentAction('st-1');
+    expect(stuRes.error).toContain('Only Project Committee Admins');
+  });
+
+  it('allows ADMIN to remove a supervisor and cleans up associated relations', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'adm-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'sup-1',
+      name: 'Dr. Subhashish Roy',
+      email: 'subhashish@heritageit.edu',
+      role: 'FACULTY',
+    } as any);
+
+    const updateTopicsSpy = vi.spyOn(prisma.topic, 'updateMany').mockResolvedValue({ count: 1 } as any);
+    const deleteMarksSpy = vi.spyOn(prisma.markEntry, 'deleteMany').mockResolvedValue({ count: 0 } as any);
+    const deleteGroupsSpy = vi.spyOn(prisma.group, 'deleteMany').mockResolvedValue({ count: 1 } as any);
+    const deleteLogsSpy = vi.spyOn(prisma.auditLog, 'deleteMany').mockResolvedValue({ count: 0 } as any);
+    const deleteUserSpy = vi.spyOn(prisma.user, 'delete').mockResolvedValue({ id: 'sup-1' } as any);
+    const createAuditSpy = vi.spyOn(prisma.auditLog, 'create').mockResolvedValue({ id: 'log-1' } as any);
+
+    const res = await removeSupervisorAction('sup-1');
+    expect(res.success).toBe(true);
+    expect(updateTopicsSpy).toHaveBeenCalledWith({
+      where: { proposerId: 'sup-1' },
+      data: { proposerId: null },
+    });
+    expect(deleteMarksSpy).toHaveBeenCalled();
+    expect(deleteGroupsSpy).toHaveBeenCalled();
+    expect(deleteLogsSpy).toHaveBeenCalled();
+    expect(deleteUserSpy).toHaveBeenCalledWith({ where: { id: 'sup-1' } });
+    expect(createAuditSpy).toHaveBeenCalled();
+  });
+
+  it('allows ADMIN to remove any student', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'adm-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.student, 'findUnique').mockResolvedValue({
+      id: 'st-1',
+      name: 'Arijit Sen',
+      roll: '12623001001',
+      email: 'arijit@gmail.com',
+    } as any);
+
+    const deleteStudentSpy = vi.spyOn(prisma.student, 'delete').mockResolvedValue({ id: 'st-1' } as any);
+    const createAuditSpy = vi.spyOn(prisma.auditLog, 'create').mockResolvedValue({ id: 'log-2' } as any);
+
+    const res = await removeStudentAction('st-1');
+    expect(res.success).toBe(true);
+    expect(deleteStudentSpy).toHaveBeenCalledWith({ where: { id: 'st-1' } });
+    expect(createAuditSpy).toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import {
 } from '@/app/actions/allocation';
 import {
   getAdminDirectoryDataAction,
+  removeStudentAction,
   StudentGroupItem,
 } from '@/app/actions/admin-directory';
 
@@ -22,6 +23,8 @@ export default function AdminAllocationPage() {
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [removingStudentId, setRemovingStudentId] = useState<string | null>(null);
 
   // Ingestion tracking
   const [commitProgress, setCommitProgress] = useState(0);
@@ -63,6 +66,21 @@ export default function AdminAllocationPage() {
   useEffect(() => {
     loadSummary(selectedBatch);
   }, [selectedBatch]);
+
+  async function handleRemoveStudent(studentId: string, name: string, roll: string) {
+    if (!window.confirm(`Are you sure you want to remove student "${name}" (Roll: ${roll})?`)) return;
+    setRemovingStudentId(studentId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await removeStudentAction(studentId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(res.message || `Student ${name} removed.`);
+      await loadSummary(selectedBatch);
+    }
+    setRemovingStudentId(null);
+  }
 
   // ----------------------------------------------------
   // Step 1: File Parsing (CSV or XLSX)
@@ -299,13 +317,22 @@ export default function AdminAllocationPage() {
         </div>
       </div>
 
-      {/* Error state */}
+      {/* Error & Success state */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-3">
           <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <div>{error}</div>
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm flex items-start gap-3">
+          <svg className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <div>{successMsg}</div>
         </div>
       )}
 
@@ -592,12 +619,13 @@ export default function AdminAllocationPage() {
                 <th className="px-5 py-3">Contact</th>
                 <th className="px-5 py-3">Project Topic</th>
                 <th className="px-5 py-3">Supervisor</th>
+                <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rosterLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                     Loading student-group roster...
                   </td>
                 </tr>
@@ -619,7 +647,7 @@ export default function AdminAllocationPage() {
                   if (filtered.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                        <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                           No allocated students found matching the criteria.
                         </td>
                       </tr>
@@ -671,6 +699,16 @@ export default function AdminAllocationPage() {
                         ) : (
                           <span className="text-slate-400 italic">-</span>
                         )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          type="button"
+                          disabled={removingStudentId === st.studentId}
+                          onClick={() => handleRemoveStudent(st.studentId, st.name, st.roll)}
+                          className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
+                        >
+                          {removingStudentId === st.studentId ? 'Removing...' : 'Remove'}
+                        </button>
                       </td>
                     </tr>
                   ));

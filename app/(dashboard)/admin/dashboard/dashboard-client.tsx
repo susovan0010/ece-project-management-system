@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   getAdminDirectoryDataAction,
+  removeSupervisorAction,
+  removeStudentAction,
   AdminUserItem,
   SupervisorUserItem,
   StudentGroupItem,
@@ -12,6 +14,8 @@ import {
 export default function AdminDashboardClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'STUDENTS' | 'SUPERVISORS' | 'ADMINS'>('STUDENTS');
 
   const [admins, setAdmins] = useState<AdminUserItem[]>([]);
@@ -51,6 +55,36 @@ export default function AdminDashboardClient() {
   useEffect(() => {
     loadDirectory(selectedBatch);
   }, [selectedBatch]);
+
+  async function handleRemoveSupervisor(supervisorId: string, name: string) {
+    if (!window.confirm(`Are you sure you want to remove supervisor "${name}"?`)) return;
+    setRemovingId(supervisorId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await removeSupervisorAction(supervisorId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(res.message || `Supervisor ${name} removed.`);
+      await loadDirectory(selectedBatch);
+    }
+    setRemovingId(null);
+  }
+
+  async function handleRemoveStudent(studentId: string, name: string, roll: string) {
+    if (!window.confirm(`Are you sure you want to remove student "${name}" (Roll: ${roll})?`)) return;
+    setRemovingId(studentId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await removeStudentAction(studentId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(res.message || `Student ${name} removed.`);
+      await loadDirectory(selectedBatch);
+    }
+    setRemovingId(null);
+  }
 
   const q = searchQuery.trim().toLowerCase();
 
@@ -94,6 +128,12 @@ export default function AdminDashboardClient() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm">
+          {successMsg}
         </div>
       )}
 
@@ -272,12 +312,13 @@ export default function AdminDashboardClient() {
                   <th className="px-5 py-3">Contact</th>
                   <th className="px-5 py-3">Assigned Project Topic</th>
                   <th className="px-5 py-3">Supervisor</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                       No students found. Upload a student allocation sheet in{' '}
                       <Link href="/admin/allocation" className="text-blue-600 underline font-semibold">
                         Student Allocation
@@ -332,6 +373,16 @@ export default function AdminDashboardClient() {
                           <span className="text-slate-400 italic">-</span>
                         )}
                       </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button
+                          type="button"
+                          disabled={removingId === st.studentId}
+                          onClick={() => handleRemoveStudent(st.studentId, st.name, st.roll)}
+                          className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
+                        >
+                          {removingId === st.studentId ? 'Removing...' : 'Remove'}
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -348,12 +399,13 @@ export default function AdminDashboardClient() {
                   <th className="px-6 py-3 text-center">Proposed Topics</th>
                   <th className="px-6 py-3">Allotted Groups & Topics</th>
                   <th className="px-6 py-3 text-center">Account Status</th>
+                  <th className="px-6 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {filteredSupervisors.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
                       No faculty supervisors found.
                     </td>
                   </tr>
@@ -392,6 +444,16 @@ export default function AdminDashboardClient() {
                         >
                           {sup.mustChangePassword ? 'FIRST LOGIN PENDING' : 'ACTIVE'}
                         </span>
+                      </td>
+                      <td className="px-6 py-3.5 text-right">
+                        <button
+                          type="button"
+                          disabled={removingId === sup.id}
+                          onClick={() => handleRemoveSupervisor(sup.id, sup.name)}
+                          className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
+                        >
+                          {removingId === sup.id ? 'Removing...' : 'Remove'}
+                        </button>
                       </td>
                     </tr>
                   ))
