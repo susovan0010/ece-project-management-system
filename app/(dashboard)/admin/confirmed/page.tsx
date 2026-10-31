@@ -108,7 +108,7 @@ export default function AdminConfirmedTopicsPage() {
     } else {
       setSuccessMsg(
         decision === 'APPROVE'
-          ? `Approved: Topic ${res.topicCode} has been removed from ${res.supervisorName}'s supervisor pool only.`
+          ? `Approved: ${res.supervisorName} now has the "Final Delete" option enabled for topic ${res.topicCode}.`
           : `Declined delete request for topic ${res.topicCode} (${res.supervisorName}).`
       );
       await loadTopics(page);

@@ -4,6 +4,10 @@ vi.mock('@/auth', () => ({
   auth: vi.fn(),
 }));
 
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import {
   searchFacultyTopicsAction,
   getFacultyTopicDetailAction,
@@ -14,6 +18,7 @@ import { auth } from '@/auth';
 describe('Faculty Topics: Role Isolation & Authentication', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null);
   });
 
   it('rejects unauthenticated requests to search faculty topics', async () => {
@@ -36,6 +41,7 @@ describe('Faculty Topics: Role Isolation & Authentication', () => {
 describe('Faculty Topics: Query & Filtering Execution', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null);
   });
 
   it('builds proper Prisma filters for query, category, and SDG IDs', async () => {

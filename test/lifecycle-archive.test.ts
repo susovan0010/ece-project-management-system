@@ -6,6 +6,7 @@ import {
   deleteUnconfirmedTopicAction,
   requestTopicDeletionAction,
   resolveTopicDeleteRequestAction,
+  finalDeleteApprovedTopicAction,
 } from '@/app/actions/project-lifecycle';
 import { processRawImportData } from '@/lib/import/parser';
 import { auth } from '@/auth';
@@ -258,7 +259,7 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
     expect(prisma.topic.delete).not.toHaveBeenCalled();
   });
 
-  it('allows supervisor to request deletion of a confirmed topic and Admin to approve removing it from that supervisor pool only', async () => {
+  it('enforces the 3-step delete workflow: Supervisor requests -> Admin agrees -> Supervisor clicks Final Delete to remove from supervisor account', async () => {
     // Step 1: Supervisor requests deletion
     (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: 'fac-1', role: 'FACULTY', name: 'Dr. S. Roy', email: 'sroy@hitk.edu' },
@@ -277,9 +278,9 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
 
     const reqRes = await requestTopicDeletionAction('topic-conf-1', 'Selected wrong topic');
     expect(reqRes.success).toBe(true);
-    expect(prisma.setting.upsert).toHaveBeenCalled();
+    expect(reqRes.request?.status).toBe('PENDING');
 
-    // Step 2: Admin approves -> deleted from supervisor's pool only (proposerId: null, status: DRAFT)
+    // Step 2: Admin agrees -> marks request as APPROVED (waiting for supervisor Final Delete)
     (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: 'admin-1', role: 'ADMIN', name: 'Committee Admin' },
     });
@@ -288,6 +289,28 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
       key: 'TOPIC_DELETE_REQUESTS',
       value: [reqRes.request],
     });
+
+    const approveRes = await resolveTopicDeleteRequestAction('topic-conf-1', 'fac-1', 'APPROVE');
+    expect(approveRes.success).toBe(true);
+    // Topic is NOT removed yet until supervisor clicks Final Delete
+    expect(prisma.topic.update).not.toHaveBeenCalled();
+
+    // Step 3: Supervisor clicks "Final Delete" -> removed from supervisor's pool and hidden from supervisor's account
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY', name: 'Dr. S. Roy', email: 'sroy@hitk.edu' },
+    });
+
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ where }: { where: { key: string } }) => {
+        if (where.key === 'TOPIC_DELETE_REQUESTS') {
+          return {
+            key: 'TOPIC_DELETE_REQUESTS',
+            value: [{ ...reqRes.request, status: 'APPROVED' }],
+          };
+        }
+        return null;
+      }
+    );
 
     (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'topic-conf-1',
@@ -298,8 +321,8 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
       groups: [],
     });
 
-    const approveRes = await resolveTopicDeleteRequestAction('topic-conf-1', 'fac-1', 'APPROVE');
-    expect(approveRes.success).toBe(true);
+    const finalRes = await finalDeleteApprovedTopicAction('topic-conf-1');
+    expect(finalRes.success).toBe(true);
     expect(prisma.topic.update).toHaveBeenCalledWith({
       where: { id: 'topic-conf-1' },
       data: {

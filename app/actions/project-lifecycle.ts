@@ -550,8 +550,8 @@ export async function deleteUnconfirmedTopicAction(topicId: string) {
 }
 
 // ============================================================================
-// 6. Post-Confirmation Supervisor Delete Request & Admin Approval Workflow
-//    (Deletes from the Supervisor's Pool Only when Admin Agrees)
+// 6. Post-Confirmation Supervisor Delete Request, Admin Approval & Final Delete
+//    (Step 1: Supervisor Requests -> Step 2: Admin Agrees -> Step 3: Supervisor Final Delete)
 // ============================================================================
 export interface TopicDeleteRequestRecord {
   topicId: string;
@@ -562,9 +562,18 @@ export interface TopicDeleteRequestRecord {
   supervisorEmail: string;
   requestedAt: string;
   reason?: string;
+  status?: 'PENDING' | 'APPROVED';
+  approvedAt?: string;
+}
+
+export interface SupervisorDeletedTopicRecord {
+  topicId: string;
+  supervisorId: string;
+  deletedAt: string;
 }
 
 const DELETE_REQUESTS_SETTING_KEY = 'TOPIC_DELETE_REQUESTS';
+const SUPERVISOR_DELETED_TOPICS_KEY = 'SUPERVISOR_DELETED_TOPICS';
 
 async function readPendingDeleteRequests(): Promise<TopicDeleteRequestRecord[]> {
   const setting = await prisma.setting.findUnique({
@@ -574,6 +583,17 @@ async function readPendingDeleteRequests(): Promise<TopicDeleteRequestRecord[]> 
     return [];
   }
   return setting.value as unknown as TopicDeleteRequestRecord[];
+}
+
+export async function readSupervisorDeletedTopicIds(supervisorId: string): Promise<string[]> {
+  const setting = await prisma.setting.findUnique({
+    where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+  });
+  if (!setting || !Array.isArray(setting.value)) {
+    return [];
+  }
+  const rows = setting.value as unknown as SupervisorDeletedTopicRecord[];
+  return rows.filter((r) => r.supervisorId === supervisorId).map((r) => r.topicId);
 }
 
 export async function requestTopicDeletionAction(topicId: string, reason?: string) {
@@ -612,10 +632,16 @@ export async function requestTopicDeletionAction(topicId: string, reason?: strin
     }
 
     const existing = await readPendingDeleteRequests();
-    const alreadyRequested = existing.some(
+    const alreadyRequested = existing.find(
       (r) => r.topicId === topic.id && r.supervisorId === supervisorId
     );
     if (alreadyRequested) {
+      if (alreadyRequested.status === 'APPROVED') {
+        return {
+          error:
+            'Admin has already agreed to your delete request. Click "Final Delete" to remove it from your account.',
+        };
+      }
       return { error: 'A delete request for this project topic is already pending Admin approval.' };
     }
 
@@ -628,6 +654,7 @@ export async function requestTopicDeletionAction(topicId: string, reason?: strin
       supervisorEmail: user.email || '',
       requestedAt: new Date().toISOString(),
       reason: reason?.trim() || 'Requested removal from supervisor pool after confirmation.',
+      status: 'PENDING',
     };
 
     const updatedList = [...existing, newRequest];
@@ -649,6 +676,7 @@ export async function requestTopicDeletionAction(topicId: string, reason?: strin
     });
 
     revalidatePath('/faculty/my-topics');
+    revalidatePath('/faculty/topics');
     revalidatePath('/admin/topics');
     revalidatePath('/admin/confirmed');
 
@@ -669,7 +697,10 @@ export async function getTopicDeleteRequestsAction() {
   try {
     const allRequests = await readPendingDeleteRequests();
     if (user.role === 'ADMIN') {
-      return { requests: allRequests };
+      // Admins only need to act on PENDING requests
+      return {
+        requests: allRequests.filter((r) => (r.status || 'PENDING') === 'PENDING'),
+      };
     }
     return {
       requests: allRequests.filter((r) => r.supervisorId === userId),
@@ -700,46 +731,26 @@ export async function resolveTopicDeleteRequestAction(
       return { error: 'Delete request not found or already resolved.' };
     }
 
+    let updatedRequests: TopicDeleteRequestRecord[];
+
     if (decision === 'APPROVE') {
-      const topic = await prisma.topic.findUnique({
-        where: { id: topicId },
-        include: {
-          groups: { select: { id: true, supervisorId: true } },
-        },
-      });
-
-      if (topic) {
-        // Remove any group linking this supervisor to this topic
-        const supervisorGroups = topic.groups.filter((g) => g.supervisorId === supervisorId);
-        for (const grp of supervisorGroups) {
-          await prisma.group.delete({ where: { id: grp.id } });
-        }
-
-        const remainingOtherGroups = topic.groups.filter((g) => g.supervisorId !== supervisorId);
-
-        // Remove from this supervisor's pool only (keep the topic in the general Admin Topic Bank)
-        const shouldClearProposer = topic.proposerId === supervisorId;
-        const nextStatus =
-          remainingOtherGroups.length > 0 ? TopicStatus.ALLOTTED : TopicStatus.DRAFT;
-
-        await prisma.topic.update({
-          where: { id: topicId },
-          data: {
-            proposerId: shouldClearProposer ? null : topic.proposerId,
-            status: nextStatus,
-          },
-        });
-      }
+      // Mark request as APPROVED so the supervisor gets the "Final Delete" button in their account
+      updatedRequests = allRequests.map((r) =>
+        r.topicId === topicId && r.supervisorId === supervisorId
+          ? { ...r, status: 'APPROVED', approvedAt: new Date().toISOString() }
+          : r
+      );
+    } else {
+      // Rejected: remove the request
+      updatedRequests = allRequests.filter(
+        (r) => !(r.topicId === topicId && r.supervisorId === supervisorId)
+      );
     }
-
-    const remainingRequests = allRequests.filter(
-      (r) => !(r.topicId === topicId && r.supervisorId === supervisorId)
-    );
 
     await prisma.setting.upsert({
       where: { key: DELETE_REQUESTS_SETTING_KEY },
-      update: { value: remainingRequests as any },
-      create: { key: DELETE_REQUESTS_SETTING_KEY, value: remainingRequests as any },
+      update: { value: updatedRequests as any },
+      create: { key: DELETE_REQUESTS_SETTING_KEY, value: updatedRequests as any },
     });
 
     await prisma.auditLog.create({
@@ -747,7 +758,7 @@ export async function resolveTopicDeleteRequestAction(
         userId: user.id,
         action:
           decision === 'APPROVE'
-            ? 'APPROVE_TOPIC_DELETE_FROM_SUPERVISOR_POOL'
+            ? 'APPROVE_TOPIC_DELETE_REQUEST_FOR_FINAL_DELETE'
             : 'REJECT_TOPIC_DELETE_FROM_SUPERVISOR_POOL',
         entity: 'Topic',
         entityId: topicId,
@@ -771,5 +782,112 @@ export async function resolveTopicDeleteRequestAction(
     };
   } catch (err) {
     return { error: `Failed to resolve delete request: ${(err as Error).message}` };
+  }
+}
+
+export async function finalDeleteApprovedTopicAction(topicId: string) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string } | undefined;
+  if (!user?.id || user.role !== 'FACULTY') {
+    return { error: 'Forbidden: Only the supervisor can perform the final delete.' };
+  }
+  const supervisorId = user.id;
+
+  try {
+    const allRequests = await readPendingDeleteRequests();
+    const approvedReq = allRequests.find(
+      (r) => r.topicId === topicId && r.supervisorId === supervisorId && r.status === 'APPROVED'
+    );
+
+    if (!approvedReq) {
+      return {
+        error:
+          'Cannot perform Final Delete: Admin approval is required before finally deleting a confirmed project.',
+      };
+    }
+
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: {
+        groups: { select: { id: true, supervisorId: true } },
+      },
+    });
+
+    if (topic) {
+      // Remove any group linking this supervisor to this topic
+      const supervisorGroups = topic.groups.filter((g) => g.supervisorId === supervisorId);
+      for (const grp of supervisorGroups) {
+        await prisma.group.delete({ where: { id: grp.id } });
+      }
+
+      const remainingOtherGroups = topic.groups.filter((g) => g.supervisorId !== supervisorId);
+
+      // Remove from this supervisor's pool only (keep the topic in the general Admin Topic Bank)
+      const shouldClearProposer = topic.proposerId === supervisorId;
+      const nextStatus =
+        remainingOtherGroups.length > 0 ? TopicStatus.ALLOTTED : TopicStatus.DRAFT;
+
+      await prisma.topic.update({
+        where: { id: topicId },
+        data: {
+          proposerId: shouldClearProposer ? null : topic.proposerId,
+          status: nextStatus,
+        },
+      });
+    }
+
+    // Record in SUPERVISOR_DELETED_TOPICS so this topic never appears in this supervisor's account again
+    const deletedSetting = await prisma.setting.findUnique({
+      where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+    });
+    const existingDeleted =
+      deletedSetting && Array.isArray(deletedSetting.value)
+        ? (deletedSetting.value as unknown as SupervisorDeletedTopicRecord[])
+        : [];
+    const updatedDeleted: SupervisorDeletedTopicRecord[] = [
+      ...existingDeleted.filter(
+        (d) => !(d.topicId === topicId && d.supervisorId === supervisorId)
+      ),
+      { topicId, supervisorId, deletedAt: new Date().toISOString() },
+    ];
+
+    await prisma.setting.upsert({
+      where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+      update: { value: updatedDeleted as any },
+      create: { key: SUPERVISOR_DELETED_TOPICS_KEY, value: updatedDeleted as any },
+    });
+
+    // Remove the fulfilled request from TOPIC_DELETE_REQUESTS
+    const remainingRequests = allRequests.filter(
+      (r) => !(r.topicId === topicId && r.supervisorId === supervisorId)
+    );
+    await prisma.setting.upsert({
+      where: { key: DELETE_REQUESTS_SETTING_KEY },
+      update: { value: remainingRequests as any },
+      create: { key: DELETE_REQUESTS_SETTING_KEY, value: remainingRequests as any },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: supervisorId,
+        action: 'FINAL_DELETE_APPROVED_TOPIC_BY_SUPERVISOR',
+        entity: 'Topic',
+        entityId: topicId,
+        payload: approvedReq as any,
+      },
+    });
+
+    revalidatePath('/faculty/my-topics');
+    revalidatePath('/faculty/topics');
+    revalidatePath('/admin/topics');
+    revalidatePath('/admin/confirmed');
+
+    return {
+      success: true,
+      topicCode: approvedReq.topicCode,
+      topicTitle: approvedReq.topicTitle,
+    };
+  } catch (err) {
+    return { error: `Failed to finally delete topic: ${(err as Error).message}` };
   }
 }

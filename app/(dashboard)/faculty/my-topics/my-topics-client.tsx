@@ -11,6 +11,7 @@ import {
   deleteUnconfirmedTopicAction,
   requestTopicDeletionAction,
   getTopicDeleteRequestsAction,
+  finalDeleteApprovedTopicAction,
   TopicDeleteRequestRecord,
   ArchivedProjectRecord,
 } from '@/app/actions/project-lifecycle';
@@ -94,7 +95,30 @@ export default function MyTopicsClient() {
       setError(res.error);
     } else {
       setSuccessMsg(
-        `Delete request for confirmed project ${code} has been sent to the Admin. Once approved, it will be removed from your supervisor pool.`
+        `Delete request for confirmed project ${code} has been sent to the Admin. Once the Admin agrees, a "Final Delete" button will appear here for you.`
+      );
+      await loadAll();
+    }
+    setProcessingId(null);
+  }
+
+  async function handleFinalDeleteApproved(topicId: string, code: string) {
+    if (
+      !window.confirm(
+        `Admin has agreed to your delete request for ${code}. Click OK to finally delete this project from your supervisor account.`
+      )
+    ) {
+      return;
+    }
+    setProcessingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await finalDeleteApprovedTopicAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(
+        `Project ${code} has been finally deleted from your supervisor account.`
       );
       await loadAll();
     }
@@ -233,13 +257,19 @@ export default function MyTopicsClient() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {activeTopics.map((t) => {
               const isDraft = t.status === 'DRAFT';
-              const hasPendingDeleteReq = pendingDeleteRequests.some((r) => r.topicId === t.id);
+              const matchingReq = pendingDeleteRequests.find((r) => r.topicId === t.id);
+              const isDeleteApprovedByAdmin = matchingReq?.status === 'APPROVED';
+              const isDeletePendingAdmin = Boolean(matchingReq) && !isDeleteApprovedByAdmin;
 
               return (
                 <div
                   key={t.id}
                   className={`bg-white border border-slate-200 border-t-4 ${
-                    isDraft ? 'border-t-amber-500' : 'border-t-emerald-600'
+                    isDeleteApprovedByAdmin
+                      ? 'border-t-red-600'
+                      : isDraft
+                      ? 'border-t-amber-500'
+                      : 'border-t-emerald-600'
                   } rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between`}
                 >
                   <div className="space-y-3">
@@ -248,7 +278,11 @@ export default function MyTopicsClient() {
                         <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
                           {t.code}
                         </span>
-                        {isDraft ? (
+                        {isDeleteApprovedByAdmin ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
+                            ADMIN AGREED TO DELETE (READY FOR FINAL DELETE)
+                          </span>
+                        ) : isDraft ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                             UNCONFIRMED (DRAFT)
                           </span>
@@ -350,7 +384,19 @@ export default function MyTopicsClient() {
                               : 'Deactivate / Mark Completed (Archive)'}
                           </button>
 
-                          {hasPendingDeleteReq ? (
+                          {isDeleteApprovedByAdmin ? (
+                            <button
+                              type="button"
+                              disabled={processingId === t.id}
+                              onClick={() => handleFinalDeleteApproved(t.id, t.code)}
+                              className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
+                              title="Admin has agreed to your delete request. Click to finally delete this project from your supervisor account."
+                            >
+                              {processingId === t.id
+                                ? 'Deleting...'
+                                : 'Final Delete (Admin Agreed)'}
+                            </button>
+                          ) : isDeletePendingAdmin ? (
                             <span className="px-2.5 py-1.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-semibold">
                               Delete Request Pending Admin Approval
                             </span>

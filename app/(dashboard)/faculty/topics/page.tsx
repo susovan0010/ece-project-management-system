@@ -6,7 +6,13 @@ import {
   searchFacultyTopicsAction,
   getFacultyTopicDetailAction,
 } from '@/app/actions/faculty-topics';
-import { claimAndConfirmBankTopicAction } from '@/app/actions/project-lifecycle';
+import {
+  claimAndConfirmBankTopicAction,
+  deleteUnconfirmedTopicAction,
+  getTopicDeleteRequestsAction,
+  finalDeleteApprovedTopicAction,
+  TopicDeleteRequestRecord,
+} from '@/app/actions/project-lifecycle';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
 
 interface TopicItem {
@@ -48,6 +54,7 @@ export default function FacultyTopicsSearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deleteRequests, setDeleteRequests] = useState<TopicDeleteRequestRecord[]>([]);
 
   // Filters
   const [query, setQuery] = useState('');
@@ -80,18 +87,59 @@ export default function FacultyTopicsSearchPage() {
     setConfirmingId(null);
   }
 
+  async function handleDeleteUnconfirmedFromBank(topicId: string, code: string) {
+    if (!window.confirm(`Delete unconfirmed draft project ${code}?`)) {
+      return;
+    }
+    setConfirmingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await deleteUnconfirmedTopicAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(`Unconfirmed project ${code} has been deleted.`);
+      await fetchTopics(page);
+    }
+    setConfirmingId(null);
+  }
+
+  async function handleFinalDeleteFromBank(topicId: string, code: string) {
+    if (
+      !window.confirm(
+        `Admin has agreed to your delete request for ${code}. Click OK to finally delete this project from your supervisor account.`
+      )
+    ) {
+      return;
+    }
+    setConfirmingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await finalDeleteApprovedTopicAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(`Project ${code} has been finally deleted from your supervisor account.`);
+      await fetchTopics(page);
+    }
+    setConfirmingId(null);
+  }
+
   // Load topics
   async function fetchTopics(currentPage = page) {
     setLoading(true);
     setError(null);
-    const res = await searchFacultyTopicsAction({
-      query,
-      category,
-      source,
-      sdgIds: selectedSdgs,
-      page: currentPage,
-      pageSize: 12,
-    });
+    const [res, reqRes] = await Promise.all([
+      searchFacultyTopicsAction({
+        query,
+        category,
+        source,
+        sdgIds: selectedSdgs,
+        page: currentPage,
+        pageSize: 12,
+      }),
+      getTopicDeleteRequestsAction(),
+    ]);
 
     if (res.error) {
       setError(res.error);
@@ -102,6 +150,9 @@ export default function FacultyTopicsSearchPage() {
       if (res.allSdgs && allSdgs.length === 0) {
         setAllSdgs(res.allSdgs);
       }
+    }
+    if (!reqRes.error && reqRes.requests) {
+      setDeleteRequests(reqRes.requests);
     }
     setLoading(false);
   }
@@ -434,19 +485,45 @@ export default function FacultyTopicsSearchPage() {
                     Inspect Details →
                   </button>
                   <div className="flex items-center gap-1.5">
-                    {!isArchived && (
+                    {deleteRequests.some(
+                      (r) => r.topicId === t.id && r.status === 'APPROVED'
+                    ) ? (
                       <button
                         type="button"
                         disabled={confirmingId === t.id}
-                        onClick={() => handleConfirmBankTopic(t.id)}
-                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition disabled:opacity-50"
+                        onClick={() => handleFinalDeleteFromBank(t.id, t.code)}
+                        className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition disabled:opacity-50"
                       >
-                        {confirmingId === t.id
-                          ? 'Confirming...'
-                          : isActive
-                          ? 'Active'
-                          : 'Confirm as Active'}
+                        {confirmingId === t.id ? 'Deleting...' : 'Final Delete (Admin Agreed)'}
                       </button>
+                    ) : (
+                      !isArchived && (
+                        <>
+                          {t.status === 'DRAFT' && t.source === 'FACULTY' && (
+                            <button
+                              type="button"
+                              disabled={confirmingId === t.id}
+                              onClick={() => handleDeleteUnconfirmedFromBank(t.id, t.code)}
+                              className="px-2 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold transition disabled:opacity-50"
+                              title="Delete unconfirmed draft topic before confirming"
+                            >
+                              Delete
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={confirmingId === t.id}
+                            onClick={() => handleConfirmBankTopic(t.id)}
+                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition disabled:opacity-50"
+                          >
+                            {confirmingId === t.id
+                              ? 'Confirming...'
+                              : isActive
+                              ? 'Active'
+                              : 'Confirm as Active'}
+                          </button>
+                        </>
+                      )
                     )}
                     <Link
                       href={`/faculty/topics/new?adopt=${t.code}`}

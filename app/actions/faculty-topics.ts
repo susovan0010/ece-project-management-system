@@ -3,6 +3,7 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { Prisma, TopicSource } from '@prisma/client';
+import { readSupervisorDeletedTopicIds } from '@/app/actions/project-lifecycle';
 
 export interface SearchFacultyTopicsParams {
   query?: string;
@@ -32,6 +33,12 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
 
   try {
     const where: Prisma.TopicWhereInput = {};
+
+    // Exclude topics that this supervisor has finally deleted from their account
+    const deletedIds = await readSupervisorDeletedTopicIds(session.user.id);
+    if (deletedIds.length > 0) {
+      where.id = { notIn: deletedIds };
+    }
 
     // Source filtering
     if (source && source !== 'ALL') {
@@ -182,8 +189,11 @@ export async function getMyConfirmedTopicsAction() {
   const userId = session.user.id;
 
   try {
+    const deletedIds = await readSupervisorDeletedTopicIds(userId);
+
     const topics = await prisma.topic.findMany({
       where: {
+        ...(deletedIds.length > 0 ? { id: { notIn: deletedIds } } : {}),
         OR: [
           { proposerId: userId },
           { groups: { some: { supervisorId: userId } } },
