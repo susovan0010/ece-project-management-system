@@ -130,9 +130,7 @@ export default function PrintableRubricsPage() {
       </div>
 
       {/* Printable Sheet Document */}
-      {loading ? (
-        <div className="p-12 text-center text-slate-500 text-sm">Loading evaluation sheet...</div>
-      ) : activeSemester === 6 ? (
+      {activeSemester === 6 ? (
         /* ==================================================================
            EXACT 6TH SEMESTER EVALUATION SHEET (Annexure I – Form 6-S & 6-C)
            ================================================================== */
@@ -278,6 +276,8 @@ export default function PrintableRubricsPage() {
             </div>
           </div>
         </div>
+      ) : loading ? (
+        <div className="p-12 text-center text-slate-500 text-sm">Loading evaluation sheet...</div>
       ) : (
         /* 7th and 8th Semester Evaluation Sheets */
         <div className="bg-white border border-slate-300 rounded-sm p-10 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-2">
