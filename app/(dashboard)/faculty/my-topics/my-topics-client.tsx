@@ -7,6 +7,11 @@ import {
   completeAndArchiveTopicAction,
   reactivateArchivedTopicAction,
   getArchivedProjectsAction,
+  confirmDraftTopicAction,
+  deleteUnconfirmedTopicAction,
+  requestTopicDeletionAction,
+  getTopicDeleteRequestsAction,
+  TopicDeleteRequestRecord,
   ArchivedProjectRecord,
 } from '@/app/actions/project-lifecycle';
 
@@ -17,14 +22,16 @@ export default function MyTopicsClient() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [topics, setTopics] = useState<any[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<ArchivedProjectRecord[]>([]);
+  const [pendingDeleteRequests, setPendingDeleteRequests] = useState<TopicDeleteRequestRecord[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   async function loadAll() {
     setLoading(true);
     setError(null);
-    const [topicsRes, archiveRes] = await Promise.all([
+    const [topicsRes, archiveRes, deleteReqRes] = await Promise.all([
       getMyConfirmedTopicsAction(),
       getArchivedProjectsAction(),
+      getTopicDeleteRequestsAction(),
     ]);
 
     if (topicsRes.error) {
@@ -36,12 +43,63 @@ export default function MyTopicsClient() {
     if (!archiveRes.error && archiveRes.archivedProjects) {
       setArchivedProjects(archiveRes.archivedProjects);
     }
+
+    if (!deleteReqRes.error && deleteReqRes.requests) {
+      setPendingDeleteRequests(deleteReqRes.requests);
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     loadAll();
   }, []);
+
+  async function handleConfirmDraft(topicId: string, code: string) {
+    setProcessingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await confirmDraftTopicAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(`Project ${code} is now Confirmed and marked Active.`);
+      await loadAll();
+    }
+    setProcessingId(null);
+  }
+
+  async function handleDeleteUnconfirmed(topicId: string, code: string) {
+    if (!window.confirm(`Are you sure you want to delete unconfirmed project ${code}?`)) {
+      return;
+    }
+    setProcessingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await deleteUnconfirmedTopicAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(`Unconfirmed project ${code} has been deleted.`);
+      await loadAll();
+    }
+    setProcessingId(null);
+  }
+
+  async function handleRequestDeleteToAdmin(topicId: string, code: string) {
+    setProcessingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await requestTopicDeletionAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(
+        `Delete request for confirmed project ${code} has been sent to the Admin. Once approved, it will be removed from your supervisor pool.`
+      );
+      await loadAll();
+    }
+    setProcessingId(null);
+  }
 
   async function handleCompleteAndArchive(topicId: string, code: string) {
     setProcessingId(topicId);
@@ -173,99 +231,164 @@ export default function MyTopicsClient() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {activeTopics.map((t) => (
-              <div
-                key={t.id}
-                className="bg-white border border-slate-200 border-t-4 border-t-emerald-600 rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between"
-              >
-                <div className="space-y-3">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
-                        {t.code}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        ACTIVE ({t.status})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                        {t.category}
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                        {t.source}
-                      </span>
-                    </div>
-                  </div>
+            {activeTopics.map((t) => {
+              const isDraft = t.status === 'DRAFT';
+              const hasPendingDeleteReq = pendingDeleteRequests.some((r) => r.topicId === t.id);
 
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">{t.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-3 leading-relaxed">
-                      {t.description || 'No description provided.'}
-                    </p>
-                  </div>
-
-                  {/* SDGs */}
-                  {t.sdgs && t.sdgs.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {t.sdgs.map((s: any) => (
-                        <span
-                          key={s.sdgId}
-                          className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        >
-                          SDG {s.sdg.id}: {s.sdg.title}
+              return (
+                <div
+                  key={t.id}
+                  className={`bg-white border border-slate-200 border-t-4 ${
+                    isDraft ? 'border-t-amber-500' : 'border-t-emerald-600'
+                  } rounded-2xl p-5 shadow-sm space-y-4 flex flex-col justify-between`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+                          {t.code}
                         </span>
-                      ))}
+                        {isDraft ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            UNCONFIRMED (DRAFT)
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            ACTIVE ({t.status})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          {t.category}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                          {t.proposer?.name || t.source}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                {/* Groups Assigned & Actions */}
-                <div className="pt-3 border-t border-slate-100 space-y-3">
-                  <div className="text-[11px] text-slate-500 flex items-center justify-between">
-                    <span>
-                      Assigned Groups:{' '}
-                      <strong className="text-slate-800">
-                        {t.groups && t.groups.length > 0
-                          ? t.groups.map((g: any) => `Group ${g.number} (${g.batchId})`).join(', ')
-                          : 'Ready for group allocation'}
-                      </strong>
-                    </span>
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm">{t.title}</h3>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-3 leading-relaxed">
+                        {t.description || 'No description provided.'}
+                      </p>
+                    </div>
+
+                    {/* SDGs */}
+                    {t.sdgs && t.sdgs.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {t.sdgs.map((s: any) => (
+                          <span
+                            key={s.sdgId}
+                            className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          >
+                            SDG {s.sdg.id}: {s.sdg.title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={processingId === t.id}
-                      onClick={() => handleCompleteAndArchive(t.id, t.code)}
-                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold transition disabled:opacity-50"
-                      title="Mark this project as completed after 8th semester assessment and archive all details"
-                    >
-                      {processingId === t.id
-                        ? 'Archiving...'
-                        : 'Deactivate / Mark Completed (Archive)'}
-                    </button>
+                  {/* Groups Assigned & Actions */}
+                  <div className="pt-3 border-t border-slate-100 space-y-3">
+                    <div className="text-[11px] text-slate-500 flex items-center justify-between">
+                      <span>
+                        Assigned Groups:{' '}
+                        <strong className="text-slate-800">
+                          {t.groups && t.groups.length > 0
+                            ? t.groups.map((g: any) => `Group ${g.number} (${g.batchId})`).join(', ')
+                            : isDraft
+                            ? 'Confirm topic to make it active'
+                            : 'Ready for group allocation'}
+                        </strong>
+                      </span>
+                    </div>
 
-                    <div className="flex items-center gap-2">
-                      {t.groups && t.groups.length > 0 && (
+                    {isDraft ? (
+                      /* Unconfirmed (DRAFT) Actions: Direct Confirm or Direct Delete */
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={processingId === t.id}
+                            onClick={() => handleConfirmDraft(t.id, t.code)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                          >
+                            {processingId === t.id ? 'Confirming...' : 'Confirm Project'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={processingId === t.id}
+                            onClick={() => handleDeleteUnconfirmed(t.id, t.code)}
+                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                          >
+                            Delete Project (Before Confirming)
+                          </button>
+                        </div>
+
                         <Link
-                          href={`/faculty/marks?group=${t.groups[0].id}`}
-                          className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition"
+                          href="/faculty/topics"
+                          className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition"
                         >
-                          Enter Marks
+                          View in Bank
                         </Link>
-                      )}
-                      <Link
-                        href="/faculty/topics"
-                        className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition"
-                      >
-                        View in Bank
-                      </Link>
-                    </div>
+                      </div>
+                    ) : (
+                      /* Confirmed (ACTIVE / ALLOTTED) Actions: Request Delete to Admin or Complete/Archive */
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={processingId === t.id}
+                            onClick={() => handleCompleteAndArchive(t.id, t.code)}
+                            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                            title="Mark this project as completed after 8th semester assessment and archive all details"
+                          >
+                            {processingId === t.id
+                              ? 'Archiving...'
+                              : 'Deactivate / Mark Completed (Archive)'}
+                          </button>
+
+                          {hasPendingDeleteReq ? (
+                            <span className="px-2.5 py-1.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[11px] font-semibold">
+                              Delete Request Pending Admin Approval
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={processingId === t.id}
+                              onClick={() => handleRequestDeleteToAdmin(t.id, t.code)}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                              title="Once confirmed, request the Admin to remove this topic from your supervisor pool"
+                            >
+                              Request Delete to Admin
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {t.groups && t.groups.length > 0 && (
+                            <Link
+                              href={`/faculty/marks?group=${t.groups[0].id}`}
+                              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition"
+                            >
+                              Enter Marks
+                            </Link>
+                          )}
+                          <Link
+                            href="/faculty/topics"
+                            className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition"
+                          >
+                            View in Bank
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )
       ) : archivedProjects.length === 0 ? (

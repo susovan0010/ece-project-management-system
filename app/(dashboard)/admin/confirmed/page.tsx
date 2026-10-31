@@ -12,6 +12,9 @@ import {
   getArchivedProjectsAction,
   completeAndArchiveTopicAction,
   reactivateArchivedTopicAction,
+  getTopicDeleteRequestsAction,
+  resolveTopicDeleteRequestAction,
+  TopicDeleteRequestRecord,
   ArchivedProjectRecord,
 } from '@/app/actions/project-lifecycle';
 
@@ -35,6 +38,8 @@ export default function AdminConfirmedTopicsPage() {
   const [viewMode, setViewMode] = useState<'LEDGER' | 'ARCHIVE'>('LEDGER');
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<ArchivedProjectRecord[]>([]);
+  const [deleteRequests, setDeleteRequests] = useState<TopicDeleteRequestRecord[]>([]);
+  const [resolvingKey, setResolvingKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -58,7 +63,7 @@ export default function AdminConfirmedTopicsPage() {
   async function loadTopics(currentPage = page) {
     setLoading(true);
     setError(null);
-    const [res, archiveRes] = await Promise.all([
+    const [res, archiveRes, reqRes] = await Promise.all([
       getAdminConfirmedTopicsAction({
         query,
         category,
@@ -68,6 +73,7 @@ export default function AdminConfirmedTopicsPage() {
         pageSize: 20,
       }),
       getArchivedProjectsAction(),
+      getTopicDeleteRequestsAction(),
     ]);
 
     if (res.error) {
@@ -82,7 +88,32 @@ export default function AdminConfirmedTopicsPage() {
     if (!archiveRes.error && archiveRes.archivedProjects) {
       setArchivedProjects(archiveRes.archivedProjects);
     }
+    if (!reqRes.error && reqRes.requests) {
+      setDeleteRequests(reqRes.requests);
+    }
     setLoading(false);
+  }
+
+  async function handleResolveDeleteRequest(
+    topicId: string,
+    supervisorId: string,
+    decision: 'APPROVE' | 'REJECT'
+  ) {
+    const key = `${topicId}:${supervisorId}`;
+    setResolvingKey(key);
+    setError(null);
+    const res = await resolveTopicDeleteRequestAction(topicId, supervisorId, decision);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(
+        decision === 'APPROVE'
+          ? `Approved: Topic ${res.topicCode} has been removed from ${res.supervisorName}'s supervisor pool only.`
+          : `Declined delete request for topic ${res.topicCode} (${res.supervisorName}).`
+      );
+      await loadTopics(page);
+    }
+    setResolvingKey(null);
   }
 
   useEffect(() => {
@@ -473,6 +504,72 @@ export default function AdminConfirmedTopicsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
           <div>{successMsg}</div>
+        </div>
+      )}
+
+      {/* Pending Supervisor Delete Requests Panel */}
+      {deleteRequests.length > 0 && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl shadow-sm space-y-3">
+          <div>
+            <h3 className="text-sm font-bold text-amber-900">
+              Pending Supervisor Topic Delete Requests ({deleteRequests.length})
+            </h3>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Supervisors have requested to remove the following confirmed project topics. If you agree, the topic will be deleted from that supervisor&apos;s pool only.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {deleteRequests.map((req) => {
+              const key = `${req.topicId}:${req.supervisorId}`;
+              return (
+                <div
+                  key={key}
+                  className="p-3 bg-white border border-amber-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-slate-900">
+                      <span className="font-mono text-blue-700 mr-1.5">{req.topicCode}</span>
+                      {req.topicTitle}
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Requested by Supervisor:{' '}
+                      <strong className="text-slate-900">{req.supervisorName}</strong> (
+                      {req.supervisorEmail})
+                    </div>
+                    {req.reason && (
+                      <div className="text-[11px] text-slate-500 italic">
+                        Note: &ldquo;{req.reason}&rdquo;
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      disabled={resolvingKey === key}
+                      onClick={() =>
+                        handleResolveDeleteRequest(req.topicId, req.supervisorId, 'APPROVE')
+                      }
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                    >
+                      {resolvingKey === key
+                        ? 'Processing...'
+                        : "Agree (Delete from Supervisor's Pool)"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resolvingKey === key}
+                      onClick={() =>
+                        handleResolveDeleteRequest(req.topicId, req.supervisorId, 'REJECT')
+                      }
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

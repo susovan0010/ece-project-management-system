@@ -317,7 +317,7 @@ export default function ProposeTopicClient() {
     if (res.error) {
       setError(res.error);
     } else {
-      router.push('/faculty/topics');
+      router.push('/faculty/my-topics');
     }
   }
 

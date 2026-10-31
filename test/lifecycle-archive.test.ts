@@ -3,6 +3,9 @@ import {
   claimAndConfirmBankTopicAction,
   completeAndArchiveTopicAction,
   getArchivedProjectsAction,
+  deleteUnconfirmedTopicAction,
+  requestTopicDeletionAction,
+  resolveTopicDeleteRequestAction,
 } from '@/app/actions/project-lifecycle';
 import { processRawImportData } from '@/lib/import/parser';
 import { auth } from '@/auth';
@@ -22,6 +25,14 @@ vi.mock('@/lib/prisma', () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
+      delete: vi.fn(),
+    },
+    group: {
+      delete: vi.fn(),
+    },
+    setting: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
     },
     auditLog: {
       create: vi.fn(),
@@ -205,5 +216,97 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
     expect(parsed).toHaveLength(1);
     expect(parsed[0].code).toBe('UGR-003');
     expect(parsed[0].isDuplicate).toBe(false);
+  });
+
+  it('allows a supervisor to directly delete their own topic BEFORE confirming (DRAFT status)', async () => {
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY', name: 'Dr. S. Roy' },
+    });
+
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-draft-1',
+      code: 'FAC-2026-009',
+      title: 'Draft IoT Sensor Array',
+      status: 'DRAFT',
+      proposerId: 'fac-1',
+    });
+
+    (prisma.topic.delete as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-draft-1',
+    });
+
+    const res = await deleteUnconfirmedTopicAction('topic-draft-1');
+    expect(res.success).toBe(true);
+    expect(prisma.topic.delete).toHaveBeenCalledWith({ where: { id: 'topic-draft-1' } });
+  });
+
+  it('blocks a supervisor from directly deleting a topic AFTER confirming (requires request to Admin)', async () => {
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY', name: 'Dr. S. Roy' },
+    });
+
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-conf-1',
+      code: 'FAC-2026-010',
+      title: 'Confirmed Smart Grid Topic',
+      status: 'CONFIRMED',
+      proposerId: 'fac-1',
+    });
+
+    const res = await deleteUnconfirmedTopicAction('topic-conf-1');
+    expect(res.error).toContain('Once a project is confirmed, you must request deletion from the Admin');
+    expect(prisma.topic.delete).not.toHaveBeenCalled();
+  });
+
+  it('allows supervisor to request deletion of a confirmed topic and Admin to approve removing it from that supervisor pool only', async () => {
+    // Step 1: Supervisor requests deletion
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY', name: 'Dr. S. Roy', email: 'sroy@hitk.edu' },
+    });
+
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-conf-1',
+      code: 'UGR-042',
+      title: 'FPGA Neural Accelerator',
+      status: 'CONFIRMED',
+      proposerId: 'fac-1',
+      groups: [],
+    });
+
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const reqRes = await requestTopicDeletionAction('topic-conf-1', 'Selected wrong topic');
+    expect(reqRes.success).toBe(true);
+    expect(prisma.setting.upsert).toHaveBeenCalled();
+
+    // Step 2: Admin approves -> deleted from supervisor's pool only (proposerId: null, status: DRAFT)
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN', name: 'Committee Admin' },
+    });
+
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      key: 'TOPIC_DELETE_REQUESTS',
+      value: [reqRes.request],
+    });
+
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-conf-1',
+      code: 'UGR-042',
+      title: 'FPGA Neural Accelerator',
+      status: 'CONFIRMED',
+      proposerId: 'fac-1',
+      groups: [],
+    });
+
+    const approveRes = await resolveTopicDeleteRequestAction('topic-conf-1', 'fac-1', 'APPROVE');
+    expect(approveRes.success).toBe(true);
+    expect(prisma.topic.update).toHaveBeenCalledWith({
+      where: { id: 'topic-conf-1' },
+      data: {
+        proposerId: null,
+        status: 'DRAFT',
+      },
+    });
+    expect(prisma.topic.delete).not.toHaveBeenCalled();
   });
 });

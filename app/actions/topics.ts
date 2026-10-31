@@ -149,6 +149,7 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
       orderBy: { code: 'asc' },
       include: {
         sdgs: { include: { sdg: true } },
+        proposer: { select: { id: true, name: true, email: true } },
       },
     }),
     prisma.topic.count({ where }),
