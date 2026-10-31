@@ -64,6 +64,7 @@ model User {
   passwordHash String?
   role         Role
   active       Boolean     @default(true)
+  mustChangePassword Boolean @default(true)
   preferredAiProvider String? // "Google Gemini" | "Groq" | "ChatGPT"
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt

@@ -2,6 +2,7 @@
 
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
 import { auth, signIn, signOut } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import {
@@ -217,7 +218,7 @@ export async function resetPasswordAction(prevState: unknown, formData: FormData
 
   const updatedUser = await prisma.user.update({
     where: { email: reset.email },
-    data: { passwordHash },
+    data: { passwordHash, mustChangePassword: false },
   });
 
   await prisma.passwordResetToken.delete({ where: { id: reset.id } });
@@ -236,3 +237,203 @@ export async function resetPasswordAction(prevState: unknown, formData: FormData
     message: 'Password reset successfully. You may now sign in with your new password.',
   };
 }
+
+// ----------------------------------------------------
+// 5. First-Time Login & Credential Update Action
+// Admin: Can change user name (display name & login email) + password
+// Faculty: Cannot change user name; prompted to change password only
+// ----------------------------------------------------
+
+export async function completeFirstLoginAction(prevState: unknown, formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized: You must be signed in.' };
+  }
+
+  const userId = session.user.id;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  if (!user || !user.passwordHash) {
+    return { error: 'User account not found.' };
+  }
+
+  const currentPassword = (formData.get('currentPassword') as string) || '';
+  const newPassword = (formData.get('newPassword') as string) || '';
+  const confirmPassword = (formData.get('confirmPassword') as string) || '';
+  const requestedName = (formData.get('name') as string | null)?.trim();
+  const requestedEmail = (formData.get('email') as string | null)?.trim().toLowerCase();
+
+  if (!currentPassword) {
+    return { error: 'Please enter your current password.' };
+  }
+
+  const isCurrentValid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!isCurrentValid) {
+    return { error: 'Current password is incorrect.' };
+  }
+
+  if (newPassword.length < 6) {
+    return { error: 'New password must be at least 6 characters long.' };
+  }
+
+  if (newPassword !== confirmPassword) {
+    return { error: 'New password and confirmation do not match.' };
+  }
+
+  if (newPassword === currentPassword) {
+    return { error: 'New password must be different from your initial/current password.' };
+  }
+
+  const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+  if (user.role === 'FACULTY') {
+    // Rule: Faculty cannot change their user name or login email
+    if (
+      (requestedName && requestedName !== user.name) ||
+      (requestedEmail && requestedEmail !== user.email)
+    ) {
+      return { error: 'Forbidden: Faculty members cannot change their user name.' };
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'FIRST_LOGIN_PASSWORD_CHANGED',
+        entity: 'User',
+        entityId: userId,
+        payload: { role: 'FACULTY' },
+      },
+    });
+
+    revalidatePath('/', 'layout');
+    return {
+      success: true,
+      message: 'Your password has been updated successfully.',
+    };
+  }
+
+  // ADMIN role: Can change user name (name and/or login email) + password
+  const updatedName = requestedName ? requestedName : user.name;
+  const updatedEmail = requestedEmail ? requestedEmail : user.email;
+
+  if (updatedName.length < 2) {
+    return { error: 'User name must be at least 2 characters long.' };
+  }
+
+  if (!z.string().email().safeParse(updatedEmail).success) {
+    return { error: 'Please provide a valid login email address.' };
+  }
+
+  if (updatedEmail !== user.email) {
+    const emailTaken = await prisma.user.findUnique({ where: { email: updatedEmail } });
+    if (emailTaken && emailTaken.id !== userId) {
+      return { error: `The login email ${updatedEmail} is already in use.` };
+    }
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      name: updatedName,
+      email: updatedEmail,
+      passwordHash: newPasswordHash,
+      mustChangePassword: false,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId,
+      action: 'ADMIN_CREDENTIALS_UPDATED',
+      entity: 'User',
+      entityId: userId,
+      payload: {
+        previousName: user.name,
+        updatedName,
+        previousEmail: user.email,
+        updatedEmail,
+      },
+    },
+  });
+
+  revalidatePath('/', 'layout');
+  return {
+    success: true,
+    message: 'Admin user name and password updated successfully.',
+  };
+}
+
+// ----------------------------------------------------
+// 6. Admin Direct Faculty Account Provisioning
+// Creates a faculty account with a fixed user name and temporary password
+// that triggers the first-time password change prompt upon login.
+// ----------------------------------------------------
+
+export async function createFacultyAccountAction(prevState: unknown, formData: FormData) {
+  const session = await auth();
+
+  if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can create faculty accounts.' };
+  }
+
+  const name = (formData.get('name') as string)?.trim();
+  const email = (formData.get('email') as string)?.trim().toLowerCase();
+  const tempPassword = (formData.get('tempPassword') as string) || '';
+  const role = ((formData.get('role') as string) || 'FACULTY') as 'FACULTY' | 'ADMIN';
+
+  if (!name || name.length < 2) {
+    return { error: 'Please provide the faculty member’s full user name.' };
+  }
+
+  if (!email || !z.string().email().safeParse(email).success) {
+    return { error: 'Please provide a valid faculty email address.' };
+  }
+
+  if (tempPassword.length < 6) {
+    return { error: 'Initial temporary password must be at least 6 characters.' };
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    return { error: `An account already exists for ${email}.` };
+  }
+
+  const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+  const createdUser = await prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash,
+      role,
+      active: true,
+      mustChangePassword: true,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.user.id as string,
+      action: 'CREATE_FACULTY_ACCOUNT',
+      entity: 'User',
+      entityId: createdUser.id,
+      payload: { name, email, role },
+    },
+  });
+
+  revalidatePath('/admin/faculty');
+  return {
+    success: true,
+    message: `Account created for ${name} (${email}). They will be prompted to change their password on first login.`,
+  };
+}
+
+

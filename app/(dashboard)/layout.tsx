@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
 import { Sidebar } from '@/components/sidebar';
+import { FirstLoginModal } from '@/components/first-login-modal';
 
 export default async function DashboardLayout({
   children,
@@ -9,13 +11,24 @@ export default async function DashboardLayout({
 }) {
   const session = await auth();
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     redirect('/login');
   }
 
-  const role = ((session.user as { role?: string })?.role || 'FACULTY') as 'ADMIN' | 'FACULTY';
-  const userName = session.user.name || 'Department Member';
-  const userEmail = session.user.email || '';
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      name: true,
+      email: true,
+      role: true,
+      mustChangePassword: true,
+    },
+  });
+
+  const role = ((dbUser?.role || (session.user as { role?: string })?.role || 'FACULTY') as 'ADMIN' | 'FACULTY');
+  const userName = dbUser?.name || session.user.name || 'Department Member';
+  const userEmail = dbUser?.email || session.user.email || '';
+  const mustChangePassword = dbUser?.mustChangePassword ?? false;
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -32,6 +45,12 @@ export default async function DashboardLayout({
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <FirstLoginModal
+              role={role}
+              userName={userName}
+              userEmail={userEmail}
+              mustChangePassword={mustChangePassword}
+            />
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                 role === 'ADMIN'
