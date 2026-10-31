@@ -10,6 +10,10 @@ import {
   commitAllocationChunkAction,
   getAllocationSummaryAction,
 } from '@/app/actions/allocation';
+import {
+  getAdminDirectoryDataAction,
+  StudentGroupItem,
+} from '@/app/actions/admin-directory';
 
 export default function AdminAllocationPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -24,15 +28,24 @@ export default function AdminAllocationPage() {
   const [committedCount, setCommittedCount] = useState(0);
   const [isDone, setIsDone] = useState(false);
 
-  // Summary Metrics
+  // Summary Metrics & Student-Group Roster
   const [summary, setSummary] = useState<{
     totalGroups: number;
     totalBatches: number;
     totalStudents: number;
   }>({ totalGroups: 0, totalBatches: 0, totalStudents: 0 });
+  const [studentRoster, setStudentRoster] = useState<StudentGroupItem[]>([]);
+  const [batchesList, setBatchesList] = useState<{ id: string; active: boolean }[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
+  const [rosterSearch, setRosterSearch] = useState<string>('');
+  const [rosterLoading, setRosterLoading] = useState<boolean>(true);
 
-  async function loadSummary() {
-    const res = await getAllocationSummaryAction();
+  async function loadSummary(batch = selectedBatch) {
+    setRosterLoading(true);
+    const [res, dirRes] = await Promise.all([
+      getAllocationSummaryAction(),
+      getAdminDirectoryDataAction(batch),
+    ]);
     if (!res.error) {
       setSummary({
         totalGroups: res.totalGroups || 0,
@@ -40,11 +53,16 @@ export default function AdminAllocationPage() {
         totalStudents: res.totalStudents || 0,
       });
     }
+    if (!dirRes.error) {
+      setStudentRoster(dirRes.students || []);
+      setBatchesList(dirRes.batches || []);
+    }
+    setRosterLoading(false);
   }
 
   useEffect(() => {
-    loadSummary();
-  }, []);
+    loadSummary(selectedBatch);
+  }, [selectedBatch]);
 
   // ----------------------------------------------------
   // Step 1: File Parsing (CSV or XLSX)
@@ -528,6 +546,140 @@ export default function AdminAllocationPage() {
           )}
         </div>
       )}
+
+      {/* Enrolled Students & Corresponding Project Groups Roster Table */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm">
+              Enrolled Students & Corresponding Project Groups ({studentRoster.length})
+            </h3>
+            <p className="text-xs text-slate-500">
+              Complete directory of students mapped to their project group number, batch, topic, and faculty supervisor.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedBatch}
+              onChange={(e) => setSelectedBatch(e.target.value)}
+              className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white text-slate-800"
+            >
+              <option value="ALL">All Batches</option>
+              {batchesList.map((b) => (
+                <option key={b.id} value={b.id}>
+                  Batch {b.id}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={rosterSearch}
+              onChange={(e) => setRosterSearch(e.target.value)}
+              placeholder="Search student, roll, group, topic..."
+              className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 w-60 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-700">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="px-5 py-3">Group & Batch</th>
+                <th className="px-5 py-3">Roll Number</th>
+                <th className="px-5 py-3">Student Name</th>
+                <th className="px-5 py-3">Contact</th>
+                <th className="px-5 py-3">Project Topic</th>
+                <th className="px-5 py-3">Supervisor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {rosterLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    Loading student-group roster...
+                  </td>
+                </tr>
+              ) : (
+                (() => {
+                  const q = rosterSearch.trim().toLowerCase();
+                  const filtered = studentRoster.filter((s) => {
+                    if (!q) return true;
+                    return (
+                      s.name.toLowerCase().includes(q) ||
+                      s.roll.toLowerCase().includes(q) ||
+                      (s.topicCode && s.topicCode.toLowerCase().includes(q)) ||
+                      (s.topicTitle && s.topicTitle.toLowerCase().includes(q)) ||
+                      (s.supervisorName && s.supervisorName.toLowerCase().includes(q)) ||
+                      (s.groupNumber !== null && `group ${s.groupNumber}`.includes(q))
+                    );
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                          No allocated students found matching the criteria.
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return filtered.map((st, idx) => (
+                    <tr key={`${st.studentId}-${st.groupId || idx}`} className="hover:bg-slate-50/70 transition">
+                      <td className="px-5 py-3.5">
+                        {st.groupNumber !== null ? (
+                          <div>
+                            <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              Group {st.groupNumber}
+                            </span>
+                            <div className="text-[10px] text-slate-400 mt-1 font-mono">{st.batchId}</div>
+                          </div>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500">
+                            Unassigned
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 font-mono font-bold text-slate-900">{st.roll}</td>
+                      <td className="px-5 py-3.5 font-semibold text-slate-900">{st.name}</td>
+                      <td className="px-5 py-3.5 text-slate-500">
+                        <div>{st.email || '-'}</div>
+                        {st.phone && <div className="text-[10px] font-mono text-slate-400">{st.phone}</div>}
+                      </td>
+                      <td className="px-5 py-3.5 max-w-xs">
+                        {st.topicCode ? (
+                          <div>
+                            <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                              {st.topicCode}
+                            </span>
+                            <p className="text-xs text-slate-700 mt-1 line-clamp-1" title={st.topicTitle || ''}>
+                              {st.topicTitle}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">Not allotted</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {st.supervisorName ? (
+                          <div>
+                            <div className="font-semibold text-slate-900">{st.supervisorName}</div>
+                            <div className="text-[10px] text-slate-400">{st.supervisorEmail}</div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ));
+                })()
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

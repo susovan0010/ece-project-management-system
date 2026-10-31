@@ -1,9 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createInviteAction, createFacultyAccountAction } from '@/app/actions/auth';
+import {
+  getAdminDirectoryDataAction,
+  AdminUserItem,
+  SupervisorUserItem,
+} from '@/app/actions/admin-directory';
 
 export default function AdminFacultyPage() {
+  // Directory Lists State
+  const [admins, setAdmins] = useState<AdminUserItem[]>([]);
+  const [supervisors, setSupervisors] = useState<SupervisorUserItem[]>([]);
+  const [loadingDirectory, setLoadingDirectory] = useState(true);
+
   // Direct Account Creation State
   const [directName, setDirectName] = useState('');
   const [directEmail, setDirectEmail] = useState('');
@@ -20,6 +30,20 @@ export default function AdminFacultyPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  async function loadAccounts() {
+    setLoadingDirectory(true);
+    const res = await getAdminDirectoryDataAction();
+    if (!res.error) {
+      setAdmins(res.admins || []);
+      setSupervisors(res.supervisors || []);
+    }
+    setLoadingDirectory(false);
+  }
+
+  useEffect(() => {
+    loadAccounts();
+  }, []);
 
   async function handleCreateDirectAccount(e: React.FormEvent) {
     e.preventDefault();
@@ -43,6 +67,7 @@ export default function AdminFacultyPage() {
       setDirectName('');
       setDirectEmail('');
       setDirectTempPassword('');
+      loadAccounts();
     }
   }
 
@@ -274,6 +299,154 @@ export default function AdminFacultyPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Registered Project Committee Admins Table */}
+      <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Project Committee Admins ({admins.length})
+            </h3>
+            <p className="text-xs text-slate-500">
+              List of all registered committee administrator accounts.
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-700">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="px-6 py-3">Admin Name</th>
+                <th className="px-6 py-3">Login Email</th>
+                <th className="px-6 py-3 text-center">Security Status</th>
+                <th className="px-6 py-3 text-right">Created On</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {loadingDirectory ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
+                    Loading admins...
+                  </td>
+                </tr>
+              ) : admins.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
+                    No admins found.
+                  </td>
+                </tr>
+              ) : (
+                admins.map((adm) => (
+                  <tr key={adm.id} className="hover:bg-slate-50/70 transition">
+                    <td className="px-6 py-3.5 font-bold text-slate-900">{adm.name}</td>
+                    <td className="px-6 py-3.5 font-mono text-slate-600">{adm.email}</td>
+                    <td className="px-6 py-3.5 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          adm.mustChangePassword
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        }`}
+                      >
+                        {adm.mustChangePassword ? 'INITIAL CREDENTIALS' : 'CUSTOMIZED'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3.5 text-right font-mono text-slate-500">
+                      {new Date(adm.createdAt).toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Registered Faculty Supervisors Table */}
+      <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Registered Faculty Supervisors ({supervisors.length})
+            </h3>
+            <p className="text-xs text-slate-500">
+              List of all department supervisors, their proposed topics, and allotted project groups.
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-700">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="px-6 py-3">Supervisor Name</th>
+                <th className="px-6 py-3">Login Email</th>
+                <th className="px-6 py-3 text-center">Proposed Topics</th>
+                <th className="px-6 py-3">Allotted Groups</th>
+                <th className="px-6 py-3 text-center">Password Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {loadingDirectory ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                    Loading supervisors...
+                  </td>
+                </tr>
+              ) : supervisors.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                    No faculty supervisors registered yet.
+                  </td>
+                </tr>
+              ) : (
+                supervisors.map((sup) => (
+                  <tr key={sup.id} className="hover:bg-slate-50/70 transition">
+                    <td className="px-6 py-3.5 font-bold text-slate-900">{sup.name}</td>
+                    <td className="px-6 py-3.5 font-mono text-slate-600">{sup.email}</td>
+                    <td className="px-6 py-3.5 text-center font-mono font-bold text-slate-800">
+                      {sup.proposedTopicsCount}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      {sup.groups.length === 0 ? (
+                        <span className="text-slate-400 italic">None</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {sup.groups.map((g) => (
+                            <span
+                              key={g.id}
+                              title={`${g.topicTitle} (${g.batchId})`}
+                              className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-200"
+                            >
+                              Grp {g.number} ({g.topicCode})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-3.5 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          sup.mustChangePassword
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        }`}
+                      >
+                        {sup.mustChangePassword ? 'FIRST LOGIN PENDING' : 'CHANGED'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
