@@ -13,6 +13,8 @@ import {
   finalDeleteApprovedTopicAction,
   TopicDeleteRequestRecord,
 } from '@/app/actions/project-lifecycle';
+import { deriveMappedPoCodes } from '@/lib/engine';
+import { evaluateRules } from '@/lib/rules';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
 
 interface TopicItem {
@@ -60,6 +62,8 @@ export default function FacultyTopicsSearchPage() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('ALL');
   const [source, setSource] = useState('ALL');
+  const [theme, setTheme] = useState('ALL');
+  const [allThemes, setAllThemes] = useState<string[]>([]);
   const [selectedSdgs, setSelectedSdgs] = useState<number[]>([]);
 
   // Slide-over Detail Drawer
@@ -134,6 +138,7 @@ export default function FacultyTopicsSearchPage() {
         query,
         category,
         source,
+        theme,
         sdgIds: selectedSdgs,
         page: currentPage,
         pageSize: 12,
@@ -150,6 +155,9 @@ export default function FacultyTopicsSearchPage() {
       if (res.allSdgs && allSdgs.length === 0) {
         setAllSdgs(res.allSdgs);
       }
+      if (res.allThemes && allThemes.length === 0) {
+        setAllThemes(res.allThemes);
+      }
     }
     if (!reqRes.error && reqRes.requests) {
       setDeleteRequests(reqRes.requests);
@@ -164,7 +172,7 @@ export default function FacultyTopicsSearchPage() {
       fetchTopics(1);
     }, 250);
     return () => clearTimeout(handler);
-  }, [query, category, source, selectedSdgs]);
+  }, [query, category, source, theme, selectedSdgs]);
 
   // Handle Detail Drawer
   async function handleOpenDetail(topicId: string) {
@@ -227,12 +235,12 @@ export default function FacultyTopicsSearchPage() {
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
           {/* Query Input */}
-          <div className="md:col-span-6 relative">
+          <div className="md:col-span-4 relative">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by topic title, code (e.g. SIH26001), keywords, domain..."
+              placeholder="Search by title, code, keywords, or theme (e.g. Disaster Management)..."
               className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800"
             />
             <svg
@@ -251,6 +259,22 @@ export default function FacultyTopicsSearchPage() {
                 Clear
               </button>
             )}
+          </div>
+
+          {/* Theme Dropdown */}
+          <div className="md:col-span-3">
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-800 bg-white"
+            >
+              <option value="ALL">All Project Themes</option>
+              {allThemes.map((th) => (
+                <option key={th} value={th}>
+                  Theme: {th}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Category Toggle Pills */}
@@ -272,7 +296,7 @@ export default function FacultyTopicsSearchPage() {
           </div>
 
           {/* Source Dropdown */}
-          <div className="md:col-span-3">
+          <div className="md:col-span-2">
             <select
               value={source}
               onChange={(e) => setSource(e.target.value)}
@@ -365,8 +389,21 @@ export default function FacultyTopicsSearchPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {topics.map((t) => {
-            const wpAttrs = t.attributes.filter((a) => a.attribute.kind === 'WP');
-            const wkAttrs = t.attributes.filter((a) => a.attribute.kind === 'WK');
+            const effectiveAttrs =
+              t.attributes && t.attributes.length > 0
+                ? t.attributes
+                : Object.entries(
+                    evaluateRules(t.title, `${t.description || ''} ${t.domain || ''}`, t.tags || []).levels
+                  ).map(([code, level]) => ({
+                    level,
+                    origin: 'RULE',
+                    attribute: { code, kind: code.slice(0, 2), title: code },
+                  }));
+
+            const wpAttrs = effectiveAttrs.filter((a) => a.attribute.code.startsWith('WP') && a.level >= 1);
+            const wkAttrs = effectiveAttrs.filter((a) => a.attribute.code.startsWith('WK') && a.level >= 1);
+            const eaAttrs = effectiveAttrs.filter((a) => a.attribute.code.startsWith('EA') && a.level >= 1);
+            const poCodes = deriveMappedPoCodes(effectiveAttrs);
             const isActive = t.status === 'CONFIRMED' || t.status === 'ALLOTTED';
             const isArchived = t.status === 'ARCHIVED';
 
@@ -412,7 +449,7 @@ export default function FacultyTopicsSearchPage() {
                         {t.category}
                       </span>
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                        {t.source === 'UG_RESEARCH' ? 'UG Research' : t.source}
+                        {t.proposer?.name || (t.source === 'UG_RESEARCH' ? 'UG Research' : t.source)}
                       </span>
                     </div>
                   </div>
@@ -422,48 +459,62 @@ export default function FacultyTopicsSearchPage() {
                     {t.title}
                   </h3>
 
-                  {/* Supervisor Attribution if claimed */}
-                  {t.proposer && (
-                    <p className="text-[11px] font-semibold text-emerald-700 mt-1">
-                      Supervisor: {t.proposer.name}
-                    </p>
-                  )}
-
-                  {/* Organization / Domain */}
-                  {(t.organization || t.domain) && (
-                    <p className="text-xs text-slate-500 mt-1 truncate">
-                      {t.organization ? `Org: ${t.organization}` : `Domain: ${t.domain}`}
-                    </p>
-                  )}
+                  {/* Project Theme Badge */}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                      Theme: {t.domain || 'General ECE'}
+                    </span>
+                    {t.proposer && (
+                      <span className="text-[11px] font-semibold text-emerald-700">
+                        • Supervisor: {t.proposer.name}
+                      </span>
+                    )}
+                  </div>
 
                   {/* 500-word sanitized abstract snippet */}
                   <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
                     {t.description || 'No description provided.'}
                   </p>
 
-                  {/* Attribute Tags */}
+                  {/* WP, WK, EA & PO Tags */}
                   <div className="mt-3 flex flex-wrap gap-1">
-                    {wpAttrs.slice(0, 3).map((a) => (
+                    {wpAttrs.map((a) => (
                       <span
                         key={a.attribute.code}
                         className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
                       >
-                        {a.attribute.code} L{a.level}
+                        {a.attribute.code} (L{a.level})
                       </span>
                     ))}
-                    {wkAttrs.slice(0, 3).map((a) => (
+                    {wkAttrs.map((a) => (
                       <span
                         key={a.attribute.code}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200"
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200"
                       >
-                        {a.attribute.code} L{a.level}
+                        {a.attribute.code} (L{a.level})
+                      </span>
+                    ))}
+                    {eaAttrs.map((a) => (
+                      <span
+                        key={a.attribute.code}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200"
+                      >
+                        {a.attribute.code} (L{a.level})
+                      </span>
+                    ))}
+                    {poCodes.map((po) => (
+                      <span
+                        key={po}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      >
+                        {po}
                       </span>
                     ))}
                   </div>
 
                   {/* SDGs */}
                   {t.sdgs.length > 0 && (
-                    <div className="mt-2.5 flex flex-wrap gap-1">
+                    <div className="mt-2 flex flex-wrap gap-1">
                       {t.sdgs.map((s) => (
                         <span
                           key={s.sdgId}
@@ -606,18 +657,12 @@ export default function FacultyTopicsSearchPage() {
                     <span className="font-semibold text-slate-500">Category:</span>{' '}
                     <span className="font-bold text-slate-800">{detailTopic.category}</span>
                   </div>
-                  {detailTopic.organization && (
-                    <div className="col-span-2">
-                      <span className="font-semibold text-slate-500">Organization:</span>{' '}
-                      <span className="font-bold text-slate-800">{detailTopic.organization}</span>
-                    </div>
-                  )}
-                  {detailTopic.domain && (
-                    <div className="col-span-2">
-                      <span className="font-semibold text-slate-500">Domain:</span>{' '}
-                      <span className="font-bold text-slate-800">{detailTopic.domain}</span>
-                    </div>
-                  )}
+                  <div className="col-span-2">
+                    <span className="font-semibold text-slate-500">Project Theme:</span>{' '}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 ml-1">
+                      {detailTopic.domain || 'General ECE'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* 500-word sanitized abstract */}
@@ -630,13 +675,51 @@ export default function FacultyTopicsSearchPage() {
                   </div>
                 </div>
 
-                {/* Washington Accord Complex Problem Solving (WP) */}
+                {/* Mapped Program Outcomes (POs) */}
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2">
+                    Mapped Program Outcomes (NBA POs)
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {deriveMappedPoCodes(
+                      detailTopic.attributes && detailTopic.attributes.length > 0
+                        ? detailTopic.attributes
+                        : (() => {
+                            const r = evaluateRules(detailTopic.title, `${detailTopic.description || ''} ${detailTopic.domain || ''}`, detailTopic.tags || []);
+                            return Object.entries(r.levels).map(([code, level]) => ({
+                              attribute: { code, kind: code.slice(0, 2) },
+                              level,
+                            }));
+                          })()
+                    ).map((po) => (
+                      <span
+                        key={po}
+                        className="px-2.5 py-1 rounded-md text-xs font-bold bg-violet-50 text-violet-800 border border-violet-200"
+                      >
+                        {po}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Washington Accord Complex Problem Solving (WP, WK, EA) */}
                 <div>
                   <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2">
                     Washington Accord Attributes (WP, WK, EA)
                   </h4>
                   <div className="space-y-2">
-                    {detailTopic.attributes.map((a: any) => (
+                    {(detailTopic.attributes && detailTopic.attributes.length > 0
+                      ? detailTopic.attributes
+                      : (() => {
+                          const r = evaluateRules(detailTopic.title, `${detailTopic.description || ''} ${detailTopic.domain || ''}`, detailTopic.tags || []);
+                          return Object.entries(r.levels).map(([code, level]) => ({
+                            attribute: { code, title: code },
+                            level,
+                            origin: 'RULE',
+                            reason: r.reasons[code] || 'Mapped via Theme & Keyword Rule Engine',
+                          }));
+                        })()
+                    ).map((a: any) => (
                       <div
                         key={a.attribute.code}
                         className="p-3 border border-slate-200 rounded-lg bg-white text-xs"

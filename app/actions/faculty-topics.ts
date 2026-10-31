@@ -9,6 +9,7 @@ export interface SearchFacultyTopicsParams {
   query?: string;
   category?: string; // 'Hardware' | 'Software' | 'Both' | 'ALL'
   source?: string; // 'SIH' | 'UG_RESEARCH' | 'FACULTY' | 'ALL'
+  theme?: string;
   sdgIds?: number[];
   page?: number;
   pageSize?: number;
@@ -26,6 +27,7 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
     query = '',
     category = 'ALL',
     source = 'ALL',
+    theme = 'ALL',
     sdgIds = [],
     page = 1,
     pageSize = 12,
@@ -53,6 +55,14 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
       };
     }
 
+    // Theme filtering
+    if (theme && theme !== 'ALL') {
+      where.domain = {
+        equals: theme,
+        mode: 'insensitive',
+      };
+    }
+
     // SDG filtering (topics must match at least one selected SDG if specified)
     if (sdgIds && sdgIds.length > 0) {
       where.sdgs = {
@@ -62,7 +72,7 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
       };
     }
 
-    // Query text search across title, description, code, and domain
+    // Query text search across title, description, code, and domain (Theme)
     if (query && query.trim().length > 0) {
       const q = query.trim();
       where.OR = [
@@ -76,7 +86,7 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
     const skip = (Math.max(1, page) - 1) * pageSize;
     const take = pageSize;
 
-    const [totalCount, topics] = await Promise.all([
+    const [totalCount, topics, distinctThemeRows] = await Promise.all([
       prisma.topic.count({ where }),
       prisma.topic.findMany({
         where,
@@ -103,7 +113,17 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
           },
         },
       }),
+      prisma.topic.findMany({
+        where: { domain: { not: null } },
+        select: { domain: true },
+        distinct: ['domain'],
+        orderBy: { domain: 'asc' },
+      }),
     ]);
+
+    const allThemes = Array.from(
+      new Set(distinctThemeRows.map((r) => (r.domain || '').trim()).filter(Boolean))
+    ).sort();
 
     // Fetch all 17 SDGs for filter chips
     const allSdgs = await prisma.sdg.findMany({
@@ -118,6 +138,7 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
       pageSize,
       totalPages: Math.ceil(totalCount / pageSize),
       allSdgs,
+      allThemes,
     };
   } catch (err) {
     return { error: `Failed to search topics: ${(err as Error).message}` };

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getMyConfirmedTopicsAction } from '@/app/actions/faculty-topics';
+import { deriveMappedPoCodes } from '@/lib/engine';
+import { evaluateRules } from '@/lib/rules';
 import {
   completeAndArchiveTopicAction,
   reactivateArchivedTopicAction,
@@ -292,7 +294,10 @@ export default function MyTopicsClient() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                          Theme: {t.domain || 'General ECE'}
+                        </span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                           {t.category}
                         </span>
@@ -309,19 +314,83 @@ export default function MyTopicsClient() {
                       </p>
                     </div>
 
-                    {/* SDGs */}
-                    {t.sdgs && t.sdgs.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {t.sdgs.map((s: any) => (
-                          <span
-                            key={s.sdgId}
-                            className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          >
-                            SDG {s.sdg.id}: {s.sdg.title}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {/* WP, WK, EA, PO & SDG Tags */}
+                    {(() => {
+                      const effectiveAttrs =
+                        t.attributes && t.attributes.length > 0
+                          ? t.attributes.map((a: any) => ({
+                              code: a.attribute.code,
+                              kind: a.attribute.kind || a.attribute.code.slice(0, 2),
+                              level: a.level,
+                            }))
+                          : (() => {
+                              const r = evaluateRules(t.title, `${t.description || ''} ${t.domain || ''}`, t.tags || []);
+                              return Object.entries(r.levels).map(([code, level]) => ({
+                                code,
+                                kind: code.slice(0, 2),
+                                level,
+                              }));
+                            })();
+                      const wpAttrs = effectiveAttrs.filter((a: any) => a.kind === 'WP' && a.level > 0);
+                      const wkAttrs = effectiveAttrs.filter((a: any) => a.kind === 'WK' && a.level > 0);
+                      const eaAttrs = effectiveAttrs.filter((a: any) => a.kind === 'EA' && a.level > 0);
+                      const poCodes = deriveMappedPoCodes(
+                        effectiveAttrs.map((a: any) => ({
+                          level: a.level,
+                          attribute: { code: a.code, kind: a.kind },
+                        }))
+                      );
+
+                      return (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {wpAttrs.map((a: any) => (
+                            <span
+                              key={a.code}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                              title="Complex Problem Solving (WP)"
+                            >
+                              {a.code} (L{a.level})
+                            </span>
+                          ))}
+                          {wkAttrs.map((a: any) => (
+                            <span
+                              key={a.code}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200"
+                              title="Engineering Knowledge (WK)"
+                            >
+                              {a.code} (L{a.level})
+                            </span>
+                          ))}
+                          {eaAttrs.map((a: any) => (
+                            <span
+                              key={a.code}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200"
+                              title="Engineering Activity (EA)"
+                            >
+                              {a.code} (L{a.level})
+                            </span>
+                          ))}
+                          {poCodes.map((po) => (
+                            <span
+                              key={po}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-800 border border-violet-200"
+                              title="Mapped Program Outcome (PO)"
+                            >
+                              {po}
+                            </span>
+                          ))}
+                          {t.sdgs &&
+                            t.sdgs.map((s: any) => (
+                              <span
+                                key={s.sdgId}
+                                className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              >
+                                SDG {s.sdg.id}
+                              </span>
+                            ))}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Groups Assigned & Actions */}

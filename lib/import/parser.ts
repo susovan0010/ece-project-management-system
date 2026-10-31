@@ -144,9 +144,18 @@ export function processRawImportData(
       category = predictCategory(contentForHeuristic);
     }
 
-    // 4. Domain / Organization / Description
-    const domain = (row['Theme'] || row['Domain'] || row['Area'] || row['Department']) as string | undefined;
-    const organization = (row['Organization'] || row['Ministry'] || row['Dept']) as string | undefined;
+    // 4. Theme / Domain / Description
+    const domain = (
+      row['Theme'] ||
+      row['theme'] ||
+      row['Project Theme'] ||
+      row['Domain'] ||
+      row['Area'] ||
+      row['Department']
+    ) as string | undefined;
+    const organization = (row['Organization'] || row['Organisation'] || row['Ministry'] || row['Dept']) as
+      | string
+      | undefined;
     const description = (
       (row['Description'] ||
         row['Problem Statement Description'] ||

@@ -17,6 +17,8 @@ import {
   TopicDeleteRequestRecord,
   ArchivedProjectRecord,
 } from '@/app/actions/project-lifecycle';
+import { deriveMappedPoCodes } from '@/lib/engine';
+import { evaluateRules } from '@/lib/rules';
 
 interface TopicRow {
   id: string;
@@ -229,9 +231,9 @@ export default function AdminConfirmedTopicsPage() {
       'Category',
       'Source',
       'Assigned Supervisor',
-      'Domain',
+      'Project Theme',
       'SDG Alignments',
-      'WP Complexity',
+      'WK, WP, EA & PO Mappings',
       'Abstract Description',
     ];
     const headerRow = sheet.addRow(headers);
@@ -582,7 +584,7 @@ export default function AdminConfirmedTopicsPage() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by code, title, domain, or supervisor..."
+                placeholder="Search by code, title, theme (e.g. Disaster Management), or supervisor..."
                 className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-800"
               />
               <svg className="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -659,17 +661,29 @@ export default function AdminConfirmedTopicsPage() {
                   <thead className="bg-slate-50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-3">Topic Code</th>
-                      <th className="px-6 py-3">Title &amp; Domain</th>
+                      <th className="px-6 py-3">Title &amp; Theme</th>
                       <th className="px-6 py-3">Type &amp; Source</th>
                       <th className="px-6 py-3">Supervisor Attribution</th>
-                      <th className="px-6 py-3">SDG &amp; Complexity</th>
+                      <th className="px-6 py-3">WK, WP, EA, PO &amp; SDG Tags</th>
                       <th className="px-6 py-3">Status</th>
                       <th className="px-6 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {topics.map((t) => {
-                      const wpAttrs = t.attributes.filter((a) => a.attribute.kind === 'WP');
+                      const effectiveAttrs =
+                        t.attributes && t.attributes.length > 0
+                          ? t.attributes
+                          : Object.entries(
+                              evaluateRules(t.title, `${t.description || ''} ${t.domain || ''}`, []).levels
+                            ).map(([code, level]) => ({
+                              level,
+                              attribute: { code, kind: code.slice(0, 2), title: code },
+                            }));
+                      const wpAttrs = effectiveAttrs.filter((a) => a.attribute.code.startsWith('WP') && a.level >= 1);
+                      const wkAttrs = effectiveAttrs.filter((a) => a.attribute.code.startsWith('WK') && a.level >= 1);
+                      const eaAttrs = effectiveAttrs.filter((a) => a.attribute.code.startsWith('EA') && a.level >= 1);
+                      const poCodes = deriveMappedPoCodes(effectiveAttrs);
                       const isActive = t.status === 'CONFIRMED' || t.status === 'ALLOTTED';
 
                       return (
@@ -684,7 +698,15 @@ export default function AdminConfirmedTopicsPage() {
                           </td>
                           <td className="px-6 py-4 max-w-sm">
                             <div className="font-semibold text-slate-900 line-clamp-1">{t.title}</div>
-                            {t.domain && <div className="text-xs text-slate-400 mt-0.5">{t.domain}</div>}
+                            {t.domain ? (
+                              <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                                Theme: {t.domain}
+                              </span>
+                            ) : (
+                              <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                                Theme: General ECE
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-1.5">
@@ -714,20 +736,44 @@ export default function AdminConfirmedTopicsPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-1 max-w-xs">
+                              {wpAttrs.map((a) => (
+                                <span
+                                  key={a.attribute.code}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                                >
+                                  {a.attribute.code} (L{a.level})
+                                </span>
+                              ))}
+                              {wkAttrs.map((a) => (
+                                <span
+                                  key={a.attribute.code}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200"
+                                >
+                                  {a.attribute.code} (L{a.level})
+                                </span>
+                              ))}
+                              {eaAttrs.map((a) => (
+                                <span
+                                  key={a.attribute.code}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200"
+                                >
+                                  {a.attribute.code} (L{a.level})
+                                </span>
+                              ))}
+                              {poCodes.map((po) => (
+                                <span
+                                  key={po}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                >
+                                  {po}
+                                </span>
+                              ))}
                               {t.sdgs.map((s) => (
                                 <span
                                   key={s.sdgId}
                                   className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
                                 >
                                   SDG {s.sdgId}
-                                </span>
-                              ))}
-                              {wpAttrs.slice(0, 2).map((a) => (
-                                <span
-                                  key={a.attribute.code}
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
-                                >
-                                  {a.attribute.code}
                                 </span>
                               ))}
                             </div>
@@ -964,8 +1010,10 @@ export default function AdminConfirmedTopicsPage() {
                   <span className="font-bold text-slate-800">{viewingTopic.category}</span>
                 </div>
                 <div>
-                  <span className="font-semibold text-slate-500">Source:</span>{' '}
-                  <span className="font-bold text-slate-800">{viewingTopic.source}</span>
+                  <span className="font-semibold text-slate-500">Project Theme:</span>{' '}
+                  <span className="font-bold text-indigo-800">
+                    {viewingTopic.domain || 'General ECE'}
+                  </span>
                 </div>
                 <div>
                   <span className="font-semibold text-slate-500">Status:</span>{' '}
@@ -984,10 +1032,45 @@ export default function AdminConfirmedTopicsPage() {
 
               <div>
                 <h4 className="font-bold text-slate-900 uppercase tracking-wider mb-1">
-                  Washington Accord Mappings
+                  Mapped Program Outcomes (NBA POs)
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {deriveMappedPoCodes(
+                    viewingTopic.attributes && viewingTopic.attributes.length > 0
+                      ? viewingTopic.attributes
+                      : (() => {
+                          const r = evaluateRules(viewingTopic.title, `${viewingTopic.description || ''} ${viewingTopic.domain || ''}`, []);
+                          return Object.entries(r.levels).map(([code, level]) => ({
+                            attribute: { code, kind: code.slice(0, 2), title: code },
+                            level,
+                          }));
+                        })()
+                  ).map((po) => (
+                    <span
+                      key={po}
+                      className="px-2 py-0.5 rounded text-xs font-bold bg-violet-50 text-violet-800 border border-violet-200"
+                    >
+                      {po}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-slate-900 uppercase tracking-wider mb-1">
+                  Washington Accord Mappings (WP, WK, EA)
                 </h4>
                 <div className="space-y-1.5">
-                  {viewingTopic.attributes.map((a) => (
+                  {(viewingTopic.attributes && viewingTopic.attributes.length > 0
+                    ? viewingTopic.attributes
+                    : (() => {
+                        const r = evaluateRules(viewingTopic.title, `${viewingTopic.description || ''} ${viewingTopic.domain || ''}`, []);
+                        return Object.entries(r.levels).map(([code, level]) => ({
+                          attribute: { code, kind: code.slice(0, 2), title: code },
+                          level,
+                        }));
+                      })()
+                  ).map((a) => (
                     <div key={a.attribute.code} className="p-2 border rounded bg-white flex justify-between">
                       <span className="font-semibold text-slate-800">
                         {a.attribute.code}: {a.attribute.title}

@@ -150,3 +150,37 @@ export const DEFAULT_WK_PO_MAP: Record<string, string[]> = {
   PO10: [], // Project Management & Finance - assessed by rubric
   PO11: ['WK8'],
 };
+
+/**
+ * Derives the list of Program Outcomes (PO1..PO11) supported by a topic's
+ * Washington Accord attributes (WK1..WK9, WP1..WP7, EA1..EA5).
+ */
+export function deriveMappedPoCodes(
+  attributes: Array<{ level: number; attribute: { code: string; kind?: string } }> = [],
+  wkPoMap: Record<string, string[]> = DEFAULT_WK_PO_MAP
+): string[] {
+  const activeWkCodes = new Set(
+    attributes
+      .filter((a) => a.level >= 1 && a.attribute.code.startsWith('WK'))
+      .map((a) => a.attribute.code)
+  );
+
+  const poSet = new Set<string>();
+  for (const [po, wks] of Object.entries(wkPoMap)) {
+    if (wks.some((wk) => activeWkCodes.has(wk))) {
+      poSet.add(po);
+    }
+  }
+
+  // If topic has WP/EA attributes or no WK yet, include baseline engineering design POs
+  const hasWpOrEa = attributes.some((a) => a.level >= 1);
+  if (poSet.size === 0 && hasWpOrEa) {
+    poSet.add('PO1');
+    poSet.add('PO2');
+    poSet.add('PO3');
+  }
+
+  return Array.from(poSet).sort(
+    (a, b) => parseInt(a.replace('PO', ''), 10) - parseInt(b.replace('PO', ''), 10)
+  );
+}

@@ -43,8 +43,7 @@ export default function TopicImportWizardPage() {
       'Code',
       'Title',
       'Category',
-      'Domain',
-      'Organization',
+      'Theme',
       'Description',
       'Mapped SDG(s)',
       'Keywords',
@@ -57,24 +56,32 @@ export default function TopicImportWizardPage() {
       cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     });
 
-    // Add 1 sample row (can be replaced or overwritten by the Admin)
+    // Add 2 sample rows showcasing project Themes (Disaster Management, Transportation & Logistics)
     sheet.addRow([
       sourceType === 'SIH' ? 'SIH26901' : 'UGR-901',
-      'Sample: FPGA-Based Real-Time Signal Processing for Smart Grid Monitoring',
+      'Sample: LoRa-Mesh Early Warning & Flood Telemetry Node for Disaster Response',
       'Hardware',
-      'Embedded Systems & VLSI',
-      'HITK ECE Department',
-      'Design and implement a low-latency FPGA acquisition and processing pipeline for harmonic distortion analysis in microgrids.',
-      '7, 9',
-      'FPGA, VLSI, Smart Grid, Signal Processing',
+      'Disaster Management',
+      'Design and implement a resilient low-power LoRa-mesh sensor and emergency alert node for real-time flood and landslide monitoring.',
+      '11, 13',
+      'LoRa, Sensor, Embedded, Disaster Management, Telemetry',
+    ]);
+
+    sheet.addRow([
+      sourceType === 'SIH' ? 'SIH26902' : 'UGR-902',
+      'Sample: GNSS & RFID Assisted Smart Fleet Routing and Cold-Chain Tracker',
+      'Both',
+      'Transportation & Logistics',
+      'Develop an integrated IoT vehicle telemetry unit and routing optimization platform for real-time cargo and traffic logistics.',
+      '9, 11',
+      'GNSS, RFID, IoT, Transportation & Logistics, Smart Mobility',
     ]);
 
     sheet.columns = [
       { width: 16 }, // Code
       { width: 42 }, // Title
       { width: 16 }, // Category (Hardware / Software / Both)
-      { width: 24 }, // Domain
-      { width: 24 }, // Organization
+      { width: 28 }, // Theme (e.g. Disaster Management, Transportation & Logistics)
       { width: 55 }, // Description
       { width: 18 }, // Mapped SDG(s)
       { width: 28 }, // Keywords
@@ -397,7 +404,7 @@ export default function TopicImportWizardPage() {
                     <th className="p-3">Project Title</th>
                     <th className="p-3">Source</th>
                     <th className="p-3">Category (Editable)</th>
-                    <th className="p-3">Domain / Theme</th>
+                    <th className="p-3">Theme</th>
                     <th className="p-3">SDGs</th>
                     <th className="p-3">Status</th>
                   </tr>

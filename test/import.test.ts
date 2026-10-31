@@ -87,4 +87,29 @@ describe('Import Engine: Ingestion Normalization & Duplicate Detection', () => {
 
     expect(processed[2].isDuplicate).toBe(false);
   });
+
+  it('extracts Theme column from Excel import into domain', () => {
+    const rawRows = [
+      {
+        Code: 'SIH26001',
+        Title: 'LoRaWAN Based Early Flood Warning System',
+        Category: 'Both',
+        Theme: 'Disaster Management',
+        Description: 'Real-time water level telemetry for flood-prone zones.',
+        'Mapped SDG(s)': '11, 13',
+      },
+      {
+        Code: 'SIH26002',
+        Title: 'Intelligent V2X Traffic Signal Optimization',
+        Category: 'Software',
+        Theme: 'Transportation & Logistics',
+        Description: 'Adaptive signal control for emergency corridors.',
+        'Mapped SDG(s)': '9, 11',
+      },
+    ];
+
+    const processed = processRawImportData(rawRows, 'SIH');
+    expect(processed[0].domain).toBe('Disaster Management');
+    expect(processed[1].domain).toBe('Transportation & Logistics');
+  });
 });

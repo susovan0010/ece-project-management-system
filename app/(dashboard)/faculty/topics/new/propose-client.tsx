@@ -388,7 +388,7 @@ export default function ProposeTopicClient() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
                 <select
@@ -403,25 +403,28 @@ export default function ProposeTopicClient() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Specialized Domain</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Project Theme <span className="text-indigo-600">(e.g. Disaster Management, Transportation &amp; Logistics)</span>
+                </label>
                 <input
                   type="text"
+                  list="project-theme-options"
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
-                  placeholder="e.g. RF & Microwave, VLSI, IoT"
+                  placeholder="e.g. Disaster Management, Transportation & Logistics"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Industry / Organization (Optional)</label>
-                <input
-                  type="text"
-                  value={organization}
-                  onChange={(e) => setOrganization(e.target.value)}
-                  placeholder="e.g. DRDO, ISRO, Embedded lab"
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900"
-                />
+                <datalist id="project-theme-options">
+                  <option value="Disaster Management" />
+                  <option value="Transportation & Logistics" />
+                  <option value="MedTech / BioTech / HealthTech" />
+                  <option value="Clean & Green Technology" />
+                  <option value="Smart Automation & IoT" />
+                  <option value="Robotics & Drones" />
+                  <option value="Agriculture, FoodTech & Rural Development" />
+                  <option value="VLSI & Embedded Systems" />
+                  <option value="RF, Antenna & 5G/6G Communications" />
+                </datalist>
               </div>
             </div>
 

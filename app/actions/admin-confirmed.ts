@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { Prisma, TopicSource, TopicStatus } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { sanitizeCellForCsv } from '@/lib/csv-sanitize';
+import { deriveMappedPoCodes } from '@/lib/engine';
+import { evaluateRules } from '@/lib/rules';
 
 // ----------------------------------------------------
 // 1. Get Confirmed Topics for Admin Ledger
@@ -13,6 +15,7 @@ export async function getAdminConfirmedTopicsAction(params?: {
   query?: string;
   category?: string;
   source?: string;
+  theme?: string;
   status?: string;
   page?: number;
   pageSize?: number;
@@ -26,6 +29,7 @@ export async function getAdminConfirmedTopicsAction(params?: {
     query = '',
     category = 'ALL',
     source = 'ALL',
+    theme = 'ALL',
     status = 'CONFIRMED',
     page = 1,
     pageSize = 20,
@@ -47,6 +51,13 @@ export async function getAdminConfirmedTopicsAction(params?: {
     if (category && category !== 'ALL') {
       where.category = {
         equals: category,
+        mode: 'insensitive',
+      };
+    }
+
+    if (theme && theme !== 'ALL') {
+      where.domain = {
+        equals: theme,
         mode: 'insensitive',
       };
     }
@@ -182,10 +193,20 @@ export async function exportStudentTopicsDataAction() {
     const sanitizedRows = topics.map((t) => {
       const supervisorName = t.proposer?.name || 'Department Committee';
       const sdgList = t.sdgs.map((s) => `SDG ${s.sdgId} (${s.target || 'General'})`).join('; ');
-      const wpAttrs = t.attributes
-        .filter((a) => a.attribute.kind === 'WP')
+      const effectiveAttrs =
+        t.attributes && t.attributes.length > 0
+          ? t.attributes
+          : Object.entries(
+              evaluateRules(t.title, `${t.description || ''} ${t.domain || ''}`, t.tags || []).levels
+            ).map(([code, level]) => ({
+              level,
+              attribute: { code, kind: code.slice(0, 2), title: code },
+            }));
+      const allAttrsStr = effectiveAttrs
+        .filter((a) => a.level >= 1)
         .map((a) => `${a.attribute.code} (L${a.level})`)
         .join(', ');
+      const poStr = deriveMappedPoCodes(effectiveAttrs).join(', ');
 
       return {
         code: sanitizeCellForCsv(t.code),
@@ -193,10 +214,12 @@ export async function exportStudentTopicsDataAction() {
         category: sanitizeCellForCsv(t.category),
         source: sanitizeCellForCsv(t.source === 'UG_RESEARCH' ? 'UG Research' : t.source),
         supervisor: sanitizeCellForCsv(supervisorName),
-        domain: sanitizeCellForCsv(t.domain || 'ECE Capstone'),
+        domain: sanitizeCellForCsv(t.domain || 'General ECE'),
         organization: sanitizeCellForCsv(t.organization || 'HITK Department of ECE'),
         sdgs: sanitizeCellForCsv(sdgList || 'None Specified'),
-        complexityWp: sanitizeCellForCsv(wpAttrs || 'Baseline'),
+        complexityWp: sanitizeCellForCsv(
+          `${allAttrsStr || 'Baseline'}${poStr ? ` | POs: ${poStr}` : ''}`
+        ),
         description: sanitizeCellForCsv(t.description || ''),
       };
     });

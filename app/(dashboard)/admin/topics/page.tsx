@@ -8,6 +8,8 @@ import {
   resolveTopicDeleteRequestAction,
   TopicDeleteRequestRecord,
 } from '@/app/actions/project-lifecycle';
+import { deriveMappedPoCodes } from '@/lib/engine';
+import { evaluateRules } from '@/lib/rules';
 
 interface TopicItem {
   id: string;
@@ -21,10 +23,15 @@ interface TopicItem {
   tags: string[];
   proposer: { id: string; name: string; email: string } | null;
   sdgs: Array<{ sdgId: number }>;
+  attributes: Array<{
+    level: number;
+    attribute: { code: string; kind: string; title: string };
+  }>;
 }
 
 export default function AdminTopicsPage() {
   const [topics, setTopics] = useState<TopicItem[]>([]);
+  const [themesList, setThemesList] = useState<string[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -37,6 +44,7 @@ export default function AdminTopicsPage() {
   const [search, setSearch] = useState('');
   const [source, setSource] = useState('ALL');
   const [category, setCategory] = useState('ALL');
+  const [theme, setTheme] = useState('ALL');
   const [sdg, setSdg] = useState(0);
 
   const loadTopics = useCallback(async (page: number) => {
@@ -46,6 +54,7 @@ export default function AdminTopicsPage() {
         search,
         source,
         category,
+        theme,
         sdg: sdg > 0 ? sdg : undefined,
         page,
         pageSize: 20,
@@ -57,11 +66,14 @@ export default function AdminTopicsPage() {
     setTotalCount(res.totalCount);
     setTotalPages(res.totalPages);
     setCurrentPage(res.currentPage);
+    if (res.themes && themesList.length === 0) {
+      setThemesList(res.themes);
+    }
     if (!reqRes.error && reqRes.requests) {
       setDeleteRequests(reqRes.requests);
     }
     setLoading(false);
-  }, [search, source, category, sdg]);
+  }, [search, source, category, theme, sdg]);
 
   useEffect(() => {
     loadTopics(1);
@@ -192,18 +204,36 @@ export default function AdminTopicsPage() {
       )}
 
       {/* Filter Bar */}
-      <div className="p-4 bg-white border border-slate-200/80 rounded-xl shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-3 items-center">
+      <div className="p-4 bg-white border border-slate-200/80 rounded-xl shadow-sm grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
         <div>
           <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
-            Search Keyword
+            Search Keyword / Theme
           </label>
           <input
             type="text"
-            placeholder="Search title, code, tags..."
+            placeholder="Search title, code, theme (e.g. Disaster Management)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-600"
           />
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-600 uppercase mb-1">
+            Project Theme
+          </label>
+          <select
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-600"
+          >
+            <option value="ALL">All Themes</option>
+            {themesList.map((th) => (
+              <option key={th} value={th}>
+                {th}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -274,75 +304,136 @@ export default function AdminTopicsPage() {
               <thead className="bg-slate-50 text-slate-800 font-semibold uppercase text-[10px] tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="p-3">Topic Code</th>
-                  <th className="p-3">Title & Description</th>
+                  <th className="p-3">Title &amp; Description</th>
                   <th className="p-3">Source</th>
                   <th className="p-3">Category</th>
-                  <th className="p-3">Domain</th>
-                  <th className="p-3">SDGs</th>
+                  <th className="p-3">Project Theme</th>
+                  <th className="p-3">WK, WP, EA, PO &amp; SDG Tags</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {topics.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/80 transition">
-                    <td className="p-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                      {t.code}
-                    </td>
-                    <td className="p-3 max-w-md">
-                      <div className="font-semibold text-slate-900">{t.title}</div>
-                      {t.description && (
-                        <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
-                          {t.description}
-                        </p>
-                      )}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      {t.proposer?.name ? (
-                        <div className="space-y-0.5">
-                          <div className="font-semibold text-slate-900">{t.proposer.name}</div>
-                          {t.source !== 'FACULTY' && (
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
-                              {t.source === 'UG_RESEARCH' ? 'UG Research' : t.source}
+                {topics.map((t) => {
+                  const effectiveAttrs =
+                    t.attributes && t.attributes.length > 0
+                      ? t.attributes
+                      : Object.entries(
+                          evaluateRules(t.title, `${t.description || ''} ${t.domain || ''}`, t.tags || []).levels
+                        ).map(([code, level]) => ({
+                          level,
+                          attribute: {
+                            code,
+                            kind: code.slice(0, 2),
+                            title: code,
+                          },
+                        }));
+
+                  const wpCodes = effectiveAttrs
+                    .filter((a) => a.attribute.code.startsWith('WP') && a.level >= 1)
+                    .map((a) => `${a.attribute.code} (L${a.level})`);
+                  const wkCodes = effectiveAttrs
+                    .filter((a) => a.attribute.code.startsWith('WK') && a.level >= 1)
+                    .map((a) => `${a.attribute.code} (L${a.level})`);
+                  const eaCodes = effectiveAttrs
+                    .filter((a) => a.attribute.code.startsWith('EA') && a.level >= 1)
+                    .map((a) => `${a.attribute.code} (L${a.level})`);
+                  const poCodes = deriveMappedPoCodes(effectiveAttrs);
+
+                  return (
+                    <tr key={t.id} className="hover:bg-slate-50/80 transition">
+                      <td className="p-3 font-mono font-bold text-slate-900 whitespace-nowrap">
+                        {t.code}
+                      </td>
+                      <td className="p-3 max-w-md">
+                        <div className="font-semibold text-slate-900">{t.title}</div>
+                        {t.description && (
+                          <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
+                            {t.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {t.proposer?.name ? (
+                          <div className="space-y-0.5">
+                            <div className="font-semibold text-slate-900">{t.proposer.name}</div>
+                            {t.source !== 'FACULTY' && (
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                                {t.source === 'UG_RESEARCH' ? 'UG Research' : t.source}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {t.source === 'UG_RESEARCH' ? 'UG Research' : t.source}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        <select
+                          value={t.category}
+                          onChange={(e) => handleCategoryChange(t.id, e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-blue-600"
+                        >
+                          <option value="Software">Software</option>
+                          <option value="Hardware">Hardware</option>
+                          <option value="Both">Both</option>
+                        </select>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {t.domain ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                            {t.domain}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">General ECE</span>
+                        )}
+                      </td>
+                      <td className="p-3 max-w-sm">
+                        <div className="flex flex-wrap gap-1">
+                          {wpCodes.map((code) => (
+                            <span
+                              key={code}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                            >
+                              {code}
                             </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                          {t.source === 'UG_RESEARCH' ? 'UG Research' : t.source}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      <select
-                        value={t.category}
-                        onChange={(e) => handleCategoryChange(t.id, e.target.value)}
-                        className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-blue-600"
-                      >
-                        <option value="Software">Software</option>
-                        <option value="Hardware">Hardware</option>
-                        <option value="Both">Both</option>
-                      </select>
-                    </td>
-                    <td className="p-3 whitespace-nowrap text-slate-600">
-                      {t.domain || '—'}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      {t.sdgs.length > 0 ? (
-                        <div className="flex gap-1 flex-wrap">
+                          ))}
+                          {wkCodes.map((code) => (
+                            <span
+                              key={code}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200"
+                            >
+                              {code}
+                            </span>
+                          ))}
+                          {eaCodes.map((code) => (
+                            <span
+                              key={code}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200"
+                            >
+                              {code}
+                            </span>
+                          ))}
+                          {poCodes.map((po) => (
+                            <span
+                              key={po}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                            >
+                              {po}
+                            </span>
+                          ))}
                           {t.sdgs.map((s) => (
                             <span
                               key={s.sdgId}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200"
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
                             >
                               SDG {s.sdgId}
                             </span>
                           ))}
                         </div>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
