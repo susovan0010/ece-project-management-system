@@ -16,9 +16,9 @@ export default function PrintableRubricsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-16">
+    <div className="space-y-6 max-w-5xl mx-auto pb-16 print:space-y-0 print:max-w-none print:pb-0">
       {/* Page Header (Hidden during print) */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5 no-print">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5 no-print print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
@@ -53,7 +53,7 @@ export default function PrintableRubricsPage() {
       </div>
 
       {/* Semester Selector Tabs (Hidden during print) */}
-      <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl no-print">
+      <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl no-print print:hidden">
         <button
           type="button"
           onClick={() => setActiveSemester(6)}
@@ -99,14 +99,14 @@ export default function PrintableRubricsPage() {
       </div>
 
       {/* Printable Sheet Document */}
-      <div className="bg-white border border-slate-300 rounded-sm p-10 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-2">
+      <div className="bg-white border border-slate-300 rounded-sm p-10 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:space-y-4">
         {/* Top-right running header with thin rule */}
         <div className="text-right text-[11px] italic text-slate-500 border-b border-slate-300 pb-1">
           Dept. of ECE, Heritage Institute of Technology, Kolkata | Proposed Project Evaluation Scheme
         </div>
 
         {/* Centered Title & Subtitle */}
-        <div className="text-center space-y-1.5 pt-1">
+        <div className="text-center space-y-1.5 pt-1 print:pt-0">
           <h2 className="text-lg font-bold text-[#1F3864]">
             Evaluation Sheets for {activeSemester}th Semester
           </h2>
@@ -121,7 +121,7 @@ export default function PrintableRubricsPage() {
              ================================================================== */
           <>
             {/* Form 6-S: 6th Semester – Supervisor's Evaluation Sheet (Rubric A) */}
-            <div className="space-y-2.5 pt-2">
+            <div className="space-y-2.5 pt-2 print:pt-1 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 6-S: 6th Semester – Supervisor’s Evaluation Sheet (Rubric A)
               </h3>
@@ -183,7 +183,7 @@ export default function PrintableRubricsPage() {
             </div>
 
             {/* Form 6-C: 6th Semester – Co-examiner's Evaluation Sheet (Rubric B) */}
-            <div className="space-y-2.5 pt-6">
+            <div className="space-y-2.5 pt-6 print:pt-3 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 6-C: 6th Semester – Co-examiner’s Evaluation Sheet (Rubric B)
               </h3>
@@ -250,7 +250,7 @@ export default function PrintableRubricsPage() {
              ================================================================== */
           <>
             {/* Form 7-S: 7th Semester – Supervisor's Evaluation Sheet (Rubric C) */}
-            <div className="space-y-2.5 pt-2">
+            <div className="space-y-2.5 pt-2 print:pt-1 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 7-S: 7th Semester – Supervisor’s Evaluation Sheet (Rubric C)
               </h3>
@@ -310,7 +310,7 @@ export default function PrintableRubricsPage() {
             </div>
 
             {/* Form 7-P: 7th Semester – Panellist's Evaluation Sheet (Rubric D) | Panel No.: _____ */}
-            <div className="space-y-2.5 pt-6">
+            <div className="space-y-2.5 pt-6 print:pt-3 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 7-P: 7th Semester – Panellist’s Evaluation Sheet (Rubric D) | Panel No.:{' '}
                 <span className="inline-block w-16 border-b border-[#1F4E79]"></span>
@@ -396,7 +396,7 @@ export default function PrintableRubricsPage() {
              ================================================================== */
           <>
             {/* Form 8-S: 8th Semester – Supervisor's Evaluation Sheet (Rubric E) */}
-            <div className="space-y-2.5 pt-2">
+            <div className="space-y-2.5 pt-2 print:pt-1 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 8-S: 8th Semester – Supervisor’s Evaluation Sheet (Rubric E)
               </h3>
@@ -456,7 +456,7 @@ export default function PrintableRubricsPage() {
             </div>
 
             {/* Form 8-E: 8th Semester – External Examiner's Evaluation Sheet (Rubric F) */}
-            <div className="space-y-2.5 pt-6">
+            <div className="space-y-2.5 pt-6 print:pt-3 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 8-E: 8th Semester – External Examiner’s Evaluation Sheet (Rubric F)
               </h3>

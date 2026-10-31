@@ -40,7 +40,7 @@ export function Sidebar({ role, userName, userEmail }: SidebarProps) {
   const links = role === 'ADMIN' ? adminLinks : facultyLinks;
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col min-h-screen border-r border-slate-800">
+    <aside className="no-print print:hidden w-64 bg-slate-900 text-slate-100 flex flex-col min-h-screen border-r border-slate-800">
       {/* Brand Header */}
       <div className="p-5 border-b border-slate-800 flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-500/20">

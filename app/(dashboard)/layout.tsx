@@ -33,11 +33,11 @@ export default async function DashboardLayout({
   const mustChangePassword = dbUser?.mustChangePassword ?? false;
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-slate-50 print:block print:min-h-0 print:bg-white">
       <Sidebar role={role} userName={userName} userEmail={userEmail} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 print:block">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10">
+        <header className="no-print print:hidden h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10">
           <div>
             <h1 className="text-base font-semibold text-slate-800 tracking-tight">
               {role === 'ADMIN' ? 'Project Committee Administration' : 'Supervisor Project Workspace'}
@@ -66,7 +66,7 @@ export default async function DashboardLayout({
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 p-8 overflow-y-auto">{children}</main>
+        <main className="flex-1 p-8 overflow-y-auto print:p-0 print:overflow-visible">{children}</main>
       </div>
     </div>
   );
