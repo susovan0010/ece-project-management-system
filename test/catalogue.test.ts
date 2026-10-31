@@ -107,23 +107,23 @@ describe('Rubric Maxima & Spot-Check Verification (Brief Checks)', () => {
     expect(rubricB?.criteria).toHaveLength(4);
     expect(rubricB?.criteria.every((c) => c.maxMarks === 10)).toBe(true);
 
-    // 2. Rubric C Leadership and teamwork = 20
+    // 2. Rubric C Leadership = 10 (5 criteria x 10 = 50 in Form 7-S)
     const rubricC = RUBRICS.find((r) => r.code === 'C');
     const teamworkC = rubricC?.criteria.find((c) => c.key === 'teamwork');
-    expect(teamworkC?.maxMarks).toBe(20);
+    expect(teamworkC?.maxMarks).toBe(10);
 
-    // 3. Rubric D Novelty / originality = 15
+    // 3. Rubric D Novelty = 7 (Form 7-P)
     const rubricD = RUBRICS.find((r) => r.code === 'D');
     const noveltyD = rubricD?.criteria.find((c) => c.key === 'novelty');
-    expect(noveltyD?.maxMarks).toBe(15);
+    expect(noveltyD?.maxMarks).toBe(7);
 
-    // 4. Rubric D Realistic problem = 15
+    // 4. Rubric D Realistic problem = 7 (Form 7-P)
     const problemD = rubricD?.criteria.find((c) => c.key === 'realistic_problem');
-    expect(problemD?.maxMarks).toBe(15);
+    expect(problemD?.maxMarks).toBe(7);
 
-    // 5. Rubric F Viva voce = 15
+    // 5. Rubric F Viva voce = 18 (Form 8-E)
     const rubricF = RUBRICS.find((r) => r.code === 'F');
     const vivaF = rubricF?.criteria.find((c) => c.key === 'viva_voce');
-    expect(vivaF?.maxMarks).toBe(15);
+    expect(vivaF?.maxMarks).toBe(18);
   });
 });

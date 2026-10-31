@@ -226,13 +226,32 @@ export const RUBRICS = [
   {
     code: 'C',
     semester: 7,
-    title: 'Semester 7 - Supervisor Continuous Evaluation',
+    title: '7th Semester – Supervisor’s Evaluation Sheet',
     maxMarks: 50,
     criteria: [
       {
+        key: 'regularity',
+        label: 'Regularity',
+        maxMarks: 10,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
+        key: 'task_completion',
+        label: 'Task Completion',
+        maxMarks: 10,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
         key: 'teamwork',
-        label: 'Leadership, Teamwork & Initiative',
-        maxMarks: 20,
+        label: 'Leadership',
+        maxMarks: 10,
         scope: Scope.STUDENT,
         maps: [
           { kind: 'WK', code: 'WK9' },
@@ -241,22 +260,24 @@ export const RUBRICS = [
         ],
       },
       {
-        key: 'regularity',
-        label: 'Regularity, Task Completion & Commitment',
-        maxMarks: 15,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
-        ],
-      },
-      {
-        key: 'conduct',
-        label: 'Behaviour, Professionalism & Ethical Conduct',
-        maxMarks: 15,
+        key: 'behaviour',
+        label: 'Behaviour',
+        maxMarks: 10,
         scope: Scope.STUDENT,
         maps: [
           { kind: 'WK', code: 'WK7' }, { kind: 'WK', code: 'WK9' },
           { kind: 'PO', code: 'PO7' }, { kind: 'PO', code: 'PO8' },
+        ],
+      },
+      {
+        key: 'involvement',
+        label: 'Involvement',
+        maxMarks: 10,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WK', code: 'WK9' },
+          { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO8' }, { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
         ],
       },
     ],
@@ -264,13 +285,13 @@ export const RUBRICS = [
   {
     code: 'D',
     semester: 7,
-    title: 'Semester 7 - Internal Project Panel Evaluation',
+    title: '7th Semester – Panellist’s Evaluation Sheet',
     maxMarks: 50,
     criteria: [
       {
         key: 'novelty',
-        label: 'Novelty, Originality & Innovation',
-        maxMarks: 15,
+        label: 'Novelty',
+        maxMarks: 7,
         scope: Scope.GROUP,
         maps: [
           { kind: 'WP', code: 'WP3' }, { kind: 'WP', code: 'WP4' },
@@ -281,8 +302,8 @@ export const RUBRICS = [
       },
       {
         key: 'realistic_problem',
-        label: 'Realistic Problem Formulation & Design',
-        maxMarks: 15,
+        label: 'Realistic Problem',
+        maxMarks: 7,
         scope: Scope.GROUP,
         maps: [
           { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP2' },
@@ -292,122 +313,9 @@ export const RUBRICS = [
         ],
       },
       {
-        key: 'viva_voce',
-        label: 'Viva Voce & Technical Defense',
-        maxMarks: 10,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP3' },
-          { kind: 'WK', code: 'WK3' }, { kind: 'WK', code: 'WK4' }, { kind: 'WK', code: 'WK6' },
-          { kind: 'PO', code: 'PO1' }, { kind: 'PO', code: 'PO9' },
-        ],
-      },
-      {
-        key: 'presentation',
-        label: 'Presentation & Report Quality',
-        maxMarks: 5,
-        scope: Scope.GROUP,
-        maps: [
-          { kind: 'PO', code: 'PO9' },
-        ],
-      },
-      {
         key: 'impact_society',
-        label: 'Impact on Society & SDG Relevance',
-        maxMarks: 5,
-        scope: Scope.GROUP,
-        maps: [
-          { kind: 'WP', code: 'WP6' },
-          { kind: 'WK', code: 'WK7' },
-          { kind: 'EA', code: 'EA4' },
-          { kind: 'PO', code: 'PO6' },
-        ],
-      },
-    ],
-  },
-  {
-    code: 'E',
-    semester: 8,
-    title: 'Semester 8 - Supervisor Continuous Evaluation',
-    maxMarks: 40,
-    criteria: [
-      {
-        key: 'regularity',
-        label: 'Regularity, Task Completion & Final Implementation',
-        maxMarks: 15,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
-        ],
-      },
-      {
-        key: 'teamwork',
-        label: 'Leadership, Team Coordination & Initiative',
-        maxMarks: 15,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'WK', code: 'WK9' },
-          { kind: 'EA', code: 'EA1' },
-          { kind: 'PO', code: 'PO8' }, { kind: 'PO', code: 'PO10' },
-        ],
-      },
-      {
-        key: 'conduct',
-        label: 'Behaviour, Professionalism & Ethics',
-        maxMarks: 10,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'WK', code: 'WK7' }, { kind: 'WK', code: 'WK9' },
-          { kind: 'PO', code: 'PO7' }, { kind: 'PO', code: 'PO8' },
-        ],
-      },
-    ],
-  },
-  {
-    code: 'F',
-    semester: 8,
-    title: 'Semester 8 - External Examiner & Defense Evaluation',
-    maxMarks: 60,
-    criteria: [
-      {
-        key: 'novelty',
-        label: 'Novelty, Technical Depth & Prototype Rigor',
-        maxMarks: 15,
-        scope: Scope.GROUP,
-        maps: [
-          { kind: 'WP', code: 'WP3' }, { kind: 'WP', code: 'WP4' },
-          { kind: 'WK', code: 'WK8' },
-          { kind: 'EA', code: 'EA3' }, { kind: 'EA', code: 'EA5' },
-          { kind: 'PO', code: 'PO3' }, { kind: 'PO', code: 'PO4' },
-        ],
-      },
-      {
-        key: 'realistic_problem',
-        label: 'Realistic Problem Solving & Engineering Activity',
-        maxMarks: 15,
-        scope: Scope.GROUP,
-        maps: [
-          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP2' },
-          { kind: 'WK', code: 'WK5' }, { kind: 'WK', code: 'WK7' },
-          { kind: 'EA', code: 'EA2' },
-          { kind: 'PO', code: 'PO2' }, { kind: 'PO', code: 'PO3' }, { kind: 'PO', code: 'PO6' },
-        ],
-      },
-      {
-        key: 'viva_voce',
-        label: 'Viva Voce & Individual Defense',
-        maxMarks: 15,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP3' },
-          { kind: 'WK', code: 'WK3' }, { kind: 'WK', code: 'WK4' }, { kind: 'WK', code: 'WK6' },
-          { kind: 'PO', code: 'PO1' }, { kind: 'PO', code: 'PO9' },
-        ],
-      },
-      {
-        key: 'impact_society',
-        label: 'Societal & Environmental Impact',
-        maxMarks: 5,
+        label: 'Societal Impact',
+        maxMarks: 3,
         scope: Scope.GROUP,
         maps: [
           { kind: 'WP', code: 'WP6' },
@@ -418,7 +326,141 @@ export const RUBRICS = [
       },
       {
         key: 'publication',
-        label: 'Publication / Patent / Conference Presentation',
+        label: 'Publication',
+        maxMarks: 3,
+        scope: Scope.GROUP,
+        maps: [
+          { kind: 'WK', code: 'WK8' },
+          { kind: 'EA', code: 'EA3' },
+          { kind: 'PO', code: 'PO4' }, { kind: 'PO', code: 'PO9' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
+        key: 'presentation',
+        label: 'Presentation',
+        maxMarks: 15,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'PO', code: 'PO9' },
+        ],
+      },
+      {
+        key: 'viva_voce',
+        label: 'Viva Voce',
+        maxMarks: 15,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP3' },
+          { kind: 'WK', code: 'WK3' }, { kind: 'WK', code: 'WK4' }, { kind: 'WK', code: 'WK6' },
+          { kind: 'PO', code: 'PO1' }, { kind: 'PO', code: 'PO9' },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'E',
+    semester: 8,
+    title: '8th Semester – Supervisor’s Evaluation Sheet',
+    maxMarks: 40,
+    criteria: [
+      {
+        key: 'regularity',
+        label: 'Regularity',
+        maxMarks: 8,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
+        key: 'task_completion',
+        label: 'Task Completion',
+        maxMarks: 8,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
+        key: 'teamwork',
+        label: 'Leadership',
+        maxMarks: 8,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WK', code: 'WK9' },
+          { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO8' }, { kind: 'PO', code: 'PO10' },
+        ],
+      },
+      {
+        key: 'behaviour',
+        label: 'Behaviour',
+        maxMarks: 8,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WK', code: 'WK7' }, { kind: 'WK', code: 'WK9' },
+          { kind: 'PO', code: 'PO7' }, { kind: 'PO', code: 'PO8' },
+        ],
+      },
+      {
+        key: 'involvement',
+        label: 'Involvement',
+        maxMarks: 8,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WK', code: 'WK9' },
+          { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO8' }, { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+    ],
+  },
+  {
+    code: 'F',
+    semester: 8,
+    title: '8th Semester – External Examiner’s Evaluation Sheet',
+    maxMarks: 60,
+    criteria: [
+      {
+        key: 'novelty',
+        label: 'Novelty',
+        maxMarks: 8,
+        scope: Scope.GROUP,
+        maps: [
+          { kind: 'WP', code: 'WP3' }, { kind: 'WP', code: 'WP4' },
+          { kind: 'WK', code: 'WK8' },
+          { kind: 'EA', code: 'EA3' }, { kind: 'EA', code: 'EA5' },
+          { kind: 'PO', code: 'PO3' }, { kind: 'PO', code: 'PO4' },
+        ],
+      },
+      {
+        key: 'realistic_problem',
+        label: 'Realistic Problem',
+        maxMarks: 8,
+        scope: Scope.GROUP,
+        maps: [
+          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP2' },
+          { kind: 'WK', code: 'WK5' }, { kind: 'WK', code: 'WK7' },
+          { kind: 'EA', code: 'EA2' },
+          { kind: 'PO', code: 'PO2' }, { kind: 'PO', code: 'PO3' }, { kind: 'PO', code: 'PO6' },
+        ],
+      },
+      {
+        key: 'impact_society',
+        label: 'Societal Impact',
+        maxMarks: 3,
+        scope: Scope.GROUP,
+        maps: [
+          { kind: 'WP', code: 'WP6' },
+          { kind: 'WK', code: 'WK7' },
+          { kind: 'EA', code: 'EA4' },
+          { kind: 'PO', code: 'PO6' },
+        ],
+      },
+      {
+        key: 'publication',
+        label: 'Publication',
         maxMarks: 5,
         scope: Scope.GROUP,
         maps: [
@@ -429,11 +471,22 @@ export const RUBRICS = [
       },
       {
         key: 'presentation',
-        label: 'Presentation, Demo & Report Quality',
-        maxMarks: 5,
-        scope: Scope.GROUP,
+        label: 'Presentation',
+        maxMarks: 18,
+        scope: Scope.STUDENT,
         maps: [
           { kind: 'PO', code: 'PO9' },
+        ],
+      },
+      {
+        key: 'viva_voce',
+        label: 'Viva Voce',
+        maxMarks: 18,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP3' },
+          { kind: 'WK', code: 'WK3' }, { kind: 'WK', code: 'WK4' }, { kind: 'WK', code: 'WK6' },
+          { kind: 'PO', code: 'PO1' }, { kind: 'PO', code: 'PO9' },
         ],
       },
     ],
