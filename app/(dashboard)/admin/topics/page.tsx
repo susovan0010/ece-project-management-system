@@ -6,6 +6,8 @@ import { getTopicsAction, updateTopicCategoryAction } from '@/app/actions/topics
 import {
   getTopicDeleteRequestsAction,
   resolveTopicDeleteRequestAction,
+  adminDeleteTopicAction,
+  adminRequestFacultyTopicDeleteAction,
   TopicDeleteRequestRecord,
 } from '@/app/actions/project-lifecycle';
 import { deriveMappedPoCodes } from '@/lib/engine';
@@ -106,6 +108,44 @@ export default function AdminTopicsPage() {
     setResolvingKey(null);
   }
 
+  async function handleAdminDeleteTopic(topicId: string, code: string) {
+    if (!window.confirm(`Are you sure you want to delete topic ${code}?`)) {
+      return;
+    }
+    setResolvingKey(topicId);
+    setBannerMessage(null);
+    const res = await adminDeleteTopicAction(topicId);
+    if (res.error) {
+      setBannerMessage(res.error);
+    } else {
+      setBannerMessage(`Topic ${code} has been deleted.`);
+      await loadTopics(currentPage);
+    }
+    setResolvingKey(null);
+  }
+
+  async function handleRequestFacultyDelete(topicId: string, code: string) {
+    setResolvingKey(topicId);
+    setBannerMessage(null);
+    const res = await adminRequestFacultyTopicDeleteAction(topicId);
+    if (res.error) {
+      setBannerMessage(res.error);
+    } else if (res.deletedImmediately) {
+      setBannerMessage(`Topic ${code} had no assigned supervisor and was deleted.`);
+      await loadTopics(currentPage);
+    } else {
+      setBannerMessage(
+        `Permission request sent to supervisor ${res.supervisorName} to delete faculty topic ${code}.`
+      );
+      await loadTopics(currentPage);
+    }
+    setResolvingKey(null);
+  }
+
+  const supervisorInitiatedRequests = deleteRequests.filter(
+    (r) => r.initiatedBy !== 'ADMIN'
+  );
+
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Header */}
@@ -134,21 +174,21 @@ export default function AdminTopicsPage() {
       )}
 
       {/* Pending Supervisor Delete Requests Panel */}
-      {deleteRequests.length > 0 && (
+      {supervisorInitiatedRequests.length > 0 && (
         <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-amber-900">
-                Pending Supervisor Topic Delete Requests ({deleteRequests.length})
+                Pending Supervisor Topic Delete Requests ({supervisorInitiatedRequests.length})
               </h3>
               <p className="text-xs text-amber-800 mt-0.5">
-                Supervisors have requested to remove the following confirmed project topics. If you agree, the topic will be deleted from that supervisor&apos;s pool only.
+                Supervisors have requested to remove the following confirmed project topics.
               </p>
             </div>
           </div>
 
           <div className="space-y-2">
-            {deleteRequests.map((req) => {
+            {supervisorInitiatedRequests.map((req) => {
               const key = `${req.topicId}:${req.supervisorId}`;
               return (
                 <div
@@ -310,6 +350,7 @@ export default function AdminTopicsPage() {
                   <th className="p-3">Category</th>
                   <th className="p-3">Project Theme</th>
                   <th className="p-3">WK, WP, EA, PO &amp; SDG Tags</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -432,6 +473,39 @@ export default function AdminTopicsPage() {
                             </span>
                           ))}
                         </div>
+                      </td>
+                      <td className="p-3 text-right whitespace-nowrap">
+                        {t.source === 'FACULTY' ? (
+                          deleteRequests.some(
+                            (r) => r.topicId === t.id && r.initiatedBy === 'ADMIN'
+                          ) ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                              Awaiting Supervisor Permission
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={resolvingKey === t.id}
+                              onClick={() => handleRequestFacultyDelete(t.id, t.code)}
+                              className="px-2.5 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold transition disabled:opacity-50"
+                              title="Faculty-proposed topics require permission from the respective supervisor to delete"
+                            >
+                              {resolvingKey === t.id
+                                ? 'Requesting...'
+                                : 'Request Supervisor Permission'}
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={resolvingKey === t.id}
+                            onClick={() => handleAdminDeleteTopic(t.id, t.code)}
+                            className="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[11px] font-semibold transition disabled:opacity-50"
+                            title="Directly delete this SIH or UG Research topic"
+                          >
+                            {resolvingKey === t.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

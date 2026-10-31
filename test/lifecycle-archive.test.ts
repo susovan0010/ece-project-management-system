@@ -7,6 +7,9 @@ import {
   requestTopicDeletionAction,
   resolveTopicDeleteRequestAction,
   finalDeleteApprovedTopicAction,
+  adminDeleteTopicAction,
+  adminRequestFacultyTopicDeleteAction,
+  supervisorResolveAdminDeleteRequestAction,
 } from '@/app/actions/project-lifecycle';
 import { processRawImportData } from '@/lib/import/parser';
 import { auth } from '@/auth';
@@ -326,5 +329,71 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
     expect(prisma.topic.delete).toHaveBeenCalledWith({
       where: { id: 'topic-conf-1' },
     });
+  });
+
+  it('allows Admin to directly delete SIH and UG_RESEARCH topics, but requires supervisor permission for FACULTY topics', async () => {
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN', name: 'Committee Admin' },
+    });
+
+    // 1. Direct delete of UG_RESEARCH topic succeeds
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-ug-1',
+      code: '5GC_01',
+      title: 'Massive MIMO Beamforming Optimization',
+      source: 'UG_RESEARCH',
+      proposer: null,
+      groups: [],
+      versions: [],
+    });
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const ugDelRes = await adminDeleteTopicAction('topic-ug-1');
+    expect(ugDelRes.success).toBe(true);
+    expect(prisma.topic.delete).toHaveBeenCalledWith({ where: { id: 'topic-ug-1' } });
+
+    // 2. Direct delete of FACULTY topic is blocked and requires supervisor permission
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-fac-1',
+      code: 'FAC-2026-001',
+      title: 'Faculty Custom RF Design',
+      source: 'FACULTY',
+      proposer: { id: 'fac-1', name: 'Dr. S. Roy', email: 'sroy@hitk.edu' },
+      groups: [],
+      versions: [],
+    });
+
+    const facDirectDel = await adminDeleteTopicAction('topic-fac-1');
+    expect(facDirectDel.error).toContain('Permission required');
+
+    // 3. Admin requests permission from supervisor
+    const reqPermRes = await adminRequestFacultyTopicDeleteAction('topic-fac-1');
+    expect(reqPermRes.success).toBe(true);
+    expect(reqPermRes.supervisorName).toBe('Dr. S. Roy');
+
+    // 4. Supervisor approves the Admin's delete request -> topic is deleted
+    (auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY', name: 'Dr. S. Roy' },
+    });
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      key: 'TOPIC_DELETE_REQUESTS',
+      value: [
+        {
+          topicId: 'topic-fac-1',
+          topicCode: 'FAC-2026-001',
+          topicTitle: 'Faculty Custom RF Design',
+          supervisorId: 'fac-1',
+          supervisorName: 'Dr. S. Roy',
+          supervisorEmail: 'sroy@hitk.edu',
+          requestedAt: new Date().toISOString(),
+          status: 'PENDING',
+          initiatedBy: 'ADMIN',
+        },
+      ],
+    });
+
+    const supApproveRes = await supervisorResolveAdminDeleteRequestAction('topic-fac-1', 'APPROVE');
+    expect(supApproveRes.success).toBe(true);
+    expect(prisma.topic.delete).toHaveBeenCalledWith({ where: { id: 'topic-fac-1' } });
   });
 });

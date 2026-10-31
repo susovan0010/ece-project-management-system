@@ -613,6 +613,7 @@ export interface TopicDeleteRequestRecord {
   reason?: string;
   status?: 'PENDING' | 'APPROVED';
   approvedAt?: string;
+  initiatedBy?: 'SUPERVISOR' | 'ADMIN';
 }
 
 export interface SupervisorDeletedTopicRecord {
@@ -731,6 +732,7 @@ export async function requestTopicDeletionAction(topicId: string, reason?: strin
       requestedAt: new Date().toISOString(),
       reason: reason?.trim() || 'Requested removal from supervisor pool after confirmation.',
       status: 'PENDING',
+      initiatedBy: 'SUPERVISOR',
     };
 
     const updatedList = [...existing, newRequest];
@@ -773,7 +775,6 @@ export async function getTopicDeleteRequestsAction() {
   try {
     const allRequests = await readPendingDeleteRequests();
     if (user.role === 'ADMIN') {
-      // Admins only need to act on PENDING requests
       return {
         requests: allRequests.filter((r) => (r.status || 'PENDING') === 'PENDING'),
       };
@@ -976,5 +977,309 @@ export async function finalDeleteApprovedTopicAction(topicId: string) {
     };
   } catch (err) {
     return { error: `Failed to finally delete topic: ${(err as Error).message}` };
+  }
+}
+
+// ============================================================================
+// 7. Admin Direct Delete for SIH / UG_RESEARCH & Supervisor Permission for FACULTY
+// ============================================================================
+export async function adminDeleteTopicAction(topicId: string) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string } | undefined;
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Forbidden: Only Admins can delete topics from the Admin Topic Bank.' };
+  }
+
+  try {
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: {
+        proposer: { select: { id: true, name: true, email: true } },
+        groups: {
+          include: {
+            supervisor: { select: { id: true, name: true, email: true } },
+          },
+        },
+        versions: {
+          select: { createdById: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!topic) {
+      return { error: 'Topic not found.' };
+    }
+
+    // If topic is proposed by FACULTY, Admin cannot delete directly without supervisor permission
+    if (topic.source === 'FACULTY') {
+      const facultyId =
+        topic.proposer?.id ||
+        topic.groups?.[0]?.supervisor?.id ||
+        topic.versions?.[0]?.createdById ||
+        null;
+
+      if (facultyId) {
+        return {
+          error:
+            'Permission required: This project was proposed by a faculty supervisor. Please click "Request Supervisor Permission" so the respective supervisor can approve deletion.',
+        };
+      }
+    }
+
+    // For SIH or UG_RESEARCH (or orphaned topic with no faculty creator), Admin can delete directly
+    const allGroups = topic.groups || [];
+    for (const grp of allGroups) {
+      await prisma.group.delete({ where: { id: grp.id } });
+    }
+
+    await prisma.topic.delete({
+      where: { id: topic.id },
+    });
+
+    // Clean up any pending requests for this topic
+    const allRequests = await readPendingDeleteRequests();
+    const remaining = allRequests.filter((r) => r.topicId !== topic.id);
+    if (remaining.length !== allRequests.length) {
+      await prisma.setting.upsert({
+        where: { key: DELETE_REQUESTS_SETTING_KEY },
+        update: { value: remaining as any },
+        create: { key: DELETE_REQUESTS_SETTING_KEY, value: remaining as any },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'ADMIN_DIRECT_DELETE_TOPIC',
+        entity: 'Topic',
+        entityId: topic.id,
+        payload: {
+          code: topic.code,
+          title: topic.title,
+          source: topic.source,
+        },
+      },
+    });
+
+    revalidatePath('/admin/topics');
+    revalidatePath('/admin/confirmed');
+    revalidatePath('/faculty/topics');
+    revalidatePath('/faculty/my-topics');
+
+    return {
+      success: true,
+      code: topic.code,
+      title: topic.title,
+      source: topic.source,
+    };
+  } catch (err) {
+    return { error: `Failed to delete topic: ${(err as Error).message}` };
+  }
+}
+
+export async function adminRequestFacultyTopicDeleteAction(topicId: string, reason?: string) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string; name?: string | null } | undefined;
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Forbidden: Only Admins can request supervisor permission to delete a faculty topic.' };
+  }
+
+  try {
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: {
+        proposer: { select: { id: true, name: true, email: true } },
+        groups: {
+          include: {
+            supervisor: { select: { id: true, name: true, email: true } },
+          },
+        },
+        versions: {
+          select: { createdById: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!topic) {
+      return { error: 'Topic not found.' };
+    }
+
+    let supervisor: { id: string; name: string; email: string } | null =
+      topic.proposer || topic.groups?.[0]?.supervisor || null;
+    if (!supervisor && topic.versions?.[0]?.createdById) {
+      supervisor = await prisma.user.findUnique({
+        where: { id: topic.versions[0].createdById },
+        select: { id: true, name: true, email: true },
+      });
+    }
+
+    // If no supervisor exists for this topic at all, delete it directly
+    if (!supervisor) {
+      await prisma.topic.delete({ where: { id: topic.id } });
+      revalidatePath('/admin/topics');
+      revalidatePath('/admin/confirmed');
+      return {
+        success: true,
+        deletedImmediately: true,
+        code: topic.code,
+        supervisorName: 'None',
+      };
+    }
+
+    const existing = await readPendingDeleteRequests();
+    const alreadyPending = existing.find(
+      (r) => r.topicId === topic.id && r.supervisorId === supervisor!.id
+    );
+    if (alreadyPending) {
+      return {
+        error: `A delete request for ${topic.code} is already pending with ${supervisor.name}.`,
+      };
+    }
+
+    const newReq: TopicDeleteRequestRecord = {
+      topicId: topic.id,
+      topicCode: topic.code,
+      topicTitle: topic.title,
+      supervisorId: supervisor.id,
+      supervisorName: supervisor.name,
+      supervisorEmail: supervisor.email,
+      requestedAt: new Date().toISOString(),
+      reason:
+        reason?.trim() ||
+        'Admin requested your permission to delete this faculty-proposed project topic.',
+      status: 'PENDING',
+      initiatedBy: 'ADMIN',
+    };
+
+    const updated = [...existing, newReq];
+    await prisma.setting.upsert({
+      where: { key: DELETE_REQUESTS_SETTING_KEY },
+      update: { value: updated as any },
+      create: { key: DELETE_REQUESTS_SETTING_KEY, value: updated as any },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'ADMIN_REQUEST_SUPERVISOR_PERMISSION_TO_DELETE_TOPIC',
+        entity: 'Topic',
+        entityId: topic.id,
+        payload: newReq as any,
+      },
+    });
+
+    revalidatePath('/admin/topics');
+    revalidatePath('/admin/confirmed');
+    revalidatePath('/faculty/my-topics');
+    revalidatePath('/faculty/topics');
+
+    return {
+      success: true,
+      deletedImmediately: false,
+      code: topic.code,
+      supervisorName: supervisor.name,
+    };
+  } catch (err) {
+    return { error: `Failed to request supervisor permission: ${(err as Error).message}` };
+  }
+}
+
+export async function supervisorResolveAdminDeleteRequestAction(
+  topicId: string,
+  decision: 'APPROVE' | 'REJECT'
+) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string } | undefined;
+  if (!user?.id || user.role !== 'FACULTY') {
+    return { error: 'Forbidden: Only the supervisor can grant or decline permission.' };
+  }
+  const supervisorId = user.id;
+
+  try {
+    const allRequests = await readPendingDeleteRequests();
+    const targetReq = allRequests.find(
+      (r) => r.topicId === topicId && r.supervisorId === supervisorId
+    );
+
+    if (decision === 'APPROVE') {
+      const topic = await prisma.topic.findUnique({
+        where: { id: topicId },
+        include: {
+          groups: { select: { id: true, supervisorId: true } },
+        },
+      });
+
+      if (topic) {
+        const allGroups = topic.groups || [];
+        for (const grp of allGroups) {
+          await prisma.group.delete({ where: { id: grp.id } });
+        }
+        await prisma.topic.delete({ where: { id: topicId } });
+      }
+
+      // Record in SUPERVISOR_DELETED_TOPICS as well
+      const deletedSetting = await prisma.setting.findUnique({
+        where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+      });
+      const existingDeleted =
+        deletedSetting && Array.isArray(deletedSetting.value)
+          ? (deletedSetting.value as unknown as SupervisorDeletedTopicRecord[])
+          : [];
+      const updatedDeleted: SupervisorDeletedTopicRecord[] = [
+        ...existingDeleted.filter(
+          (d) => !(d.topicId === topicId && d.supervisorId === supervisorId)
+        ),
+        { topicId, supervisorId, deletedAt: new Date().toISOString() },
+      ];
+      await prisma.setting.upsert({
+        where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+        update: { value: updatedDeleted as any },
+        create: { key: SUPERVISOR_DELETED_TOPICS_KEY, value: updatedDeleted as any },
+      });
+    }
+
+    // Remove the request from TOPIC_DELETE_REQUESTS
+    const remaining = allRequests.filter(
+      (r) => !(r.topicId === topicId && r.supervisorId === supervisorId)
+    );
+    await prisma.setting.upsert({
+      where: { key: DELETE_REQUESTS_SETTING_KEY },
+      update: { value: remaining as any },
+      create: { key: DELETE_REQUESTS_SETTING_KEY, value: remaining as any },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: supervisorId,
+        action:
+          decision === 'APPROVE'
+            ? 'SUPERVISOR_APPROVED_ADMIN_TOPIC_DELETE'
+            : 'SUPERVISOR_REJECTED_ADMIN_TOPIC_DELETE',
+        entity: 'Topic',
+        entityId: topicId,
+        payload: {
+          topicId,
+          topicCode: targetReq?.topicCode || topicId,
+          decision,
+        },
+      },
+    });
+
+    revalidatePath('/faculty/my-topics');
+    revalidatePath('/faculty/topics');
+    revalidatePath('/admin/topics');
+    revalidatePath('/admin/confirmed');
+
+    return {
+      success: true,
+      decision,
+      topicCode: targetReq?.topicCode || topicId,
+    };
+  } catch (err) {
+    return { error: `Failed to process delete permission: ${(err as Error).message}` };
   }
 }
