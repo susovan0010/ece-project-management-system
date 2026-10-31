@@ -323,13 +323,8 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
 
     const finalRes = await finalDeleteApprovedTopicAction('topic-conf-1');
     expect(finalRes.success).toBe(true);
-    expect(prisma.topic.update).toHaveBeenCalledWith({
+    expect(prisma.topic.delete).toHaveBeenCalledWith({
       where: { id: 'topic-conf-1' },
-      data: {
-        proposerId: null,
-        status: 'DRAFT',
-      },
     });
-    expect(prisma.topic.delete).not.toHaveBeenCalled();
   });
 });

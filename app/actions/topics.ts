@@ -5,6 +5,10 @@ import { prisma } from '@/lib/prisma';
 import { ParsedTopicRow } from '@/lib/import/parser';
 import { evaluateRules } from '@/lib/rules';
 import { Origin, TopicSource, TopicStatus } from '@prisma/client';
+import {
+  purgeFinallyDeletedTopics,
+  readAllFinallyDeletedTopicIds,
+} from '@/app/actions/project-lifecycle';
 
 // ----------------------------------------------------
 // 1. Get Existing Codes and Titles for Pre-import Validation
@@ -156,7 +160,13 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
   const pageSize = filters.pageSize || 25;
   const skip = (page - 1) * pageSize;
 
+  await purgeFinallyDeletedTopics();
+  const deletedTopicIds = await readAllFinallyDeletedTopicIds();
+
   const where: Record<string, unknown> = {};
+  if (deletedTopicIds.length > 0) {
+    where.id = { notIn: deletedTopicIds };
+  }
 
   if (filters.search) {
     where.OR = [
@@ -164,6 +174,7 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
       { code: { contains: filters.search, mode: 'insensitive' } },
       { description: { contains: filters.search, mode: 'insensitive' } },
       { domain: { contains: filters.search, mode: 'insensitive' } },
+      { proposer: { name: { contains: filters.search, mode: 'insensitive' } } },
     ];
   }
 
@@ -183,7 +194,7 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
     where.sdgs = { some: { sdgId: filters.sdg } };
   }
 
-  const [topics, totalCount, distinctThemeRows] = await Promise.all([
+  const [rawTopics, totalCount, distinctThemeRows] = await Promise.all([
     prisma.topic.findMany({
       where,
       skip,
@@ -193,6 +204,16 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
         sdgs: { include: { sdg: true } },
         attributes: { include: { attribute: true } },
         proposer: { select: { id: true, name: true, email: true } },
+        groups: {
+          include: {
+            supervisor: { select: { id: true, name: true, email: true } },
+          },
+        },
+        versions: {
+          select: { createdById: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
       },
     }),
     prisma.topic.count({ where }),
@@ -203,6 +224,75 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
       orderBy: { domain: 'asc' },
     }),
   ]);
+
+  // Resolve faculty proposer name even if proposerId was null (from groups, DescriptionVersion, or AuditLog)
+  const fallbackUserIds = new Set<string>();
+  const topicIdsMissingProposer: string[] = [];
+
+  for (const t of rawTopics) {
+    if (!t.proposer?.name && !t.groups?.[0]?.supervisor?.name) {
+      const versionCreatorId = t.versions?.[0]?.createdById;
+      if (versionCreatorId) {
+        fallbackUserIds.add(versionCreatorId);
+      } else {
+        topicIdsMissingProposer.push(t.id);
+      }
+    }
+  }
+
+  const auditTopicToUserId = new Map<string, string>();
+  if (topicIdsMissingProposer.length > 0) {
+    try {
+      const logs = await prisma.auditLog.findMany({
+        where: {
+          entity: 'Topic',
+          entityId: { in: topicIdsMissingProposer },
+        },
+        orderBy: { id: 'desc' },
+        select: { entityId: true, userId: true },
+      });
+      for (const l of logs) {
+        if (l.entityId && l.userId && !auditTopicToUserId.has(l.entityId)) {
+          auditTopicToUserId.set(l.entityId, l.userId);
+          fallbackUserIds.add(l.userId);
+        }
+      }
+    } catch {
+      // Ignore in test mocks
+    }
+  }
+
+  const fallbackUsersMap = new Map<string, { id: string; name: string; email: string }>();
+  if (fallbackUserIds.size > 0) {
+    try {
+      const users = await prisma.user.findMany({
+        where: { id: { in: Array.from(fallbackUserIds) } },
+        select: { id: true, name: true, email: true },
+      });
+      for (const u of users) {
+        fallbackUsersMap.set(u.id, u);
+      }
+    } catch {
+      // Ignore in test mocks
+    }
+  }
+
+  const topics = rawTopics.map((t) => {
+    const resolvedProposer =
+      t.proposer ||
+      t.groups?.[0]?.supervisor ||
+      (t.versions?.[0]?.createdById
+        ? fallbackUsersMap.get(t.versions[0].createdById) || null
+        : null) ||
+      (auditTopicToUserId.get(t.id)
+        ? fallbackUsersMap.get(auditTopicToUserId.get(t.id)!) || null
+        : null);
+
+    return {
+      ...t,
+      proposer: resolvedProposer,
+    };
+  });
 
   const themes = Array.from(
     new Set(

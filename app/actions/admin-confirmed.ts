@@ -7,6 +7,10 @@ import { revalidatePath } from 'next/cache';
 import { sanitizeCellForCsv } from '@/lib/csv-sanitize';
 import { deriveMappedPoCodes } from '@/lib/engine';
 import { evaluateRules } from '@/lib/rules';
+import {
+  purgeFinallyDeletedTopics,
+  readAllFinallyDeletedTopicIds,
+} from '@/app/actions/project-lifecycle';
 
 // ----------------------------------------------------
 // 1. Get Confirmed Topics for Admin Ledger
@@ -36,7 +40,13 @@ export async function getAdminConfirmedTopicsAction(params?: {
   } = params || {};
 
   try {
+    await purgeFinallyDeletedTopics();
+    const deletedTopicIds = await readAllFinallyDeletedTopicIds();
+
     const where: Prisma.TopicWhereInput = {};
+    if (deletedTopicIds.length > 0) {
+      where.id = { notIn: deletedTopicIds };
+    }
 
     if (status === 'ACTIVE') {
       where.status = { in: [TopicStatus.CONFIRMED, TopicStatus.ALLOTTED] };

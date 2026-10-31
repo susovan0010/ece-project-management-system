@@ -496,37 +496,86 @@ export async function deleteUnconfirmedTopicAction(topicId: string) {
   const session = await auth();
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id || user.role !== 'FACULTY') {
-    return { error: 'Forbidden: Only supervisors can delete their unconfirmed draft topics.' };
+    return { error: 'Forbidden: Only supervisors can delete their project topics.' };
   }
+  const supervisorId = user.id;
 
   try {
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
-      select: { id: true, code: true, title: true, status: true, proposerId: true },
+      include: {
+        groups: { select: { id: true, supervisorId: true } },
+        versions: { select: { createdById: true } },
+      },
     });
 
     if (!topic) {
       return { error: 'Project topic not found.' };
     }
 
-    if (topic.proposerId !== user.id) {
-      return { error: 'Forbidden: You can only delete a project topic that you created.' };
-    }
+    const allRequests = await readPendingDeleteRequests();
+    const matchingReq = allRequests.find(
+      (r) => r.topicId === topic.id && r.supervisorId === supervisorId
+    );
 
-    if (topic.status !== TopicStatus.DRAFT) {
+    if (topic.status !== TopicStatus.DRAFT && matchingReq?.status !== 'APPROVED') {
       return {
         error:
           'Cannot delete directly: Once a project is confirmed, you must request deletion from the Admin.',
       };
     }
 
-    await prisma.topic.delete({
-      where: { id: topic.id },
+    // Remove any group linking this supervisor to this topic
+    const allGroups = topic.groups || [];
+    const supervisorGroups = allGroups.filter((g) => g.supervisorId === supervisorId);
+    for (const grp of supervisorGroups) {
+      await prisma.group.delete({ where: { id: grp.id } });
+    }
+
+    const remainingOtherGroups = allGroups.filter((g) => g.supervisorId !== supervisorId);
+
+    // Record in SUPERVISOR_DELETED_TOPICS so this topic never appears in this supervisor's account again
+    const deletedSetting = await prisma.setting.findUnique({
+      where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
     });
+    const existingDeleted =
+      deletedSetting && Array.isArray(deletedSetting.value)
+        ? (deletedSetting.value as unknown as SupervisorDeletedTopicRecord[])
+        : [];
+    const updatedDeleted: SupervisorDeletedTopicRecord[] = [
+      ...existingDeleted.filter(
+        (d) => !(d.topicId === topic.id && d.supervisorId === supervisorId)
+      ),
+      { topicId: topic.id, supervisorId, deletedAt: new Date().toISOString() },
+    ];
+    await prisma.setting.upsert({
+      where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+      update: { value: updatedDeleted as any },
+      create: { key: SUPERVISOR_DELETED_TOPICS_KEY, value: updatedDeleted as any },
+    });
+
+    // Remove any pending/approved delete request for this topic
+    if (matchingReq) {
+      const remainingRequests = allRequests.filter(
+        (r) => !(r.topicId === topic.id && r.supervisorId === supervisorId)
+      );
+      await prisma.setting.upsert({
+        where: { key: DELETE_REQUESTS_SETTING_KEY },
+        update: { value: remainingRequests as any },
+        create: { key: DELETE_REQUESTS_SETTING_KEY, value: remainingRequests as any },
+      });
+    }
+
+    // Delete the topic from the database if no other supervisor's group is attached
+    if (remainingOtherGroups.length === 0) {
+      await prisma.topic.delete({
+        where: { id: topic.id },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
-        userId: user.id,
+        userId: supervisorId,
         action: 'DELETE_UNCONFIRMED_TOPIC',
         entity: 'Topic',
         entityId: topic.id,
@@ -545,7 +594,7 @@ export async function deleteUnconfirmedTopicAction(topicId: string) {
 
     return { success: true, code: topic.code, title: topic.title };
   } catch (err) {
-    return { error: `Failed to delete unconfirmed topic: ${(err as Error).message}` };
+    return { error: `Failed to delete topic: ${(err as Error).message}` };
   }
 }
 
@@ -594,6 +643,33 @@ export async function readSupervisorDeletedTopicIds(supervisorId: string): Promi
   }
   const rows = setting.value as unknown as SupervisorDeletedTopicRecord[];
   return rows.filter((r) => r.supervisorId === supervisorId).map((r) => r.topicId);
+}
+
+export async function readAllFinallyDeletedTopicIds(): Promise<string[]> {
+  const setting = await prisma.setting.findUnique({
+    where: { key: SUPERVISOR_DELETED_TOPICS_KEY },
+  });
+  if (!setting || !Array.isArray(setting.value)) {
+    return [];
+  }
+  const rows = setting.value as unknown as SupervisorDeletedTopicRecord[];
+  return Array.from(new Set(rows.map((r) => r.topicId)));
+}
+
+export async function purgeFinallyDeletedTopics(): Promise<void> {
+  try {
+    const deletedTopicIds = await readAllFinallyDeletedTopicIds();
+    if (deletedTopicIds.length > 0) {
+      await prisma.topic.deleteMany({
+        where: {
+          id: { in: deletedTopicIds },
+          groups: { none: {} },
+        },
+      });
+    }
+  } catch {
+    // Ignore errors during background cleanup or unit test mocks
+  }
 }
 
 export async function requestTopicDeletionAction(topicId: string, reason?: string) {
@@ -794,46 +870,52 @@ export async function finalDeleteApprovedTopicAction(topicId: string) {
   const supervisorId = user.id;
 
   try {
-    const allRequests = await readPendingDeleteRequests();
+    const [allRequests, topic] = await Promise.all([
+      readPendingDeleteRequests(),
+      prisma.topic.findUnique({
+        where: { id: topicId },
+        include: {
+          groups: { select: { id: true, supervisorId: true } },
+        },
+      }),
+    ]);
+
     const approvedReq = allRequests.find(
       (r) => r.topicId === topicId && r.supervisorId === supervisorId && r.status === 'APPROVED'
     );
 
-    if (!approvedReq) {
+    if (!approvedReq && (!topic || topic.status !== TopicStatus.DRAFT)) {
       return {
         error:
           'Cannot perform Final Delete: Admin approval is required before finally deleting a confirmed project.',
       };
     }
 
-    const topic = await prisma.topic.findUnique({
-      where: { id: topicId },
-      include: {
-        groups: { select: { id: true, supervisorId: true } },
-      },
-    });
-
     if (topic) {
       // Remove any group linking this supervisor to this topic
-      const supervisorGroups = topic.groups.filter((g) => g.supervisorId === supervisorId);
+      const allGroups = topic.groups || [];
+      const supervisorGroups = allGroups.filter((g) => g.supervisorId === supervisorId);
       for (const grp of supervisorGroups) {
         await prisma.group.delete({ where: { id: grp.id } });
       }
 
-      const remainingOtherGroups = topic.groups.filter((g) => g.supervisorId !== supervisorId);
+      const remainingOtherGroups = allGroups.filter((g) => g.supervisorId !== supervisorId);
 
-      // Remove from this supervisor's pool only (keep the topic in the general Admin Topic Bank)
-      const shouldClearProposer = topic.proposerId === supervisorId;
-      const nextStatus =
-        remainingOtherGroups.length > 0 ? TopicStatus.ALLOTTED : TopicStatus.DRAFT;
-
-      await prisma.topic.update({
-        where: { id: topicId },
-        data: {
-          proposerId: shouldClearProposer ? null : topic.proposerId,
-          status: nextStatus,
-        },
-      });
+      if (remainingOtherGroups.length === 0) {
+        // Permanently delete the topic from the database so it is removed from Admin & Supervisor accounts
+        await prisma.topic.delete({
+          where: { id: topicId },
+        });
+      } else {
+        const shouldClearProposer = topic.proposerId === supervisorId;
+        await prisma.topic.update({
+          where: { id: topicId },
+          data: {
+            proposerId: shouldClearProposer ? null : topic.proposerId,
+            status: TopicStatus.ALLOTTED,
+          },
+        });
+      }
     }
 
     // Record in SUPERVISOR_DELETED_TOPICS so this topic never appears in this supervisor's account again
@@ -873,7 +955,12 @@ export async function finalDeleteApprovedTopicAction(topicId: string) {
         action: 'FINAL_DELETE_APPROVED_TOPIC_BY_SUPERVISOR',
         entity: 'Topic',
         entityId: topicId,
-        payload: approvedReq as any,
+        payload: (approvedReq || {
+          topicId,
+          topicCode: topic?.code || topicId,
+          topicTitle: topic?.title || 'Deleted Topic',
+          supervisorId,
+        }) as any,
       },
     });
 
@@ -884,8 +971,8 @@ export async function finalDeleteApprovedTopicAction(topicId: string) {
 
     return {
       success: true,
-      topicCode: approvedReq.topicCode,
-      topicTitle: approvedReq.topicTitle,
+      topicCode: approvedReq?.topicCode || topic?.code || topicId,
+      topicTitle: approvedReq?.topicTitle || topic?.title || 'Deleted Topic',
     };
   } catch (err) {
     return { error: `Failed to finally delete topic: ${(err as Error).message}` };

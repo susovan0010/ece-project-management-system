@@ -408,7 +408,21 @@ export default function MyTopicsClient() {
                       </span>
                     </div>
 
-                    {isDraft ? (
+                    {isDeleteApprovedByAdmin ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          disabled={processingId === t.id}
+                          onClick={() => handleFinalDeleteApproved(t.id, t.code)}
+                          className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
+                          title="Admin has agreed to your delete request. Click to finally delete this project."
+                        >
+                          {processingId === t.id
+                            ? 'Deleting...'
+                            : 'Final Delete (Admin Agreed)'}
+                        </button>
+                      </div>
+                    ) : isDraft ? (
                       /* Unconfirmed (DRAFT) Actions: Direct Confirm or Direct Delete */
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                         <div className="flex items-center gap-2">
