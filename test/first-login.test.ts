@@ -17,9 +17,13 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
-import { completeFirstLoginAction, createFacultyAccountAction } from '../app/actions/auth';
+import {
+  loginAction,
+  completeFirstLoginAction,
+  createFacultyAccountAction,
+} from '../app/actions/auth';
 import { prisma } from '../lib/prisma';
-import { auth } from '@/auth';
+import { auth, signIn } from '@/auth';
 
 describe('First-Time Login Credential Update (Admin vs Faculty)', () => {
   beforeEach(() => {
@@ -191,5 +195,72 @@ describe('First-Time Login Credential Update (Admin vs Faculty)', () => {
         }),
       })
     );
+  });
+
+  it('allows an ADMIN account to sign in as Supervisor (FACULTY, default selection) with the same credentials', async () => {
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'admin-1',
+      role: 'ADMIN',
+      active: true,
+    } as any);
+    vi.mocked(signIn).mockResolvedValue(undefined as any);
+
+    const formData = new FormData();
+    formData.append('email', 'admin.project@heritageit.edu');
+    formData.append('password', 'AdminPass@2026');
+    // Omitted loginRole defaults to 'FACULTY' (Supervisor)
+
+    const res = await loginAction(null, formData);
+    expect(res.success).toBe(true);
+    expect(res.redirectTo).toBe('/faculty/topics');
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({
+        email: 'admin.project@heritageit.edu',
+        loginRole: 'FACULTY',
+      })
+    );
+  });
+
+  it('allows an ADMIN account to sign in as Admin when Admin option is selected', async () => {
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'admin-1',
+      role: 'ADMIN',
+      active: true,
+    } as any);
+    vi.mocked(signIn).mockResolvedValue(undefined as any);
+
+    const formData = new FormData();
+    formData.append('email', 'admin.project@heritageit.edu');
+    formData.append('password', 'AdminPass@2026');
+    formData.append('loginRole', 'ADMIN');
+
+    const res = await loginAction(null, formData);
+    expect(res.success).toBe(true);
+    expect(res.redirectTo).toBe('/admin/dashboard');
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({
+        email: 'admin.project@heritageit.edu',
+        loginRole: 'ADMIN',
+      })
+    );
+  });
+
+  it('rejects a FACULTY-only account from signing in with the Admin option selected', async () => {
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'faculty-1',
+      role: 'FACULTY',
+      active: true,
+    } as any);
+
+    const formData = new FormData();
+    formData.append('email', 'faculty.test@heritageit.edu');
+    formData.append('password', 'FacultyPass@2026');
+    formData.append('loginRole', 'ADMIN');
+
+    const res = await loginAction(null, formData);
+    expect(res.error).toContain('Access denied');
+    expect(signIn).not.toHaveBeenCalled();
   });
 });

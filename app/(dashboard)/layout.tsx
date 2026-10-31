@@ -25,7 +25,9 @@ export default async function DashboardLayout({
     },
   });
 
-  const role = ((dbUser?.role || (session.user as { role?: string })?.role || 'FACULTY') as 'ADMIN' | 'FACULTY');
+  const sessionRole = (session.user as { role?: string })?.role as 'ADMIN' | 'FACULTY' | undefined;
+  const role = (sessionRole || dbUser?.role || 'FACULTY') as 'ADMIN' | 'FACULTY';
+  const accountRole = (dbUser?.role || role) as 'ADMIN' | 'FACULTY';
   const userName = dbUser?.name || session.user.name || 'Department Member';
   const userEmail = dbUser?.email || session.user.email || '';
   const mustChangePassword = dbUser?.mustChangePassword ?? false;
@@ -46,7 +48,7 @@ export default async function DashboardLayout({
           </div>
           <div className="flex items-center gap-3">
             <FirstLoginModal
-              role={role}
+              role={accountRole}
               userName={userName}
               userEmail={userEmail}
               mustChangePassword={mustChangePassword}

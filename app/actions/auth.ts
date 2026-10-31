@@ -19,33 +19,45 @@ import {
 const SignInSchema = z.object({
   email: z.string().email('Please enter a valid institute or registered email.'),
   password: z.string().min(6, 'Password must be at least 6 characters.'),
+  loginRole: z.enum(['FACULTY', 'ADMIN']).default('FACULTY'),
 });
 
 export async function loginAction(prevState: unknown, formData: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
+  const rawRole = (formData.get('loginRole') as string) || 'FACULTY';
+  const loginRole = rawRole === 'ADMIN' ? 'ADMIN' : 'FACULTY';
 
-  const parsed = SignInSchema.safeParse({ email, password });
+  const parsed = SignInSchema.safeParse({ email, password, loginRole });
   if (!parsed.success) {
     return { error: parsed.error.errors[0].message };
   }
 
   try {
-    // Authenticate through NextAuth
-    await signIn('credentials', {
-      email: parsed.data.email.toLowerCase().trim(),
-      password: parsed.data.password,
-      redirect: false,
+    const cleanEmail = parsed.data.email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({
+      where: { email: cleanEmail },
+      select: { id: true, role: true, active: true },
     });
 
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.data.email.toLowerCase().trim() },
-      select: { role: true },
+    if (user && parsed.data.loginRole === 'ADMIN' && user.role !== 'ADMIN') {
+      return {
+        error:
+          'Access denied: Your account does not have Project Committee Admin privileges. Please select Supervisor to sign in.',
+      };
+    }
+
+    // Authenticate through NextAuth with selected loginRole
+    await signIn('credentials', {
+      email: cleanEmail,
+      password: parsed.data.password,
+      loginRole: parsed.data.loginRole,
+      redirect: false,
     });
 
     return {
       success: true,
-      redirectTo: user?.role === 'ADMIN' ? '/admin/dashboard' : '/faculty/topics',
+      redirectTo: parsed.data.loginRole === 'ADMIN' ? '/admin/dashboard' : '/faculty/topics',
     };
   } catch (err) {
     return { error: 'Invalid email or password. Please verify credentials.' };

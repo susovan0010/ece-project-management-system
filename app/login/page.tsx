@@ -7,6 +7,7 @@ import { loginAction } from '@/app/actions/auth';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [loginRole, setLoginRole] = useState<'FACULTY' | 'ADMIN'>('FACULTY');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -16,6 +17,7 @@ export default function LoginPage() {
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    formData.set('loginRole', loginRole);
     const result = await loginAction(null, formData);
 
     if (result.error) {
@@ -57,6 +59,58 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Role Option Buttons (Default: Supervisor) */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">
+              Sign In Role
+            </label>
+            <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Sign In Role">
+              <label
+                onClick={() => setLoginRole('FACULTY')}
+                className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                  loginRole === 'FACULTY'
+                    ? 'bg-blue-50 border-blue-600 text-blue-900 ring-2 ring-blue-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="loginRole"
+                  value="FACULTY"
+                  checked={loginRole === 'FACULTY'}
+                  onChange={() => setLoginRole('FACULTY')}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300"
+                />
+                <div>
+                  <div>Supervisor</div>
+                  <div className="text-[10px] font-normal text-slate-500">Faculty Workspace</div>
+                </div>
+              </label>
+
+              <label
+                onClick={() => setLoginRole('ADMIN')}
+                className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                  loginRole === 'ADMIN'
+                    ? 'bg-amber-50 border-amber-600 text-amber-900 ring-2 ring-amber-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="loginRole"
+                  value="ADMIN"
+                  checked={loginRole === 'ADMIN'}
+                  onChange={() => setLoginRole('ADMIN')}
+                  className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-slate-300"
+                />
+                <div>
+                  <div>Admin</div>
+                  <div className="text-[10px] font-normal text-slate-500">Project Committee</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div>
             <label
               htmlFor="email"
@@ -114,8 +168,10 @@ export default function LoginPage() {
                 </svg>
                 <span>Authenticating...</span>
               </>
+            ) : loginRole === 'ADMIN' ? (
+              'Sign In as Admin'
             ) : (
-              'Sign In'
+              'Sign In as Supervisor'
             )}
           </button>
         </form>

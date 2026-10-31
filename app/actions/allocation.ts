@@ -63,7 +63,6 @@ export async function validateAllocationDataAction(rows: RawAllocationRow[]): Pr
       prisma.user.findMany({
         where: {
           email: { in: supervisorEmails },
-          role: 'FACULTY',
           active: true,
         },
         select: { email: true },
