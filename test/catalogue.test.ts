@@ -97,10 +97,15 @@ describe('Rubric Maxima & Spot-Check Verification (Brief Checks)', () => {
   });
 
   it('spot-checks 5 specific criteria against the specification', () => {
-    // 1. Rubric A Literature survey = 30
+    // 1. Rubric A Literature survey = 12 (5 criteria x 12 = 60 in Form 6-S)
     const rubricA = RUBRICS.find((r) => r.code === 'A');
     const litSurveyA = rubricA?.criteria.find((c) => c.key === 'lit_survey');
-    expect(litSurveyA?.maxMarks).toBe(30);
+    expect(litSurveyA?.maxMarks).toBe(12);
+    expect(rubricA?.criteria).toHaveLength(5);
+
+    const rubricB = RUBRICS.find((r) => r.code === 'B');
+    expect(rubricB?.criteria).toHaveLength(4);
+    expect(rubricB?.criteria.every((c) => c.maxMarks === 10)).toBe(true);
 
     // 2. Rubric C Leadership and teamwork = 20
     const rubricC = RUBRICS.find((r) => r.code === 'C');

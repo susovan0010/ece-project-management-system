@@ -116,13 +116,32 @@ export const RUBRICS = [
   {
     code: 'A',
     semester: 6,
-    title: 'Semester 6 - Supervisor Continuous Evaluation',
+    title: "6th Semester – Supervisor's Evaluation Sheet (Rubric A)",
     maxMarks: 60,
     criteria: [
       {
+        key: 'regularity',
+        label: 'Regularity',
+        maxMarks: 12,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
+        key: 'task_completion',
+        label: 'Task Completion',
+        maxMarks: 12,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WP', code: 'WP1' }, { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO9' }, { kind: 'PO', code: 'PO10' },
+        ],
+      },
+      {
         key: 'lit_survey',
-        label: 'Literature Survey & Topic Understanding',
-        maxMarks: 30,
+        label: 'Literature Survey',
+        maxMarks: 12,
         scope: Scope.STUDENT,
         maps: [
           { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP4' },
@@ -132,22 +151,23 @@ export const RUBRICS = [
         ],
       },
       {
-        key: 'regularity',
-        label: 'Regularity, Task Completion & Involvement',
-        maxMarks: 15,
-        scope: Scope.STUDENT,
-        maps: [
-          { kind: 'PO', code: 'PO10' }, { kind: 'PO', code: 'PO11' },
-        ],
-      },
-      {
-        key: 'conduct',
-        label: 'Behaviour, Professionalism & Conduct',
-        maxMarks: 15,
+        key: 'behaviour',
+        label: 'Behaviour',
+        maxMarks: 12,
         scope: Scope.STUDENT,
         maps: [
           { kind: 'WK', code: 'WK7' }, { kind: 'WK', code: 'WK9' },
           { kind: 'PO', code: 'PO7' }, { kind: 'PO', code: 'PO8' },
+        ],
+      },
+      {
+        key: 'involvement',
+        label: 'Involvement',
+        maxMarks: 12,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WK', code: 'WK9' }, { kind: 'EA', code: 'EA1' },
+          { kind: 'PO', code: 'PO8' }, { kind: 'PO', code: 'PO11' },
         ],
       },
     ],
@@ -155,13 +175,22 @@ export const RUBRICS = [
   {
     code: 'B',
     semester: 6,
-    title: 'Semester 6 - End-Semester Panel Evaluation',
+    title: "6th Semester – Co-examiner's Evaluation Sheet (Rubric B)",
     maxMarks: 40,
     criteria: [
       {
+        key: 'presentation',
+        label: 'Presentation',
+        maxMarks: 10,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'PO', code: 'PO9' },
+        ],
+      },
+      {
         key: 'knowledge_own_work',
-        label: 'Knowledge of Own Work & Methodology',
-        maxMarks: 15,
+        label: 'Knowledge of Work',
+        maxMarks: 10,
         scope: Scope.STUDENT,
         maps: [
           { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP3' },
@@ -170,35 +199,26 @@ export const RUBRICS = [
         ],
       },
       {
+        key: 'lit_survey',
+        label: 'Literature Survey',
+        maxMarks: 10,
+        scope: Scope.STUDENT,
+        maps: [
+          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP4' },
+          { kind: 'WK', code: 'WK1' }, { kind: 'WK', code: 'WK8' },
+          { kind: 'EA', code: 'EA5' },
+          { kind: 'PO', code: 'PO2' }, { kind: 'PO', code: 'PO4' }, { kind: 'PO', code: 'PO11' },
+        ],
+      },
+      {
         key: 'viva_voce',
-        label: 'Viva Voce & Technical Defense',
+        label: 'Viva Voce',
         maxMarks: 10,
         scope: Scope.STUDENT,
         maps: [
           { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP3' },
           { kind: 'WK', code: 'WK3' }, { kind: 'WK', code: 'WK4' }, { kind: 'WK', code: 'WK6' },
           { kind: 'PO', code: 'PO1' }, { kind: 'PO', code: 'PO9' },
-        ],
-      },
-      {
-        key: 'presentation',
-        label: 'Presentation, Slides & Communication',
-        maxMarks: 10,
-        scope: Scope.GROUP,
-        maps: [
-          { kind: 'PO', code: 'PO9' },
-        ],
-      },
-      {
-        key: 'lit_survey',
-        label: 'Literature Survey & Synthesis',
-        maxMarks: 5,
-        scope: Scope.GROUP,
-        maps: [
-          { kind: 'WP', code: 'WP1' }, { kind: 'WP', code: 'WP4' },
-          { kind: 'WK', code: 'WK1' }, { kind: 'WK', code: 'WK8' },
-          { kind: 'EA', code: 'EA5' },
-          { kind: 'PO', code: 'PO2' }, { kind: 'PO', code: 'PO4' }, { kind: 'PO', code: 'PO11' },
         ],
       },
     ],
