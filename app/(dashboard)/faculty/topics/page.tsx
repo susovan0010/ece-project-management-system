@@ -6,6 +6,7 @@ import {
   searchFacultyTopicsAction,
   getFacultyTopicDetailAction,
 } from '@/app/actions/faculty-topics';
+import { claimAndConfirmBankTopicAction } from '@/app/actions/project-lifecycle';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
 
 interface TopicItem {
@@ -14,6 +15,7 @@ interface TopicItem {
   title: string;
   source: string;
   category: string;
+  status: 'DRAFT' | 'CONFIRMED' | 'ALLOTTED' | 'ARCHIVED';
   domain: string | null;
   organization: string | null;
   description: string | null;
@@ -44,6 +46,8 @@ export default function FacultyTopicsSearchPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   // Filters
   const [query, setQuery] = useState('');
@@ -55,6 +59,26 @@ export default function FacultyTopicsSearchPage() {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [detailTopic, setDetailTopic] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  async function handleConfirmBankTopic(topicId: string) {
+    setConfirmingId(topicId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await claimAndConfirmBankTopicAction(topicId);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(
+        `Topic ${res.topic?.code} ("${res.topic?.title}") confirmed and tagged as ACTIVE! It is now visible in your Active Portfolio and the Admin Ledger.`
+      );
+      await fetchTopics(page);
+      if (selectedTopicId === topicId) {
+        const refreshed = await getFacultyTopicDetailAction(topicId);
+        if (refreshed.topic) setDetailTopic(refreshed.topic);
+      }
+    }
+    setConfirmingId(null);
+  }
 
   // Load topics
   async function fetchTopics(currentPage = page) {
@@ -258,10 +282,21 @@ export default function FacultyTopicsSearchPage() {
         {loading && <div className="text-blue-600 font-semibold animate-pulse">Searching catalogue...</div>}
       </div>
 
-      {/* Error state */}
+      {/* Error & Success states */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
+        </div>
+      )}
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm flex items-center justify-between gap-3">
+          <span>{successMsg}</span>
+          <Link
+            href="/faculty/my-topics"
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shrink-0"
+          >
+            View My Active Topics →
+          </Link>
         </div>
       )}
 
@@ -281,18 +316,38 @@ export default function FacultyTopicsSearchPage() {
           {topics.map((t) => {
             const wpAttrs = t.attributes.filter((a) => a.attribute.kind === 'WP');
             const wkAttrs = t.attributes.filter((a) => a.attribute.kind === 'WK');
+            const isActive = t.status === 'CONFIRMED' || t.status === 'ALLOTTED';
+            const isArchived = t.status === 'ARCHIVED';
 
             return (
               <div
                 key={t.id}
-                className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between border-t-4 border-t-blue-600"
+                className={`bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between border-t-4 ${
+                  isActive
+                    ? 'border-t-emerald-600'
+                    : isArchived
+                    ? 'border-t-slate-400'
+                    : 'border-t-blue-600'
+                }`}
               >
                 <div>
-                  {/* Top Bar: Code, Category, Source */}
+                  {/* Top Bar: Code, Active Status, Category, Source */}
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      {t.code}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        {t.code}
+                      </span>
+                      {isActive && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          ACTIVE
+                        </span>
+                      )}
+                      {isArchived && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                          ARCHIVED
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
@@ -315,6 +370,13 @@ export default function FacultyTopicsSearchPage() {
                   <h3 className="font-bold text-slate-900 text-sm line-clamp-2 leading-snug">
                     {t.title}
                   </h3>
+
+                  {/* Supervisor Attribution if claimed */}
+                  {t.proposer && (
+                    <p className="text-[11px] font-semibold text-emerald-700 mt-1">
+                      Supervisor: {t.proposer.name}
+                    </p>
+                  )}
 
                   {/* Organization / Domain */}
                   {(t.organization || t.domain) && (
@@ -364,19 +426,35 @@ export default function FacultyTopicsSearchPage() {
                 </div>
 
                 {/* Footer Buttons */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <button
                     onClick={() => handleOpenDetail(t.id)}
                     className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"
                   >
                     Inspect Details →
                   </button>
-                  <Link
-                    href={`/faculty/topics/new?adopt=${t.code}`}
-                    className="px-3 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition"
-                  >
-                    Adopt Topic
-                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    {!isArchived && (
+                      <button
+                        type="button"
+                        disabled={confirmingId === t.id}
+                        onClick={() => handleConfirmBankTopic(t.id)}
+                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition disabled:opacity-50"
+                      >
+                        {confirmingId === t.id
+                          ? 'Confirming...'
+                          : isActive
+                          ? 'Active'
+                          : 'Confirm as Active'}
+                      </button>
+                    )}
+                    <Link
+                      href={`/faculty/topics/new?adopt=${t.code}`}
+                      className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition"
+                    >
+                      Customize
+                    </Link>
+                  </div>
                 </div>
               </div>
             );
@@ -523,18 +601,32 @@ export default function FacultyTopicsSearchPage() {
                 </div>
 
                 {/* Adopt Action in Drawer */}
-                <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                <div className="pt-4 border-t border-slate-200 flex flex-wrap justify-end gap-2">
                   <button
                     onClick={handleCloseDetail}
                     className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
                   >
                     Close
                   </button>
+                  {detailTopic.status !== 'ARCHIVED' && (
+                    <button
+                      type="button"
+                      disabled={confirmingId === detailTopic.id}
+                      onClick={() => handleConfirmBankTopic(detailTopic.id)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                    >
+                      {confirmingId === detailTopic.id
+                        ? 'Confirming...'
+                        : detailTopic.status === 'CONFIRMED' || detailTopic.status === 'ALLOTTED'
+                        ? 'Confirmed (Active)'
+                        : 'Select & Confirm as Active'}
+                    </button>
+                  )}
                   <Link
                     href={`/faculty/topics/new?adopt=${detailTopic.code}`}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition"
                   >
-                    Adopt Topic for Project Group →
+                    Customize &amp; Confirm →
                   </Link>
                 </div>
               </div>

@@ -86,17 +86,40 @@ export function processRawImportData(
     let code = '';
     if (sourceType === 'SIH') {
       // Look for PS Number or Problem Statement ID
-      code = (
-        (row['PS Number'] ||
-          row['PS ID'] ||
-          row['Problem Statement Number'] ||
-          row['Code'] ||
-          `SIH26${String(index + 1).padStart(3, '0')}`) as string
-      ).trim();
+      const rawCode = (
+        row['PS Number'] ||
+        row['PS ID'] ||
+        row['Problem Statement Number'] ||
+        row['Code'] ||
+        ''
+      ) as string;
+      if (String(rawCode).trim()) {
+        code = String(rawCode).trim();
+      } else {
+        let seq = existingCodes.size + index + 1;
+        while (
+          existingCodes.has(`SIH26${String(seq).padStart(3, '0')}`) ||
+          seenBatchCodes.has(`SIH26${String(seq).padStart(3, '0')}`)
+        ) {
+          seq++;
+        }
+        code = `SIH26${String(seq).padStart(3, '0')}`;
+      }
     } else {
       // UG Research generates UGR-001...
-      const padded = String(index + 1).padStart(3, '0');
-      code = (row['Code'] as string) || `UGR-${padded}`;
+      const rawCode = (row['Code'] || row['PS Number'] || '') as string;
+      if (String(rawCode).trim()) {
+        code = String(rawCode).trim();
+      } else {
+        let seq = index + 1;
+        while (
+          existingCodes.has(`UGR-${String(seq).padStart(3, '0')}`) ||
+          seenBatchCodes.has(`UGR-${String(seq).padStart(3, '0')}`)
+        ) {
+          seq++;
+        }
+        code = `UGR-${String(seq).padStart(3, '0')}`;
+      }
     }
 
     // 2. Title Resolution

@@ -34,7 +34,9 @@ export async function getAdminConfirmedTopicsAction(params?: {
   try {
     const where: Prisma.TopicWhereInput = {};
 
-    if (status && status !== 'ALL') {
+    if (status === 'ACTIVE') {
+      where.status = { in: [TopicStatus.CONFIRMED, TopicStatus.ALLOTTED] };
+    } else if (status && status !== 'ALL') {
       where.status = status as TopicStatus;
     }
 
@@ -62,7 +64,7 @@ export async function getAdminConfirmedTopicsAction(params?: {
     const skip = (Math.max(1, page) - 1) * pageSize;
     const take = pageSize;
 
-    const [totalCount, topics, totalConfirmed, totalDraft, totalAllotted] = await Promise.all([
+    const [totalCount, topics, totalConfirmed, totalDraft, totalAllotted, totalArchived] = await Promise.all([
       prisma.topic.count({ where }),
       prisma.topic.findMany({
         where,
@@ -87,6 +89,7 @@ export async function getAdminConfirmedTopicsAction(params?: {
       prisma.topic.count({ where: { status: TopicStatus.CONFIRMED } }),
       prisma.topic.count({ where: { status: TopicStatus.DRAFT } }),
       prisma.topic.count({ where: { status: TopicStatus.ALLOTTED } }),
+      prisma.topic.count({ where: { status: TopicStatus.ARCHIVED } }),
     ]);
 
     return {
@@ -99,6 +102,7 @@ export async function getAdminConfirmedTopicsAction(params?: {
         confirmed: totalConfirmed,
         draft: totalDraft,
         allotted: totalAllotted,
+        archived: totalArchived,
       },
     };
   } catch (err) {

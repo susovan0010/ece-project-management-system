@@ -29,6 +29,74 @@ export default function TopicImportWizardPage() {
   const [isDone, setIsDone] = useState(false);
 
   // ----------------------------------------------------
+  // Download Blank Excel Format Template (.xlsx)
+  // ----------------------------------------------------
+  async function handleDownloadBlankTemplate() {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'HITK ECE Project Committee';
+    workbook.created = new Date();
+
+    const sheetName = sourceType === 'SIH' ? 'SIH Topics Format' : 'UG Research Format';
+    const sheet = workbook.addWorksheet(sheetName);
+
+    const headers = [
+      'Code',
+      'Title',
+      'Category',
+      'Domain',
+      'Organization',
+      'Description',
+      'Mapped SDG(s)',
+      'Keywords',
+    ];
+
+    const headerRow = sheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    });
+
+    // Add 1 sample row (can be replaced or overwritten by the Admin)
+    sheet.addRow([
+      sourceType === 'SIH' ? 'SIH26901' : 'UGR-901',
+      'Sample: FPGA-Based Real-Time Signal Processing for Smart Grid Monitoring',
+      'Hardware',
+      'Embedded Systems & VLSI',
+      'HITK ECE Department',
+      'Design and implement a low-latency FPGA acquisition and processing pipeline for harmonic distortion analysis in microgrids.',
+      '7, 9',
+      'FPGA, VLSI, Smart Grid, Signal Processing',
+    ]);
+
+    sheet.columns = [
+      { width: 16 }, // Code
+      { width: 42 }, // Title
+      { width: 16 }, // Category (Hardware / Software / Both)
+      { width: 24 }, // Domain
+      { width: 24 }, // Organization
+      { width: 55 }, // Description
+      { width: 18 }, // Mapped SDG(s)
+      { width: 28 }, // Keywords
+    ];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute(
+      'download',
+      `HITK_ECE_Blank_Topic_Upload_Format_${sourceType}.xlsx`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // ----------------------------------------------------
   // Step 1: File Parsing (CSV or XLSX)
   // ----------------------------------------------------
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -158,7 +226,7 @@ export default function TopicImportWizardPage() {
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header & Breadcrumb */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
             <Link href="/admin/topics" className="hover:text-blue-600">
@@ -168,12 +236,23 @@ export default function TopicImportWizardPage() {
             <span>Import Wizard</span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            Import Topics Wizard
+            Import &amp; Append Topics Wizard
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Bulk-import Smart India Hackathon (SIH) or UG Research topic spreadsheets into the catalogue.
+            Download the blank Excel format, populate it with new project topics, and upload. New topics are automatically appended to the existing catalogue.
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={handleDownloadBlankTemplate}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition self-start sm:self-auto"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Download Blank Excel Format (.xlsx)
+        </button>
       </div>
 
       {/* Step Stepper */}
@@ -204,7 +283,7 @@ export default function TopicImportWizardPage() {
       {/* STEP 1: Upload and Configuration */}
       {step === 1 && (
         <div className="bg-white border border-slate-200/80 rounded-xl p-8 shadow-sm space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-start">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">
                 Topic Source Type
@@ -219,9 +298,25 @@ export default function TopicImportWizardPage() {
               </select>
               <p className="text-[11px] text-slate-500 mt-1">
                 {sourceType === 'SIH'
-                  ? 'Uses PS Number as topic code and maps themes to domains.'
+                  ? 'Uses PS Number / Code as topic code and maps themes to domains.'
                   : 'Generates sequential UGR-001.. codes and classifies Hardware/Software via keywords.'}
               </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+              <div className="text-xs font-bold text-emerald-900">
+                Need the Standard Blank Excel Format?
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Any Admin can download the blank Excel format below, fill in new project topics, and upload it here. Newly uploaded topics are appended to the existing topic bank without overwriting existing entries.
+              </p>
+              <button
+                type="button"
+                onClick={handleDownloadBlankTemplate}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition"
+              >
+                <span>Download Blank Format ({sourceType === 'SIH' ? 'SIH' : 'UG Research'})</span>
+              </button>
             </div>
           </div>
 
