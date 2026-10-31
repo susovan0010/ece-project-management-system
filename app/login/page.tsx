@@ -38,14 +38,11 @@ export default function LoginPage() {
             ECE
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Capstone Management System
+            Project Management System
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-medium">
             Heritage Institute of Technology, Kolkata
           </p>
-          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <span>NBA & Washington Accord Accredited</span>
-          </div>
         </div>
 
         {error && (
