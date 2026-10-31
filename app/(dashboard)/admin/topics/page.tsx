@@ -262,6 +262,7 @@ export default function AdminTopicsPage() {
             className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-600"
           >
             <option value="ALL">All Categories</option>
+            <option value="Custom">Custom</option>
             <option value="Software">Software</option>
             <option value="Hardware">Hardware</option>
             <option value="Both">Both (Hardware + Software)</option>
@@ -373,6 +374,7 @@ export default function AdminTopicsPage() {
                           onChange={(e) => handleCategoryChange(t.id, e.target.value)}
                           className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-blue-600"
                         >
+                          <option value="Custom">Custom</option>
                           <option value="Software">Software</option>
                           <option value="Hardware">Hardware</option>
                           <option value="Both">Both</option>

@@ -5,7 +5,7 @@
 // ========================================================
 
 export type TopicSourceType = 'SIH' | 'UG_RESEARCH' | 'FACULTY';
-export type TopicCategoryType = 'Software' | 'Hardware' | 'Both';
+export type TopicCategoryType = 'Custom' | 'Software' | 'Hardware' | 'Both';
 
 export interface ParsedTopicRow {
   code: string;
@@ -131,17 +131,17 @@ export function processRawImportData(
         `Untitled Project ${index + 1}`) as string
     ).trim();
 
-    // 3. Category Resolution
-    let category: TopicCategoryType = 'Software';
+    // 3. Category Resolution (Default is 'Custom' so the supervisor defines the project category)
+    let category: TopicCategoryType = 'Custom';
     if (row['Category']) {
       const catStr = String(row['Category']).trim().toLowerCase();
-      if (catStr.includes('hard') || catStr === 'hardware') category = 'Hardware';
+      if (catStr.includes('custom')) category = 'Custom';
+      else if (catStr.includes('hard') || catStr === 'hardware') category = 'Hardware';
       else if (catStr.includes('both') || catStr.includes('hybrid')) category = 'Both';
-      else category = 'Software';
+      else if (catStr.includes('soft') || catStr === 'software') category = 'Software';
+      else category = 'Custom';
     } else {
-      // Auto-detect for UG research
-      const contentForHeuristic = `${title} ${String(row['Description'] || '')} ${String(row['Objectives'] || '')}`;
-      category = predictCategory(contentForHeuristic);
+      category = 'Custom';
     }
 
     // 4. Theme / Domain / Description

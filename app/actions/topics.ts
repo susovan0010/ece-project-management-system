@@ -312,13 +312,14 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
 }
 
 // ----------------------------------------------------
-// 4. Update Topic Category Inline Action
+// 4. Update Topic Category Inline Action (Supervisor & Admin)
 // ----------------------------------------------------
 export async function updateTopicCategoryAction(id: string, category: string) {
   const session = await auth();
+  const role = (session?.user as { role?: string } | undefined)?.role;
 
-  if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
-    return { error: 'Unauthorized: Only Project Committee Admins can update categories.' };
+  if (!session?.user || (role !== 'ADMIN' && role !== 'FACULTY')) {
+    return { error: 'Unauthorized: Only Supervisors or Admins can update project categories.' };
   }
 
   await prisma.topic.update({

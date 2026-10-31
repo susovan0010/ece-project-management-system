@@ -279,7 +279,7 @@ export default function FacultyTopicsSearchPage() {
 
           {/* Category Toggle Pills */}
           <div className="md:col-span-3 flex items-center bg-slate-100 p-1 rounded-lg">
-            {['ALL', 'Hardware', 'Software', 'Both'].map((cat) => (
+            {['ALL', 'Custom', 'Hardware', 'Software', 'Both'].map((cat) => (
               <button
                 key={cat}
                 type="button"
@@ -290,7 +290,7 @@ export default function FacultyTopicsSearchPage() {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {cat === 'ALL' ? 'All Types' : cat}
+                {cat === 'ALL' ? 'All' : cat}
               </button>
             ))}
           </div>

@@ -49,21 +49,21 @@ describe('Import Engine: SDG Target Extraction', () => {
 });
 
 describe('Import Engine: Ingestion Normalization & Duplicate Detection', () => {
-  it('generates sequential UGR codes and applies category heuristics for UG research', () => {
+  it('generates sequential UGR codes and defaults category to Custom so supervisor can define it', () => {
     const rawRows = [
       { Title: 'Smart Agriculture Soil Moisture Sensor', 'Mapped SDG(s)': 'SDG 2' },
-      { Title: 'E-Commerce Recommendation System', 'Mapped SDG(s)': 'SDG 9' },
+      { Title: 'E-Commerce Recommendation System', Category: 'Custom', 'Mapped SDG(s)': 'SDG 9' },
     ];
 
     const processed = processRawImportData(rawRows, 'UG_RESEARCH');
 
     expect(processed.length).toBe(2);
     expect(processed[0].code).toBe('UGR-001');
-    expect(processed[0].category).toBe('Hardware'); // mentions sensor
+    expect(processed[0].category).toBe('Custom'); // defaults to Custom
     expect(processed[0].sdgIds).toEqual([2]);
 
     expect(processed[1].code).toBe('UGR-002');
-    expect(processed[1].category).toBe('Software'); // recommendation system
+    expect(processed[1].category).toBe('Custom'); // explicit Custom
     expect(processed[1].sdgIds).toEqual([9]);
   });
 

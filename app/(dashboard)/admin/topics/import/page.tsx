@@ -56,11 +56,11 @@ export default function TopicImportWizardPage() {
       cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     });
 
-    // Add 2 sample rows showcasing project Themes (Disaster Management, Transportation & Logistics)
+    // Add 2 sample rows showcasing project Themes (Disaster Management, Transportation & Logistics) with default Category 'Custom'
     sheet.addRow([
       sourceType === 'SIH' ? 'SIH26901' : 'UGR-901',
       'Sample: LoRa-Mesh Early Warning & Flood Telemetry Node for Disaster Response',
-      'Hardware',
+      'Custom',
       'Disaster Management',
       'Design and implement a resilient low-power LoRa-mesh sensor and emergency alert node for real-time flood and landslide monitoring.',
       '11, 13',
@@ -70,7 +70,7 @@ export default function TopicImportWizardPage() {
     sheet.addRow([
       sourceType === 'SIH' ? 'SIH26902' : 'UGR-902',
       'Sample: GNSS & RFID Assisted Smart Fleet Routing and Cold-Chain Tracker',
-      'Both',
+      'Custom',
       'Transportation & Logistics',
       'Develop an integrated IoT vehicle telemetry unit and routing optimization platform for real-time cargo and traffic logistics.',
       '9, 11',
@@ -80,7 +80,7 @@ export default function TopicImportWizardPage() {
     sheet.columns = [
       { width: 16 }, // Code
       { width: 42 }, // Title
-      { width: 16 }, // Category (Hardware / Software / Both)
+      { width: 16 }, // Category (Custom / Hardware / Software / Both)
       { width: 28 }, // Theme (e.g. Disaster Management, Transportation & Logistics)
       { width: 55 }, // Description
       { width: 18 }, // Mapped SDG(s)
@@ -432,6 +432,7 @@ export default function TopicImportWizardPage() {
                           }
                           className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-blue-600"
                         >
+                          <option value="Custom">Custom</option>
                           <option value="Software">Software</option>
                           <option value="Hardware">Hardware</option>
                           <option value="Both">Both</option>

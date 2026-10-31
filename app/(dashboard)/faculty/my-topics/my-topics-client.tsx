@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getMyConfirmedTopicsAction } from '@/app/actions/faculty-topics';
+import { updateTopicCategoryAction } from '@/app/actions/topics';
 import { deriveMappedPoCodes } from '@/lib/engine';
 import { evaluateRules } from '@/lib/rules';
 import {
@@ -298,9 +299,25 @@ export default function MyTopicsClient() {
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
                           Theme: {t.domain || 'General ECE'}
                         </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                          {t.category}
-                        </span>
+                        <select
+                          value={t.category || 'Custom'}
+                          onChange={async (e) => {
+                            const newCat = e.target.value;
+                            setTopics((prev) =>
+                              prev.map((item) =>
+                                item.id === t.id ? { ...item, category: newCat } : item
+                              )
+                            );
+                            await updateTopicCategoryAction(t.id, newCat);
+                          }}
+                          title="Supervisor can define or update the project category"
+                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300 focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                        >
+                          <option value="Custom">Category: Custom</option>
+                          <option value="Hardware">Category: Hardware</option>
+                          <option value="Software">Category: Software</option>
+                          <option value="Both">Category: Both</option>
+                        </select>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
                           {t.proposer?.name || t.source}
                         </span>

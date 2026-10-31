@@ -205,7 +205,7 @@ export async function evaluateAiTopicMappingAction(input: {
 const SaveProposalSchema = z.object({
   code: z.string().min(1),
   title: z.string().min(3, 'Title must be at least 3 characters'),
-  category: z.enum(['Hardware', 'Software', 'Both']),
+  category: z.enum(['Custom', 'Hardware', 'Software', 'Both']),
   domain: z.string().optional(),
   organization: z.string().optional(),
   description: z.string().min(10, 'Description must be at least 10 characters'),

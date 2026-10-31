@@ -43,7 +43,7 @@ export default function ProposeTopicClient() {
   // Form State
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<'Hardware' | 'Software' | 'Both'>('Hardware');
+  const [category, setCategory] = useState<'Custom' | 'Hardware' | 'Software' | 'Both'>('Custom');
   const [domain, setDomain] = useState('');
   const [organization, setOrganization] = useState('');
   const [description, setDescription] = useState('');
@@ -396,6 +396,7 @@ export default function ProposeTopicClient() {
                   onChange={(e) => setCategory(e.target.value as any)}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-slate-900"
                 >
+                  <option value="Custom">Custom</option>
                   <option value="Hardware">Hardware</option>
                   <option value="Software">Software</option>
                   <option value="Both">Both (Hybrid)</option>
