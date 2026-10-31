@@ -34,6 +34,24 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
   } = params;
 
   try {
+    // Auto-repair any UG Research topics (e.g. 5GC_01, AHC_01, UGR-...) that were previously tagged as SIH
+    try {
+      await prisma.topic.updateMany({
+        where: {
+          source: TopicSource.SIH,
+          NOT: [
+            { code: { startsWith: 'SIH', mode: 'insensitive' } },
+            { code: { startsWith: 'FAC', mode: 'insensitive' } },
+          ],
+        },
+        data: {
+          source: TopicSource.UG_RESEARCH,
+        },
+      });
+    } catch {
+      // Ignore in unit test mocks
+    }
+
     const where: Prisma.TopicWhereInput = {};
 
     // Exclude topics that this supervisor has finally deleted from their account

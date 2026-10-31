@@ -82,44 +82,58 @@ export function processRawImportData(
   const seenBatchTitles = new Set<string>();
 
   rows.forEach((row, index) => {
-    // 1. Code Resolution
-    let code = '';
-    if (sourceType === 'SIH') {
-      // Look for PS Number or Problem Statement ID
-      const rawCode = (
-        row['PS Number'] ||
+    // 1. Code & Source Resolution
+    const rawExplicitCode = String(
+      row['PS Number'] ||
         row['PS ID'] ||
         row['Problem Statement Number'] ||
+        row['Topic Code'] ||
+        row['Topic ID'] ||
         row['Code'] ||
+        row['ID'] ||
         ''
-      ) as string;
-      if (String(rawCode).trim()) {
-        code = String(rawCode).trim();
-      } else {
-        let seq = existingCodes.size + index + 1;
-        while (
-          existingCodes.has(`SIH26${String(seq).padStart(3, '0')}`) ||
-          seenBatchCodes.has(`SIH26${String(seq).padStart(3, '0')}`)
-        ) {
-          seq++;
-        }
-        code = `SIH26${String(seq).padStart(3, '0')}`;
+    ).trim();
+
+    const rawSourceCol = String(row['Source'] || row['source'] || row['Topic Source'] || '')
+      .trim()
+      .toUpperCase();
+
+    let rowSource: TopicSourceType = sourceType;
+    if (rawSourceCol.includes('UG') || rawSourceCol.includes('RESEARCH')) {
+      rowSource = 'UG_RESEARCH';
+    } else if (rawSourceCol === 'SIH') {
+      rowSource = 'SIH';
+    } else if (
+      sourceType === 'SIH' &&
+      rawExplicitCode &&
+      !rawExplicitCode.toUpperCase().startsWith('SIH') &&
+      !rawExplicitCode.toUpperCase().startsWith('FAC')
+    ) {
+      // Non-SIH codes such as 5GC_01, AHC_01, UGR-001 belong to UG Research
+      rowSource = 'UG_RESEARCH';
+    }
+
+    let code = '';
+    if (rawExplicitCode) {
+      code = rawExplicitCode;
+    } else if (rowSource === 'SIH') {
+      let seq = existingCodes.size + index + 1;
+      while (
+        existingCodes.has(`SIH26${String(seq).padStart(3, '0')}`) ||
+        seenBatchCodes.has(`SIH26${String(seq).padStart(3, '0')}`)
+      ) {
+        seq++;
       }
+      code = `SIH26${String(seq).padStart(3, '0')}`;
     } else {
-      // UG Research generates UGR-001...
-      const rawCode = (row['Code'] || row['PS Number'] || '') as string;
-      if (String(rawCode).trim()) {
-        code = String(rawCode).trim();
-      } else {
-        let seq = index + 1;
-        while (
-          existingCodes.has(`UGR-${String(seq).padStart(3, '0')}`) ||
-          seenBatchCodes.has(`UGR-${String(seq).padStart(3, '0')}`)
-        ) {
-          seq++;
-        }
-        code = `UGR-${String(seq).padStart(3, '0')}`;
+      let seq = index + 1;
+      while (
+        existingCodes.has(`UGR-${String(seq).padStart(3, '0')}`) ||
+        seenBatchCodes.has(`UGR-${String(seq).padStart(3, '0')}`)
+      ) {
+        seq++;
       }
+      code = `UGR-${String(seq).padStart(3, '0')}`;
     }
 
     // 2. Title Resolution
@@ -198,7 +212,7 @@ export function processRawImportData(
     result.push({
       code,
       title,
-      source: sourceType,
+      source: rowSource,
       category,
       domain: domain ? String(domain).trim() : undefined,
       organization: organization ? String(organization).trim() : undefined,

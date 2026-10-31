@@ -112,4 +112,23 @@ describe('Import Engine: Ingestion Normalization & Duplicate Detection', () => {
     expect(processed[0].domain).toBe('Disaster Management');
     expect(processed[1].domain).toBe('Transportation & Logistics');
   });
+
+  it('automatically tags UG Research codes (such as 5GC_01, AHC_01) with source UG_RESEARCH', () => {
+    const rawRows = [
+      {
+        Code: '5GC_01',
+        Title: 'Massive MIMO Beamforming Optimization for Energy-Efficient 5G Base Stations',
+        Theme: '5G Communication',
+      },
+      {
+        Code: 'AHC_01',
+        Title: 'Secure Routing Protocol for Vehicular Ad-hoc Networks (VANETs)',
+        Theme: 'Ad-hoc Communication',
+      },
+    ];
+
+    const processed = processRawImportData(rawRows, 'SIH');
+    expect(processed[0].source).toBe('UG_RESEARCH');
+    expect(processed[1].source).toBe('UG_RESEARCH');
+  });
 });

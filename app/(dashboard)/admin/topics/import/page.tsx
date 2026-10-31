@@ -165,12 +165,23 @@ export default function TopicImportWizardPage() {
         throw new Error('The uploaded file contains no data rows.');
       }
 
+      // Auto-detect UG Research if filename indicates UG or Research
+      const lowerFileName = file.name.toLowerCase();
+      let effectiveSource: TopicSourceType = sourceType;
+      if (lowerFileName.includes('ug') || lowerFileName.includes('research')) {
+        effectiveSource = 'UG_RESEARCH';
+        setSourceType('UG_RESEARCH');
+      } else if (lowerFileName.includes('sih')) {
+        effectiveSource = 'SIH';
+        setSourceType('SIH');
+      }
+
       // Fetch existing codes & titles to detect duplicate entries
       const existing = await getExistingCodesAndTitlesAction();
       const existingCodes = new Set(existing.codes);
       const existingTitles = new Set(existing.titles);
 
-      const processed = processRawImportData(rawData, sourceType, existingCodes, existingTitles);
+      const processed = processRawImportData(rawData, effectiveSource, existingCodes, existingTitles);
       setParsedRows(processed);
       setStep(3); // Advance straight to preview & edit
     } catch (err) {
@@ -181,12 +192,22 @@ export default function TopicImportWizardPage() {
   }
 
   // ----------------------------------------------------
-  // Inline Category Modification in Preview Grid
+  // Inline Category & Source Modification in Preview Grid
   // ----------------------------------------------------
   function handleCategoryChange(index: number, newCategory: TopicCategoryType) {
     const updated = [...parsedRows];
     updated[index].category = newCategory;
     setParsedRows(updated);
+  }
+
+  function handleBulkSourceChange(newSource: TopicSourceType) {
+    setSourceType(newSource);
+    setParsedRows((prev) =>
+      prev.map((r) => ({
+        ...r,
+        source: newSource,
+      }))
+    );
   }
 
   // ----------------------------------------------------
@@ -199,11 +220,12 @@ export default function TopicImportWizardPage() {
     setCommittedCount(0);
     setIsDone(false);
 
-    const validRows = parsedRows.filter((r) => !r.isDuplicate);
+    // Commit all rows (existing codes will be updated via upsert with the selected Source, Category, and Theme)
+    const validRows = parsedRows;
     const total = validRows.length;
 
     if (total === 0) {
-      setError('No valid, non-duplicate rows to import.');
+      setError('No rows to import.');
       setLoading(false);
       return;
     }
@@ -377,7 +399,18 @@ export default function TopicImportWizardPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                <span className="text-xs font-bold text-slate-700">Tag Source As:</span>
+                <select
+                  value={sourceType}
+                  onChange={(e) => handleBulkSourceChange(e.target.value as TopicSourceType)}
+                  className="px-2.5 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-blue-800 focus:ring-1 focus:ring-blue-600"
+                >
+                  <option value="SIH">SIH (Smart India Hackathon)</option>
+                  <option value="UG_RESEARCH">UG Research</option>
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={() => setStep(1)}
@@ -390,7 +423,7 @@ export default function TopicImportWizardPage() {
                 onClick={handleStartCommit}
                 className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm"
               >
-                Commit Valid Rows in Chunks &rarr;
+                Commit &amp; Update All {parsedRows.length} Rows &rarr;
               </button>
             </div>
           </div>

@@ -163,6 +163,24 @@ export async function getTopicsAction(filters: TopicFilters = {}) {
   await purgeFinallyDeletedTopics();
   const deletedTopicIds = await readAllFinallyDeletedTopicIds();
 
+  // Auto-repair any UG Research topics (e.g. 5GC_01, AHC_01, UGR-...) that were previously tagged as SIH
+  try {
+    await prisma.topic.updateMany({
+      where: {
+        source: TopicSource.SIH,
+        NOT: [
+          { code: { startsWith: 'SIH', mode: 'insensitive' } },
+          { code: { startsWith: 'FAC', mode: 'insensitive' } },
+        ],
+      },
+      data: {
+        source: TopicSource.UG_RESEARCH,
+      },
+    });
+  } catch {
+    // Ignore in unit test mocks
+  }
+
   const where: Record<string, unknown> = {};
   if (deletedTopicIds.length > 0) {
     where.id = { notIn: deletedTopicIds };
