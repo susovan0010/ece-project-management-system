@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getMyFacultyGroupsAction } from '@/app/actions/faculty-groups';
-import { getGroupMarksAction, saveMarksEntryAction } from '@/app/actions/marks';
+import { getGroupMarksAction, saveMarksEntryAction, getRubricDefinitionAction } from '@/app/actions/marks';
 
 interface StudentItem {
   id: string;
@@ -60,6 +60,25 @@ export default function MarksClient() {
   // Input state: key is `${criterionId}_${studentId || 'GROUP'}_${examinerSlot}` -> number
   const [markInputs, setMarkInputs] = useState<Record<string, number>>({});
 
+  // Helper: load rubric definition for preview when no group is selected
+  async function loadRubricPreview(code: string) {
+    setLoading(true);
+    setError(null);
+    setCurrentGroup(null);
+    setStudents([]);
+    setIsLocked(false);
+    setDeadline(null);
+
+    const res = await getRubricDefinitionAction(code);
+    if (res.error) {
+      setError(res.error);
+    } else if (res.rubric) {
+      setRubric(res.rubric);
+      setCriteria((res.rubric.criteria || []) as CriterionItem[]);
+    }
+    setLoading(false);
+  }
+
   // Load faculty groups on mount
   useEffect(() => {
     async function loadInitial() {
@@ -68,7 +87,11 @@ export default function MarksClient() {
         setGroups(res.groups);
         if (!selectedGroupId && res.groups.length > 0) {
           setSelectedGroupId(res.groups[0].id);
+        } else if (res.groups.length === 0) {
+          loadRubricPreview(rubricCode);
         }
+      } else {
+        loadRubricPreview(rubricCode);
       }
     }
     loadInitial();
@@ -76,7 +99,10 @@ export default function MarksClient() {
 
   // Load marks whenever selectedGroupId or rubricCode changes
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) {
+      loadRubricPreview(rubricCode);
+      return;
+    }
 
     async function loadMarks() {
       setLoading(true);
@@ -256,11 +282,18 @@ export default function MarksClient() {
               onChange={(e) => setSelectedGroupId(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 font-semibold"
             >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  Group {g.number} ({g.batchId}) - {g.topic.code}: {g.topic.title.slice(0, 45)}...
-                </option>
-              ))}
+              {groups.length === 0 ? (
+                <option value="">No allotted project groups yet</option>
+              ) : (
+                <>
+                  <option value="">-- Choose a Project Group --</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      Group {g.number} ({g.batchId}) - {g.topic.code}: {g.topic.title.slice(0, 45)}...
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
 
@@ -307,6 +340,26 @@ export default function MarksClient() {
             </div>
             <div className="text-slate-500">
               Supervisor: <span className="font-semibold text-slate-800">{currentGroup.supervisor.name}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Empty Groups Notice */}
+        {groups.length === 0 && (
+          <div className="pt-3 border-t border-slate-100 flex items-start gap-3 bg-blue-50/70 p-3.5 rounded-xl border border-blue-200 text-xs text-blue-900">
+            <svg className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="space-y-1">
+              <p className="font-bold text-blue-950">
+                No Student Project Groups Allotted Yet
+              </p>
+              <p className="text-blue-800 leading-relaxed">
+                Marks entry is group-specific. Once the Project Committee Admin allocates student groups to your confirmed topics (under <em>Student Allocation</em>), your groups and enrolled students will appear here for entering marks.
+              </p>
+              <p className="text-blue-700 font-medium">
+                In the meantime, the evaluation criteria, maximum marks, and PO/WK alignments for Rubrics A through F are displayed below in preview mode.
+              </p>
             </div>
           </div>
         )}
@@ -381,11 +434,20 @@ export default function MarksClient() {
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden space-y-4">
           <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">
-                {rubric?.title} (Max: {rubric?.maxMarks} Marks)
-              </h3>
-              <p className="text-xs text-slate-500">
-                {rubricCode === 'D'
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {rubric?.title} (Max: {rubric?.maxMarks} Marks)
+                </h3>
+                {!selectedGroupId && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    Preview Mode
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {!selectedGroupId
+                  ? 'Evaluation criteria & mark weights for this rubric. Select an allotted group above to enter and save marks.'
+                  : rubricCode === 'D'
                   ? `Entering scores for Examiner Slot ${activeSlot}. Final score will average all slots.`
                   : 'Enter marks per criterion. Group criteria apply to all members.'}
               </p>
@@ -443,7 +505,12 @@ export default function MarksClient() {
                   </div>
 
                   {/* Input Rendering */}
-                  {isGroupScope ? (
+                  {!selectedGroupId ? (
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 text-xs text-slate-500 italic flex items-center justify-between">
+                      <span>{isGroupScope ? 'Group Scope (Applies to all members of the group)' : 'Student Scope (Individual student evaluation)'}</span>
+                      <span className="font-semibold text-slate-600">Max Marks: {crit.maxMarks}</span>
+                    </div>
+                  ) : isGroupScope ? (
                     // Single input for entire group
                     <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200">
                       <span className="text-xs font-semibold text-slate-700 flex-1">
@@ -521,51 +588,63 @@ export default function MarksClient() {
             })}
 
             {/* Total Summary Table per Student */}
-            <div className="pt-4 border-t border-slate-200">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 mb-2">
-                Computed Total Scores per Student ({rubric?.maxMarks} Max)
-              </h4>
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-2">Roll</th>
-                      <th className="px-4 py-2">Student Name</th>
-                      <th className="px-4 py-2 text-right">Computed Total</th>
-                      <th className="px-4 py-2 text-right">Percentage</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {students.map((s) => {
-                      const total = getStudentTotalMarks(s.id);
-                      const pct = Math.round((total / (rubric?.maxMarks || 1)) * 100);
+            {selectedGroupId && students.length > 0 && (
+              <div className="pt-4 border-t border-slate-200">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 mb-2">
+                  Computed Total Scores per Student ({rubric?.maxMarks} Max)
+                </h4>
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-500 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-2">Roll</th>
+                        <th className="px-4 py-2">Student Name</th>
+                        <th className="px-4 py-2 text-right">Computed Total</th>
+                        <th className="px-4 py-2 text-right">Percentage</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {students.map((s) => {
+                        const total = getStudentTotalMarks(s.id);
+                        const pct = Math.round((total / (rubric?.maxMarks || 1)) * 100);
 
-                      return (
-                        <tr key={s.id} className="hover:bg-slate-50 font-semibold">
-                          <td className="px-4 py-2 font-mono text-blue-700">{s.roll}</td>
-                          <td className="px-4 py-2 text-slate-900">{s.name}</td>
-                          <td className="px-4 py-2 text-right font-mono text-sm font-bold text-slate-900">
-                            {total} / {rubric?.maxMarks}
-                          </td>
-                          <td className="px-4 py-2 text-right font-mono">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                pct >= 65 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {pct}%
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50 font-semibold">
+                            <td className="px-4 py-2 font-mono text-blue-700">{s.roll}</td>
+                            <td className="px-4 py-2 text-slate-900">{s.name}</td>
+                            <td className="px-4 py-2 text-right font-mono text-sm font-bold text-slate-900">
+                              {total} / {rubric?.maxMarks}
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  pct >= 65 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {pct}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Action Bar */}
-            {!isLocked && (
+            {!selectedGroupId ? (
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
+                <span>Select an allotted project group above to begin entering marks.</span>
+                <Link
+                  href="/faculty/rubrics"
+                  className="font-semibold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
+                >
+                  View &amp; Print Evaluation Sheets →
+                </Link>
+              </div>
+            ) : !isLocked && (
               <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
                 <button
                   type="button"

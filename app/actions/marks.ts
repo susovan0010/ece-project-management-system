@@ -331,6 +331,40 @@ export async function saveMarksEntryAction(payload: z.infer<typeof SaveMarksSche
 // ----------------------------------------------------
 // 3. Get Printable Rubric Template
 // ----------------------------------------------------
+export async function getRubricDefinitionAction(rubricCode: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized: You must be logged in to view rubrics.' };
+  }
+
+  try {
+    await ensureRubricsSynced();
+    const rubric = await prisma.rubric.findUnique({
+      where: { code: rubricCode },
+      include: {
+        criteria: {
+          include: {
+            maps: {
+              include: {
+                attribute: true,
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
+      },
+    });
+
+    if (!rubric) {
+      return { error: `Rubric "${rubricCode}" not found.` };
+    }
+
+    return { rubric };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
 export async function getPrintableRubricsAction() {
   const session = await auth();
   if (!session?.user?.id) {
