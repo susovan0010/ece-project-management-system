@@ -109,7 +109,6 @@ model Attribute {
   title       String
   text        String
   topicAttrs  TopicAttribute[]
-  maps        CriterionMap[]
 }
 
 model WkPoMap {
@@ -169,7 +168,6 @@ model CriterionMap {
   kind        String         // WP | WK | EA | PO
   code        String         // e.g. "WP1", "WK8", "PO3"
   criterion   Criterion      @relation(fields: [criterionId], references: [id], onDelete: Cascade)
-  attribute   Attribute?     @relation(fields: [code], references: [code])
 
   @@id([criterionId, kind, code])
 }

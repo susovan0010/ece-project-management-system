@@ -126,11 +126,7 @@ export async function getGroupMarksAction(groupId: string, rubricCode: string) {
       include: {
         criteria: {
           include: {
-            maps: {
-              include: {
-                attribute: true,
-              },
-            },
+            maps: true,
           },
           orderBy: { id: 'asc' },
         },
@@ -344,11 +340,7 @@ export async function getRubricDefinitionAction(rubricCode: string) {
       include: {
         criteria: {
           include: {
-            maps: {
-              include: {
-                attribute: true,
-              },
-            },
+            maps: true,
           },
           orderBy: { id: 'asc' },
         },
@@ -378,11 +370,7 @@ export async function getPrintableRubricsAction() {
       include: {
         criteria: {
           include: {
-            maps: {
-              include: {
-                attribute: true,
-              },
-            },
+            maps: true,
           },
           orderBy: { id: 'asc' },
         },
