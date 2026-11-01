@@ -77,7 +77,7 @@ export default function PrintableRubricsPage() {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <div>7th Semester (Stage I)</div>
+          <div>7th Semester (Stage II)</div>
           <div className="text-[10px] font-normal opacity-80">
             Form 7-S (Rubric C: 50m) &amp; Form 7-P (Rubric D: 50m)
           </div>
@@ -91,7 +91,7 @@ export default function PrintableRubricsPage() {
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <div>8th Semester (Stage II)</div>
+          <div>8th Semester (Stage III)</div>
           <div className="text-[10px] font-normal opacity-80">
             Form 8-S (Rubric E: 40m) &amp; Form 8-E (Rubric F: 60m)
           </div>
