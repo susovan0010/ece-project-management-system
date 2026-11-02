@@ -5,8 +5,12 @@ import { prisma } from '@/lib/prisma';
 import {
   draftDescription,
   mapTopicAttributes,
+  evaluateSdgCoSatisfiability,
+  suggestSupportedSdgs,
   ProviderConfig,
   TopicMappingOutput,
+  SdgCoSatisfiabilityOutput,
+  SuggestedSdgsOutput,
 } from '@/lib/ai';
 import { qualifies, Levels } from '@/lib/engine';
 import { Origin, TopicSource, TopicStatus } from '@prisma/client';
@@ -97,8 +101,8 @@ export interface GenerateAiDraftParams {
   keywords?: string[];
   tags?: string[];
   existingAbstract?: string;
-  targetAttributes?: Array<{ code: string; level: number; reason?: string }>;
-  targetSdgs?: Array<{ sdg: number; target?: string; title?: string }>;
+  targetAttributes?: Array<{ code: string; level: number; title?: string; statement?: string; reason?: string }>;
+  targetSdgs?: Array<{ sdg: number; target?: string; title?: string; targetDescription?: string; reason?: string }>;
   sdgHint?: string;
 }
 
@@ -210,7 +214,86 @@ export async function evaluateAiTopicMappingAction(input: EvaluateAiMappingParam
 }
 
 // ----------------------------------------------------
-// 4. Save Faculty Topic Proposal Action
+// 4. AI Check SDG Co-Satisfiability Action
+// ----------------------------------------------------
+export interface CheckSdgCompatibilityParams {
+  title: string;
+  category: string;
+  theme?: string;
+  tags?: string[];
+  abstract?: string;
+  selectedSdgs: Array<{ sdg: number; title?: string; target?: string; targetDescription?: string }>;
+}
+
+export async function checkSdgCompatibilityAction(input: CheckSdgCompatibilityParams) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized.' };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { preferredAiProvider: true },
+    });
+
+    const providers = await getActiveAiProviders();
+    const res = await evaluateSdgCoSatisfiability(
+      providers,
+      input,
+      user?.preferredAiProvider || undefined
+    );
+
+    return {
+      result: res.result,
+      providerUsed: res.providerUsed,
+    };
+  } catch (err) {
+    return { error: `Failed to evaluate SDG compatibility: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 5. AI Suggest Supported SDGs Action
+// ----------------------------------------------------
+export interface SuggestSupportedSdgsParams {
+  title: string;
+  category: string;
+  theme?: string;
+  tags?: string[];
+  abstract?: string;
+}
+
+export async function suggestSupportedSdgsAction(input: SuggestSupportedSdgsParams) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized.' };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { preferredAiProvider: true },
+    });
+
+    const providers = await getActiveAiProviders();
+    const res = await suggestSupportedSdgs(
+      providers,
+      input,
+      user?.preferredAiProvider || undefined
+    );
+
+    return {
+      suggestions: res.suggestions,
+      providerUsed: res.providerUsed,
+    };
+  } catch (err) {
+    return { error: `Failed to suggest SDGs: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 6. Save Faculty Topic Proposal Action
 // ----------------------------------------------------
 const SaveProposalSchema = z.object({
   code: z.string().min(1),

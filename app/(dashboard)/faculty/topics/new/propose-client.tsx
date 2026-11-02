@@ -7,11 +7,14 @@ import {
   getFacultyProposalMetadataAction,
   generateAiDescriptionDraftAction,
   evaluateAiTopicMappingAction,
+  checkSdgCompatibilityAction,
+  suggestSupportedSdgsAction,
   saveFacultyTopicProposalAction,
   checkCapstoneQualificationAction,
 } from '@/app/actions/faculty-propose';
 import { getFacultyTopicDetailAction } from '@/app/actions/faculty-topics';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
+import { ATTRIBUTE_METADATA, SDG_METADATA } from '@/lib/attributes-metadata';
 
 interface AttributeItem {
   id: number;
@@ -67,6 +70,29 @@ export default function ProposeTopicClient() {
   const [selectedSdgs, setSelectedSdgs] = useState<
     Record<number, { target?: string; reason?: string }>
   >({});
+
+  // SDG Co-Satisfiability state
+  const [sdgCompatibility, setSdgCompatibility] = useState<{
+    satisfiable: boolean;
+    explanation: string;
+    incompatibleSdgs: number[];
+    guidance: string;
+  } | null>(null);
+  const [isCheckingSdgs, setIsCheckingSdgs] = useState(false);
+  const sdgCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // SDG Suggestions state
+  const [isSuggestingSdgs, setIsSuggestingSdgs] = useState(false);
+  const [suggestedSdgs, setSuggestedSdgs] = useState<
+    Array<{
+      sdg: number;
+      title: string;
+      target: string;
+      targetDescription: string;
+      reason: string;
+      confidence: 'HIGH' | 'MEDIUM';
+    }> | null
+  >(null);
 
   // Active Tab for mapping
   const [activeTab, setActiveTab] = useState<'WP' | 'WK' | 'EA'>('WP');
@@ -180,6 +206,83 @@ export default function ProposeTopicClient() {
     updateQual();
   }, [attrValues, selectedSdgs]);
 
+  // Helpers to build statement-grounded payload
+  function buildTargetAttributes(attrs: typeof attrValues) {
+    return Object.entries(attrs)
+      .filter(([_, val]) => val.level > 0)
+      .map(([code, val]) => {
+        const found = attributes.find((a) => a.code === code) || ATTRIBUTE_METADATA[code];
+        return {
+          code,
+          level: val.level,
+          title: found?.title,
+          statement: (found as any)?.text || (found as any)?.statement,
+          reason: val.reason,
+        };
+      });
+  }
+
+  function buildTargetSdgs(sdgMap: typeof selectedSdgs) {
+    return Object.entries(sdgMap).map(([id, val]) => {
+      const sdgId = parseInt(id, 10);
+      const found = sdgs.find((s) => s.id === sdgId) || SDG_METADATA.find((s) => s.id === sdgId);
+      const tgt = found?.targets.find((t) => t.id === val.target);
+      return {
+        sdg: sdgId,
+        target: val.target,
+        title: found?.title,
+        targetDescription: tgt?.description,
+        reason: val.reason,
+      };
+    });
+  }
+
+  // SDG Co-Satisfiability Trigger
+  function triggerSdgCompatibilityCheck(currentSdgs: typeof selectedSdgs) {
+    const count = Object.keys(currentSdgs).length;
+    if (count <= 1) {
+      setSdgCompatibility(null);
+      if (sdgCheckTimerRef.current) clearTimeout(sdgCheckTimerRef.current);
+      return;
+    }
+
+    if (sdgCheckTimerRef.current) clearTimeout(sdgCheckTimerRef.current);
+
+    sdgCheckTimerRef.current = setTimeout(async () => {
+      setIsCheckingSdgs(true);
+      try {
+        const payloadSdgs = Object.entries(currentSdgs).map(([id, val]) => {
+          const sdgId = parseInt(id, 10);
+          const found = sdgs.find((s) => s.id === sdgId) || SDG_METADATA.find((s) => s.id === sdgId);
+          const tgt = found?.targets.find((t) => t.id === val.target);
+          return {
+            sdg: sdgId,
+            title: found?.title,
+            target: val.target,
+            targetDescription: tgt?.description,
+          };
+        });
+
+        const res = await checkSdgCompatibilityAction({
+          title,
+          category,
+          theme: domain,
+          tags,
+          abstract: description,
+          selectedSdgs: payloadSdgs,
+        });
+
+        if (res.result) {
+          setSdgCompatibility(res.result);
+        }
+      } catch {
+        // preserve current state on temporary network glitch
+      } finally {
+        setIsCheckingSdgs(false);
+      }
+    }, 800);
+  }
+
   // Dynamic Auto-Rewrite Trigger on Attribute Level or SDG changes
   function triggerAutoRewrite(
     currentAttrs: typeof attrValues,
@@ -195,16 +298,8 @@ export default function ProposeTopicClient() {
     autoRewriteTimerRef.current = setTimeout(async () => {
       setIsAutoRewriting(true);
       try {
-        const targetAttributes = Object.entries(currentAttrs)
-          .filter(([_, val]) => val.level > 0)
-          .map(([code, val]) => ({ code, level: val.level, reason: val.reason }));
-
-        const targetSdgs = Object.entries(currentSdgs).map(([id, val]) => ({
-          sdg: parseInt(id, 10),
-          target: val.target,
-          title: sdgs.find((s) => s.id === parseInt(id, 10))?.title,
-        }));
-
+        const targetAttributes = buildTargetAttributes(currentAttrs);
+        const targetSdgs = buildTargetSdgs(currentSdgs);
         const firstSdg = Object.keys(currentSdgs)[0];
         const sdgHint = firstSdg ? `SDG ${firstSdg}` : undefined;
 
@@ -222,7 +317,7 @@ export default function ProposeTopicClient() {
         if (res.description) {
           setDescription(res.description);
           setAiDraftResult(
-            `Abstract aligned via ${res.providerUsed} (${res.wordCount} words) to match selected attributes & SDGs`
+            `Abstract aligned via ${res.providerUsed} (${res.wordCount} words) to satisfy selected attribute criteria & SDGs`
           );
         }
       } catch {
@@ -233,7 +328,7 @@ export default function ProposeTopicClient() {
     }, 900);
   }
 
-  // AI Draft Trigger (WP1 >= Level 2 Guaranteed)
+  // AI Draft Trigger (WP1 >= Level 2 Guaranteed, Statement-Grounded)
   async function handleGenerateAiDraft() {
     if (!title.trim()) {
       setError('Please provide a Topic Title before asking AI to draft an abstract.');
@@ -244,16 +339,8 @@ export default function ProposeTopicClient() {
     setError(null);
     setAiDraftResult(null);
 
-    const targetAttributes = Object.entries(attrValues)
-      .filter(([_, val]) => val.level > 0)
-      .map(([code, val]) => ({ code, level: val.level, reason: val.reason }));
-
-    const targetSdgs = Object.entries(selectedSdgs).map(([id, val]) => ({
-      sdg: parseInt(id, 10),
-      target: val.target,
-      title: sdgs.find((s) => s.id === parseInt(id, 10))?.title,
-    }));
-
+    const targetAttributes = buildTargetAttributes(attrValues);
+    const targetSdgs = buildTargetSdgs(selectedSdgs);
     const firstSdg = Object.keys(selectedSdgs)[0];
     const sdgHint = firstSdg ? `SDG ${firstSdg}` : undefined;
 
@@ -273,8 +360,73 @@ export default function ProposeTopicClient() {
       setError(res.error);
     } else if (res.description) {
       setDescription(res.description);
-      setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words) — WP1 Level 2+ satisfied`);
+      setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words) — WP1 Level 2+ satisfied with statement grounding`);
     }
+  }
+
+  // AI Suggest Supported SDGs
+  async function handleSuggestSdgs() {
+    if (!title.trim()) {
+      setError('Please provide a Topic Title before asking AI to suggest SDGs.');
+      return;
+    }
+
+    setIsSuggestingSdgs(true);
+    setError(null);
+    try {
+      const res = await suggestSupportedSdgsAction({
+        title,
+        category,
+        theme: domain,
+        tags,
+        abstract: description,
+      });
+
+      if (res.error) {
+        setError(res.error);
+      } else if (res.suggestions) {
+        setSuggestedSdgs(res.suggestions);
+      }
+    } catch (err) {
+      setError(`Failed to suggest SDGs: ${(err as Error).message}`);
+    } finally {
+      setIsSuggestingSdgs(false);
+    }
+  }
+
+  function handleApplyAllSuggestedSdgs() {
+    if (!suggestedSdgs || suggestedSdgs.length === 0) return;
+    const updated = { ...selectedSdgs };
+    for (const sug of suggestedSdgs) {
+      updated[sug.sdg] = {
+        target: sug.target,
+        reason: sug.reason,
+      };
+    }
+    setSelectedSdgs(updated);
+    triggerAutoRewrite(attrValues, updated);
+    triggerSdgCompatibilityCheck(updated);
+  }
+
+  function handleApplySingleSuggestedSdg(sug: { sdg: number; target: string; reason: string }) {
+    const updated = {
+      ...selectedSdgs,
+      [sug.sdg]: { target: sug.target, reason: sug.reason },
+    };
+    setSelectedSdgs(updated);
+    triggerAutoRewrite(attrValues, updated);
+    triggerSdgCompatibilityCheck(updated);
+  }
+
+  function handleRemoveIncompatibleSdgs() {
+    if (!sdgCompatibility?.incompatibleSdgs || sdgCompatibility.incompatibleSdgs.length === 0) return;
+    const updated = { ...selectedSdgs };
+    for (const id of sdgCompatibility.incompatibleSdgs) {
+      delete updated[id];
+    }
+    setSelectedSdgs(updated);
+    setSdgCompatibility(null);
+    triggerAutoRewrite(attrValues, updated);
   }
 
   // AI Complexity Evaluator Trigger (Evaluates WPs, WKs, EAs, and suitable SDGs)
@@ -325,6 +477,7 @@ export default function ProposeTopicClient() {
         };
       }
       setSelectedSdgs(updatedSdgs);
+      triggerSdgCompatibilityCheck(updatedSdgs);
       setAiDraftResult(`Complexity evaluated & suitable SDGs auto-mapped via ${res.providerUsed}`);
     }
   }
@@ -824,12 +977,163 @@ export default function ProposeTopicClient() {
 
           {/* Card 4: UN SDG Target Selector */}
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-            <h2 className="font-bold text-slate-900 text-sm uppercase tracking-wider border-b border-slate-100 pb-2">
-              4. UN Sustainable Development Goals (SDG) Alignment
-            </h2>
-            <p className="text-xs text-slate-500">
-              Capstone projects must address at least one named SDG target (e.g. Target 7.2 or 9.5) with direct relevance.
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-2">
+              <div>
+                <h2 className="font-bold text-slate-900 text-sm uppercase tracking-wider">
+                  4. UN Sustainable Development Goals (SDG) Alignment
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Capstone projects must address at least one named SDG target (e.g. Target 7.2 or 9.5) with direct relevance.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSuggestSdgs}
+                disabled={isSuggestingSdgs || !title.trim()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-md transition disabled:opacity-50 shrink-0"
+              >
+                {isSuggestingSdgs ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Analyzing Project Scope...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>💡 Suggest Supported SDGs via AI</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* AI Suggested SDGs Box */}
+            {suggestedSdgs && suggestedSdgs.length > 0 && (
+              <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <span>🎯 AI Recommended SDGs for this Project</span>
+                    <span className="text-[10px] font-normal text-emerald-700">
+                      ({suggestedSdgs.length} recommended)
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleApplyAllSuggestedSdgs}
+                      className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 underline"
+                    >
+                      Apply All Suggested SDGs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSuggestedSdgs(null)}
+                      className="text-[11px] text-slate-400 hover:text-slate-600"
+                    >
+                      ✕ Dismiss
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {suggestedSdgs.map((sug) => {
+                    const isAlreadySelected = !!selectedSdgs[sug.sdg];
+                    return (
+                      <div
+                        key={sug.sdg}
+                        className="bg-white p-2.5 rounded border border-emerald-100 text-xs flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-900">
+                              Goal {sug.sdg}: {sug.title}
+                            </span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                                sug.confidence === 'HIGH'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {sug.confidence} Match
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-1">
+                            <strong className="text-emerald-700">Target {sug.target}:</strong> {sug.targetDescription}
+                          </p>
+                          <p className="text-[11px] text-slate-500 italic mt-0.5">{sug.reason}</p>
+                        </div>
+
+                        <div className="mt-2 text-right">
+                          {isAlreadySelected ? (
+                            <span className="text-[11px] font-medium text-emerald-600">✓ Selected</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleApplySingleSuggestedSdg(sug)}
+                              className="px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-600 text-white rounded hover:bg-emerald-700 transition"
+                            >
+                              + Select SDG {sug.sdg}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SDG Co-Satisfiability Status Banner */}
+            {isCheckingSdgs && (
+              <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex items-center gap-2 animate-pulse">
+                <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span>AI evaluating simultaneous co-satisfiability across selected SDGs...</span>
+              </div>
+            )}
+
+            {!isCheckingSdgs && sdgCompatibility && !sdgCompatibility.satisfiable && (
+              <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-lg text-xs space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-amber-600 text-base">⚠️</span>
+                    <div>
+                      <h4 className="font-bold text-amber-900">Selected SDGs Co-Satisfiability Warning</h4>
+                      <p className="text-amber-800 mt-0.5">{sdgCompatibility.explanation}</p>
+                      {sdgCompatibility.guidance && (
+                        <p className="text-amber-700 font-medium mt-1">
+                          <strong>Advisor Guidance:</strong> {sdgCompatibility.guidance}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {sdgCompatibility.incompatibleSdgs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveIncompatibleSdgs}
+                      className="px-2.5 py-1 text-xs font-semibold bg-amber-200 text-amber-900 hover:bg-amber-300 rounded transition shrink-0"
+                    >
+                      Remove Incompatible (
+                      {sdgCompatibility.incompatibleSdgs.map((id) => `SDG ${id}`).join(', ')})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isCheckingSdgs &&
+              sdgCompatibility &&
+              sdgCompatibility.satisfiable &&
+              Object.keys(selectedSdgs).length > 1 && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs flex items-center justify-between text-emerald-800">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-emerald-700">✓</span>
+                    <span>
+                      <strong>Simultaneous Co-Satisfiability Verified:</strong> {sdgCompatibility.explanation}
+                    </span>
+                  </div>
+                </div>
+              )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
               {sdgs.map((sdg) => {
@@ -861,6 +1165,7 @@ export default function ProposeTopicClient() {
                             }
                             setSelectedSdgs(updatedSdgs);
                             triggerAutoRewrite(attrValues, updatedSdgs);
+                            triggerSdgCompatibilityCheck(updatedSdgs);
                           }}
                           className="rounded text-indigo-600 focus:ring-indigo-500"
                         />
@@ -885,6 +1190,7 @@ export default function ProposeTopicClient() {
                               };
                               setSelectedSdgs(updatedSdgs);
                               triggerAutoRewrite(attrValues, updatedSdgs);
+                              triggerSdgCompatibilityCheck(updatedSdgs);
                             }}
                             className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white text-slate-800"
                           >

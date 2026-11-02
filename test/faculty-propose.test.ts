@@ -15,6 +15,8 @@ import {
   saveFacultyTopicProposalAction,
   checkCapstoneQualificationAction,
   generateAiDescriptionDraftAction,
+  checkSdgCompatibilityAction,
+  suggestSupportedSdgsAction,
 } from '../app/actions/faculty-propose';
 import { prisma } from '../lib/prisma';
 import { auth } from '@/auth';
@@ -159,5 +161,48 @@ describe('Faculty Proposal: AI Abstract Drafting with Extended Context', () => {
     expect(res.description).toContain('WP1');
     expect(res.description).toContain('Level 2');
     expect(res.providerUsed).toBeDefined();
+  });
+
+  it('checks SDG compatibility via checkSdgCompatibilityAction', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    (vi.spyOn(prisma.aiProvider, 'findMany') as any).mockResolvedValue([]);
+    (vi.spyOn(prisma.user, 'findUnique') as any).mockResolvedValue({ preferredAiProvider: null });
+
+    const res = await checkSdgCompatibilityAction({
+      title: 'Solar Inverter Design',
+      category: 'HARDWARE',
+      theme: 'Renewable Energy',
+      tags: ['Solar', 'Inverter'],
+      selectedSdgs: [
+        { sdg: 7, target: '7.2', title: 'Affordable and Clean Energy' },
+        { sdg: 9, target: '9.5', title: 'Industry, Innovation and Infrastructure' },
+      ],
+    });
+
+    expect(res.result).toBeDefined();
+    expect(res.result?.satisfiable).toBe(true);
+  });
+
+  it('suggests SDGs via suggestSupportedSdgsAction', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    (vi.spyOn(prisma.aiProvider, 'findMany') as any).mockResolvedValue([]);
+    (vi.spyOn(prisma.user, 'findUnique') as any).mockResolvedValue({ preferredAiProvider: null });
+
+    const res = await suggestSupportedSdgsAction({
+      title: 'Precision Agricultural Soil Sensor',
+      category: 'HARDWARE',
+      theme: 'Agriculture',
+      tags: ['Soil', 'Farming', 'Telemetry'],
+    });
+
+    expect(res.suggestions).toBeDefined();
+    expect(res.suggestions?.length).toBeGreaterThan(0);
+    expect(res.suggestions?.some((s) => s.sdg === 2)).toBe(true);
   });
 });

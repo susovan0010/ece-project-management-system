@@ -13,6 +13,8 @@ import {
   testAiProvider,
   draftDescription,
   mapTopicAttributes,
+  evaluateSdgCoSatisfiability,
+  suggestSupportedSdgs,
   ProviderConfig,
 } from '../lib/ai';
 
@@ -269,5 +271,93 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
     // Should map antenna / wireless / IoT to WK / WP rules
     const codes = res.mapping.attributes.map((a) => a.code);
     expect(codes.some((c) => c.startsWith('WK'))).toBe(true);
+  });
+
+  it('draftDescription explicitly weaves statements of selected WPs, WKs, EAs, and dedicated SDG sentences into abstract', async () => {
+    // Test deterministic fallback generation for statement-grounded prose
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'AI offline',
+    });
+
+    const providers: ProviderConfig[] = [
+      { name: 'Google Gemini', baseUrl: 'https://gemini.com', model: 'gemini-1.5-flash', encryptedKey: dummyKey, priority: 1, enabled: true },
+    ];
+
+    const res = await draftDescription(providers, {
+      title: 'Solar Powered Smart Grid Telemetry Node',
+      category: 'HARDWARE',
+      theme: 'Clean Energy & Smart Grid',
+      targetAttributes: [
+        { code: 'WP1', level: 3, title: 'Depth of Knowledge Required' },
+        { code: 'WP2', level: 2, title: 'Range of Conflicting Issues' },
+        { code: 'WK3', level: 2, title: 'Discipline Fundamentals' },
+        { code: 'EA2', level: 2, title: 'Level of Interactions' },
+      ],
+      targetSdgs: [
+        { sdg: 7, target: '7.2', title: 'Affordable and Clean Energy' },
+      ],
+    });
+
+    expect(res.description).toContain('Solar Powered Smart Grid Telemetry Node');
+    expect(res.description).toContain('WP1');
+    expect(res.description).toContain('WP2');
+    expect(res.description).toContain('WK3');
+    expect(res.description).toContain('EA2');
+    expect(res.description).toContain('SDG 7');
+    expect(res.description).toContain('Target 7.2');
+  });
+
+  it('evaluateSdgCoSatisfiability checks simultaneous co-satisfiability for multiple SDGs', async () => {
+    // 1 SDG -> always satisfiable
+    const resSingle = await evaluateSdgCoSatisfiability([], {
+      title: 'Precision Agriculture Node',
+      category: 'HARDWARE',
+      selectedSdgs: [{ sdg: 2, target: '2.4', title: 'Zero Hunger' }],
+    });
+    expect(resSingle.result.satisfiable).toBe(true);
+
+    // 2 Compatible SDGs
+    const resCompatible = await evaluateSdgCoSatisfiability([], {
+      title: 'Solar IoT Microgrid',
+      category: 'HARDWARE',
+      selectedSdgs: [
+        { sdg: 7, target: '7.2', title: 'Affordable and Clean Energy' },
+        { sdg: 9, target: '9.5', title: 'Industry, Innovation and Infrastructure' },
+      ],
+    });
+    expect(resCompatible.result.satisfiable).toBe(true);
+    expect(resCompatible.result.incompatibleSdgs.length).toBe(0);
+
+    // Too many disconnected SDGs (> 4) triggers scope stretch fallback
+    const resExcessive = await evaluateSdgCoSatisfiability([], {
+      title: 'Basic Audio Amplifier',
+      category: 'HARDWARE',
+      selectedSdgs: [
+        { sdg: 1, target: '1.4' },
+        { sdg: 2, target: '2.4' },
+        { sdg: 3, target: '3.8' },
+        { sdg: 6, target: '6.3' },
+        { sdg: 14, target: '14.1' },
+      ],
+    });
+    expect(resExcessive.result.satisfiable).toBe(false);
+    expect(resExcessive.result.incompatibleSdgs.length).toBeGreaterThan(0);
+    expect(resExcessive.result.explanation).toContain('exceeds the realistic scope');
+  });
+
+  it('suggestSupportedSdgs recommends domain-specific SDGs for given project', async () => {
+    const res = await suggestSupportedSdgs([], {
+      title: 'Design of Wearable ECG and Arrhythmia Diagnostic System',
+      category: 'HARDWARE',
+      theme: 'Biomedical Engineering',
+      tags: ['ECG', 'Biomedical', 'Health'],
+    });
+
+    expect(res.suggestions.length).toBeGreaterThan(0);
+    const sdgIds = res.suggestions.map((s) => s.sdg);
+    expect(sdgIds).toContain(3); // SDG 3 Good Health and Well-Being
+    expect(res.suggestions.find((s) => s.sdg === 3)?.target).toBe('3.8');
   });
 });
