@@ -22,7 +22,7 @@ export default function AdminFacultyPage() {
   const [transferringId, setTransferringId] = useState<string | null>(null);
 
   // Current Logged-in Admin Identity
-  const [currentUserPriority, setCurrentUserPriority] = useState<'A' | 'B'>('B');
+  const [currentUserPriority, setCurrentUserPriority] = useState<'HOD' | 'A' | 'B'>('B');
   const [currentUserId, setCurrentUserId] = useState<string>('');
 
   // Direct Account Creation State
@@ -224,15 +224,22 @@ export default function AdminFacultyPage() {
         <div>
           <span
             className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-xs ${
-              currentUserPriority === 'A'
+              currentUserPriority === 'HOD'
+                ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                : currentUserPriority === 'A'
                 ? 'bg-amber-100 text-amber-900 border border-amber-300'
                 : 'bg-slate-100 text-slate-800 border border-slate-300'
             }`}
           >
-            <span>{currentUserPriority === 'A' ? '👑' : '🛡️'}</span>
-            <span>Your Access: Priority Type {currentUserPriority}</span>
+            <span>{currentUserPriority === 'HOD' || currentUserPriority === 'A' ? '👑' : '🛡️'}</span>
+            <span>
+              Your Access:{' '}
+              {currentUserPriority === 'HOD'
+                ? 'HOD (Top Priority)'
+                : `Priority Type ${currentUserPriority}`}
+            </span>
             <span className="text-[10px] font-normal opacity-80">
-              ({currentUserPriority === 'A' ? 'Super Admin' : 'Admin'})
+              ({currentUserPriority === 'HOD' ? 'Head of Department' : currentUserPriority === 'A' ? 'Super Admin' : 'Admin'})
             </span>
           </span>
         </div>
@@ -490,11 +497,12 @@ export default function AdminFacultyPage() {
                 </tr>
               ) : (
                 admins.map((adm) => {
+                  const isHod = adm.priority === 'HOD';
                   const isTypeA = adm.priority === 'A';
                   const isSelf = adm.id === currentUserId;
-                  const canEdit = currentUserPriority === 'A' || isSelf;
-                  const canTransferToSupervisor = !isTypeA && (currentUserPriority === 'A' || isSelf);
-                  const canRemove = currentUserPriority === 'A' && !isTypeA && !isSelf;
+                  const canEdit = currentUserPriority === 'HOD' || currentUserPriority === 'A' || isSelf;
+                  const canTransferToSupervisor = !isTypeA && !isHod && (currentUserPriority === 'A' || currentUserPriority === 'HOD' || isSelf);
+                  const canRemove = (currentUserPriority === 'A' || currentUserPriority === 'HOD') && !isTypeA && !isHod && !isSelf;
 
                   return (
                     <tr key={adm.id} className="hover:bg-slate-50/70 transition">
@@ -508,7 +516,11 @@ export default function AdminFacultyPage() {
                       </td>
                       <td className="px-6 py-3.5 font-mono text-slate-600">{adm.email}</td>
                       <td className="px-6 py-3.5 text-center">
-                        {isTypeA ? (
+                        {isHod ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300 inline-flex items-center gap-1 shadow-xs">
+                            <span>👑</span> HOD (Top Priority)
+                          </span>
+                        ) : isTypeA ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1 shadow-xs">
                             <span>👑</span> Priority Type A (Super Admin)
                           </span>

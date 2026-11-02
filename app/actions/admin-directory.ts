@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { PRIORITY_A_ADMIN_EMAIL, isPriorityAAdmin } from '@/lib/admin-priority';
+import { getOrCreateDepartmentAuthority, resolveUserAuthority } from '@/lib/authority-service';
 
 export interface AdminUserItem {
   id: string;
@@ -12,7 +13,7 @@ export interface AdminUserItem {
   email: string;
   active: boolean;
   mustChangePassword: boolean;
-  priority: 'A' | 'B';
+  priority: 'HOD' | 'A' | 'B';
   createdAt: string;
 }
 
@@ -126,15 +127,37 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
       prisma.group.count(),
     ]);
 
-    const admins: AdminUserItem[] = adminsRaw.map((a) => ({
-      id: a.id,
-      name: a.name,
-      email: a.email,
-      active: a.active,
-      mustChangePassword: a.mustChangePassword,
-      priority: isPriorityAAdmin(a.email) ? 'A' : 'B',
-      createdAt: a.createdAt.toISOString(),
-    }));
+    const authority = await getOrCreateDepartmentAuthority();
+
+    const admins: AdminUserItem[] = adminsRaw.map((a) => {
+      let priority: 'HOD' | 'A' | 'B' = 'B';
+      if (authority.hodUserId && a.id === authority.hodUserId) {
+        priority = 'HOD';
+      } else if (
+        (authority.superAdminUserId && a.id === authority.superAdminUserId) ||
+        isPriorityAAdmin(a.email)
+      ) {
+        priority = 'A';
+      }
+      return {
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        active: a.active,
+        mustChangePassword: a.mustChangePassword,
+        priority,
+        createdAt: a.createdAt.toISOString(),
+      };
+    });
+
+    // Sort admins by priority: HOD first, then Super Admin (A), then Standard Admins (B)
+    admins.sort((a, b) => {
+      const rank = { HOD: 0, A: 1, B: 2 };
+      if (rank[a.priority] !== rank[b.priority]) {
+        return rank[a.priority] - rank[b.priority];
+      }
+      return a.name.localeCompare(b.name);
+    });
 
     const supervisors: SupervisorUserItem[] = supervisorsRaw.map((s) => ({
       id: s.id,
@@ -214,7 +237,11 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
       supervisors,
       students: studentRows,
       batches,
-      currentUserPriority: isPriorityAAdmin(session.user.email) ? ('A' as const) : ('B' as const),
+      currentUserPriority: (authority.hodUserId === session.user.id
+        ? 'HOD'
+        : authority.superAdminUserId === session.user.id || isPriorityAAdmin(session.user.email)
+        ? 'A'
+        : 'B') as 'HOD' | 'A' | 'B',
       currentUserId: session.user.id,
       currentUserEmail: session.user.email,
       kpis: {
@@ -398,6 +425,14 @@ export async function removeAdminAction(adminId: string) {
       return { error: 'Target user is not an administrator.' };
     }
 
+    const authority = await getOrCreateDepartmentAuthority();
+    if (authority.hodUserId && adminId === authority.hodUserId) {
+      return {
+        error:
+          'Operation rejected: Head of Department (HOD) cannot be removed directly from this list. Please use the "Assign HOD" screen to request mutual agreement removal.',
+      };
+    }
+
     if (isPriorityAAdmin(admin.email)) {
       return { error: 'Operation rejected: Priority A Admin account cannot be removed.' };
     }
@@ -475,6 +510,14 @@ export async function transferUserRoleAction(userId: string, targetRole: 'ADMIN'
 
     if (targetUser.role === targetRole) {
       return { error: `User is already in role ${targetRole}.` };
+    }
+
+    const authority = await getOrCreateDepartmentAuthority();
+    if (authority.hodUserId && userId === authority.hodUserId && targetRole === 'FACULTY') {
+      return {
+        error:
+          'Operation rejected: Head of Department (HOD) cannot be demoted to Faculty Supervisor directly. The HOD must first step down via HOD governance.',
+      };
     }
 
     // Protection: Priority A admin cannot be demoted from ADMIN

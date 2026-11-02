@@ -35,14 +35,14 @@ import { auth } from '@/auth';
 describe('HOD & Super Admin Governance Hierarchy', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }: any) => {
+    (vi.spyOn(prisma.user, 'findUnique') as any).mockImplementation(async ({ where }: any) => {
       return {
         id: where.id || 'usr-mock',
         email: where.email || 'mock@heritageit.edu',
         name: 'Mock Member',
         role: 'ADMIN',
         createdAt: new Date(),
-      } as any;
+      };
     });
   });
 

@@ -29,6 +29,30 @@ import { auth } from '@/auth';
 describe('Admin Directory: Admins, Supervisors, and Students with Groups', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    (prisma as any).departmentAuthority = {
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'HITK_ECE_AUTHORITY',
+        superAdminUserId: 'adm-super',
+        hodUserId: null,
+        hodRemovalRequested: false,
+        hodRemovalRequestedAt: null,
+      }),
+      upsert: vi.fn().mockResolvedValue({
+        id: 'HITK_ECE_AUTHORITY',
+        superAdminUserId: 'adm-super',
+        hodUserId: null,
+      }),
+      update: vi.fn().mockResolvedValue({}),
+    };
+    (vi.spyOn(prisma.user, 'findUnique') as any).mockImplementation(async ({ where }: any) => {
+      return {
+        id: where.id || 'usr-mock',
+        email: where.email || 'mock@heritageit.edu',
+        name: 'Mock User',
+        role: 'ADMIN',
+        createdAt: new Date(),
+      };
+    });
   });
 
   it('rejects unauthenticated requests to view department directories', async () => {
@@ -249,6 +273,89 @@ describe('Admin Directory: Admins, Supervisors, and Students with Groups', () =>
       expect(res.admins).toHaveLength(2);
       expect(res.admins![0].priority).toBe('A');
       expect(res.admins![1].priority).toBe('B');
+    });
+
+    it('returns priority tag HOD for the assigned Head of Department and sorts HOD to the top', async () => {
+      vi.mocked(auth).mockResolvedValue({
+        user: { id: 'adm-super', email: PRIORITY_A_ADMIN_EMAIL, role: 'ADMIN' },
+      } as any);
+
+      vi.spyOn(prisma.departmentAuthority, 'findUnique').mockResolvedValue({
+        id: 'HITK_ECE_AUTHORITY',
+        superAdminUserId: 'adm-super',
+        hodUserId: 'adm-hod',
+        hodRemovalRequested: false,
+        hodRemovalRequestedAt: null,
+      } as any);
+
+      vi.spyOn(prisma.user, 'findMany')
+        .mockResolvedValueOnce([
+          {
+            id: 'adm-standard',
+            name: 'Standard Admin',
+            email: 'standard@heritageit.edu',
+            active: true,
+            mustChangePassword: false,
+            createdAt: new Date('2026-01-05T00:00:00Z'),
+          },
+          {
+            id: 'adm-super',
+            name: 'Dr. Susovan Mandal',
+            email: 'susovan.mandal@heritageit.edu',
+            active: true,
+            mustChangePassword: false,
+            createdAt: new Date('2026-01-01T00:00:00Z'),
+          },
+          {
+            id: 'adm-hod',
+            name: 'Dr. Shounak Dasgupta',
+            email: 'shounak.dasgupta@heritageit.edu',
+            active: true,
+            mustChangePassword: false,
+            createdAt: new Date('2026-01-03T00:00:00Z'),
+          },
+        ] as any)
+        .mockResolvedValueOnce([] as any);
+
+      vi.spyOn(prisma.student, 'findMany').mockResolvedValue([] as any);
+      vi.spyOn(prisma.batch, 'findMany').mockResolvedValue([] as any);
+      vi.spyOn(prisma.topic, 'count').mockResolvedValue(0);
+      vi.spyOn(prisma.group, 'count').mockResolvedValue(0);
+
+      const res = await getAdminDirectoryDataAction('ALL');
+      expect(res.error).toBeUndefined();
+      expect(res.admins).toHaveLength(3);
+      // HOD must be tagged as 'HOD' and placed at index 0 (Top Priority)
+      expect(res.admins![0].id).toBe('adm-hod');
+      expect(res.admins![0].priority).toBe('HOD');
+      // Super Admin at index 1
+      expect(res.admins![1].id).toBe('adm-super');
+      expect(res.admins![1].priority).toBe('A');
+      // Standard Admin at index 2
+      expect(res.admins![2].id).toBe('adm-standard');
+      expect(res.admins![2].priority).toBe('B');
+    });
+
+    it('rejects removing the HOD directly from removeAdminAction', async () => {
+      vi.mocked(auth).mockResolvedValue({
+        user: { id: 'adm-super', email: PRIORITY_A_ADMIN_EMAIL, role: 'ADMIN' },
+      } as any);
+
+      vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+        id: 'adm-hod',
+        name: 'Dr. Shounak Dasgupta',
+        email: 'shounak.dasgupta@heritageit.edu',
+        role: 'ADMIN',
+      } as any);
+
+      vi.spyOn(prisma.departmentAuthority, 'findUnique').mockResolvedValue({
+        id: 'HITK_ECE_AUTHORITY',
+        superAdminUserId: 'adm-super',
+        hodUserId: 'adm-hod',
+      } as any);
+
+      const res = await removeAdminAction('adm-hod');
+      expect(res.error).toContain('Head of Department (HOD) cannot be removed directly');
     });
 
     it('rejects Priority B admin from removing any admin', async () => {
