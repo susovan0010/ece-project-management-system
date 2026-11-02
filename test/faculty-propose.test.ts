@@ -158,8 +158,8 @@ describe('Faculty Proposal: AI Abstract Drafting with Extended Context', () => {
 
     expect(res.description).toBeDefined();
     expect(res.description).toContain('Design of Reconfigurable Intelligent Surface for 6G');
-    expect(res.description).toContain('WP1');
-    expect(res.description).toContain('Level 2');
+    expect(res.description).not.toMatch(/\b(WP\d|WK\d|EA\d)\b/);
+    expect(res.description).not.toMatch(/\bSDG\b/i);
     expect(res.providerUsed).toBeDefined();
   });
 

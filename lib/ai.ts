@@ -275,6 +275,18 @@ export interface DraftDescriptionInput {
   sdgHint?: string;
 }
 
+// Helper to remove any stray accreditation abbreviations from generated abstract
+function cleanAccreditationJargon(text: string): string {
+  return text
+    .replace(/\b(WP\d|WK\d|EA\d)\s*\([^)]*\)\s*:\s*/gi, '')
+    .replace(/\b(WP\d|WK\d|EA\d)\s*:\s*/gi, '')
+    .replace(/\b(UN\s+)?SDG\s*\d+\s*\([^)]*\)\s*:\s*/gi, '')
+    .replace(/\bTarget\s+\d+\.\d+\s*:\s*/gi, '')
+    .replace(/\[(WP|WK|EA)\d+[^\]]*\]/gi, '')
+    .replace(/\[SDG\s*\d+[^\]]*\]/gi, '')
+    .trim();
+}
+
 export async function draftDescription(
   providers: ProviderConfig[],
   input: DraftDescriptionInput,
@@ -282,65 +294,68 @@ export async function draftDescription(
 ): Promise<{ description: string; providerUsed: string; isAi: boolean }> {
   const ordered = orderProvidersByPreference(providers, preferredProviderName);
 
-  const systemPrompt = `You are an expert academic curriculum advisor and NBA accreditation evaluator for B.Tech Electronics and Communication Engineering (ECE) capstone projects.
-Draft or rewrite a rigorous, well-structured, professional engineering capstone project abstract of at most 500 words.
+  const systemPrompt = `You are a distinguished university professor and academic mentor in Electronics and Communication Engineering (ECE).
+Your task is to draft or rewrite a compelling, professional, publication-grade project abstract (strictly at most 500 words) for an undergraduate capstone engineering project.
+The abstract is primarily read by prospective senior engineering students to understand the project's technical scope, mathematical depth, conflicting design challenges, toolchains, and deliverables so they can evaluate whether the project matches their interests and career goals.
 
-MANDATORY ACCREDITATION & STATEMENT GROUNDING REQUIREMENTS:
-1. Explicit Statement Satisfaction for Selected Washington Accord Attributes:
-   For every selected attribute (WPs, WKs, EAs) with Level >= 1, the abstract MUST explicitly address and weave the actual criterion statement of that attribute into the technical narrative:
-   - Complex Problem Solving (WP1..WP7): State how the project embodies the exact WP statements (e.g. for WP1, require depth of knowledge spanning ECE discipline fundamentals; for WP2, resolve conflicting design trade-offs such as latency vs power vs area; for WP3, perform non-obvious analytical modeling; for WP4, address infrequently encountered engineering conditions; for WP5, navigate beyond standard engineering codes).
-   - WP1 Depth of Knowledge Mandatory Requirement: WP1 MUST be satisfied at Level 2 (or higher) with concrete mathematical rigor, signal formulation, or system synthesis.
-   - Engineering Knowledge (WK1..WK9): Specifically articulate the engineering knowledge used, matching their statements (e.g. WK2 mathematics/numerical methods, WK3 ECE discipline fundamentals, WK4 specialist knowledge in communications/VLSI/signal processing/embedded systems, WK5 design methodologies, WK6 EDA simulation toolchains like MATLAB/CST/Vivado, WK8 research literature synthesis).
-   - Complex Engineering Activities (EA1..EA5): Explicitly describe the practical engineering execution, diverse tools and equipment (EA1), interaction resolution (EA2), creative engineering innovation (EA3), and societal/environmental impact (EA4).
-2. Concrete Sustainable Development Goals (SDGs) Grounding:
-   For EACH selected SDG and target:
-   The abstract MUST include dedicated, concrete sentences directly naming the SDG (e.g., "SDG 7 (Target 7.2: Affordable and Clean Energy)") and explicitly explaining the technical engineering mechanism and prototype deliverable by which this project contributes to that specific target.
-3. Integration of Faculty Draft:
-   If existing notes or a prior abstract are provided, synthesize, preserve, and elevate the core technical concepts into a unified capstone abstract.
-4. Word Limit & Format:
-   Strictly at most 500 words. Return only the abstract prose without conversational preambles, greetings, or markdown meta-headers.`;
+CRITICAL PEDAGOGICAL & ACCREDITATION WRITING RULES:
+1. NATURAL, PROFESSIONAL ENGINEERING PROSE (ZERO ACRONYMS):
+   - You MUST NOT write accreditation codes, bureaucratic abbreviations, or regulatory labels anywhere in the text.
+   - STRICTLY FORBIDDEN: Do NOT write "WP1", "WP2", "WP7", "WK1", "WK3", "WK5", "EA1", "EA2", "SDG", "UN SDG", "Target 7.2", "Level 2", "Washington Accord", or similar codes.
+   - The abstract must read like a polished IEEE, ACM, or Springer engineering paper abstract.
+2. INHERENT SUBSTANTIATION OF TECHNICAL CRITERIA:
+   The prose itself must naturally and inherently satisfy the underlying technical criteria provided:
+   - Depth of Engineering Knowledge: Ground the work in deep theoretical foundations, mathematical formulation, electromagnetics, signal processing algorithms, circuit physics, or communication theory appropriate for senior undergraduate engineers.
+   - Conflicting Engineering Trade-offs: Clearly articulate real-world design conflicts that students will resolve (e.g., bandwidth vs. insertion loss, computational latency vs. energy consumption, sensitivity vs. noise margin, silicon area vs. throughput, fabrication tolerances).
+   - Original Analytical Modeling: Explain the analytical modeling and mathematical formulation required to solve non-obvious engineering challenges (e.g., numerical electromagnetics, state-space control, finite-difference methods, neural architectural design).
+   - Toolchains & Modern Engineering Resources: Specifically name the simulation tools, CAD/EDA packages, compilers, hardware platforms, or test instruments students will use (e.g., CST Studio, HFSS, MATLAB/Simulink, Cadence Virtuoso, Vivado FPGA, STM32, LabVIEW, spectrum analyzers).
+   - Tangible Deliverables: Clearly state the verifiable hardware prototype, synthesized digital core, fabricated PCB, or characterized software pipeline delivered at the end of the project.
+   - Real-World & Sustainable Impact: Naturally describe how the technology advances sustainable infrastructure, clean energy efficiency, smart urban systems, healthcare monitoring, or industrial automation without citing SDG numbers or target labels.
+3. INTEGRATION OF SUPERVISOR'S DRAFT:
+   If existing notes or a preliminary draft are provided, preserve, synthesize, and elevate the supervisor's core engineering concepts into cohesive academic paragraphs.
+4. WORD LIMIT & STYLE:
+   Strictly at most 500 words. Return only the clean abstract prose (no preambles, no bulleted lists of codes, no "Abstract:" prefix).`;
 
   const kwList = (input.keywords || input.tags || []).join(', ');
 
-  let targetAttrText = 'None specified';
+  const technicalCriteriaList: string[] = [];
   if (input.targetAttributes && input.targetAttributes.length > 0) {
-    const activeAttrs = input.targetAttributes.filter((a) => a.level > 0);
-    if (activeAttrs.length > 0) {
-      targetAttrText = activeAttrs
-        .map((a) => {
-          const meta = ATTRIBUTE_METADATA[a.code];
-          const title = a.title || meta?.title || a.code;
-          const statement = a.statement || meta?.statement || '';
-          return `- ${a.code} (${title}) [Level ${a.level}]: Statement: "${statement}"${a.reason ? ` (Rationale: ${a.reason})` : ''}`;
-        })
-        .join('\n');
+    for (const a of input.targetAttributes) {
+      if (a.level > 0) {
+        const meta = ATTRIBUTE_METADATA[a.code];
+        const title = a.title || meta?.title || a.code;
+        const statement = a.statement || meta?.statement || '';
+        technicalCriteriaList.push(`- ${title} (Level ${a.level} depth): ${statement}${a.reason ? ` - Context: ${a.reason}` : ''}`);
+      }
     }
   }
 
-  let targetSdgText = input.sdgHint || 'None specified';
+  const sustainabilityGoalsList: string[] = [];
   if (input.targetSdgs && input.targetSdgs.length > 0) {
-    targetSdgText = input.targetSdgs
-      .map((s) => {
-        const sdgMeta = SDG_METADATA.find((item) => item.id === s.sdg);
-        const sdgTitle = s.title || sdgMeta?.title || `SDG ${s.sdg}`;
-        const targetItem = sdgMeta?.targets.find((t) => t.id === s.target);
-        const targetDesc = s.targetDescription || targetItem?.description || '';
-        return `- SDG ${s.sdg} (${sdgTitle})${s.target ? ` [Target ${s.target}: "${targetDesc}"]` : ''}${s.reason ? ` (Rationale: ${s.reason})` : ''}`;
-      })
-      .join('\n');
+    for (const s of input.targetSdgs) {
+      const sdgMeta = SDG_METADATA.find((item) => item.id === s.sdg);
+      const targetItem = sdgMeta?.targets.find((t) => t.id === s.target);
+      const title = s.title || sdgMeta?.title || '';
+      const desc = s.targetDescription || targetItem?.description || '';
+      sustainabilityGoalsList.push(`- Goal: ${title}. Specific impact to reflect: "${desc}"${s.reason ? ` (${s.reason})` : ''}`);
+    }
   }
 
   const userPrompt = `Project Title: ${input.title}
 Category: ${input.category}
 Project Theme: ${input.theme || 'Electronics and Communication Engineering'}
-Technical Keywords: ${kwList}
-Mandatory Requirement: WP1 Depth of Knowledge must satisfy at least Level 2.
-Target Washington Accord Attributes & Exact Statements:
-${targetAttrText}
-Target Sustainable Development Goals & Exact Statements:
-${targetSdgText}
-Existing Faculty Notes / Abstract Draft:
-${input.existingAbstract && input.existingAbstract.trim().length > 0 ? input.existingAbstract.trim() : 'No existing draft provided; generate a fresh, comprehensive proposal abstract.'}`;
+Technical Keywords: ${kwList || 'Signal processing, hardware prototyping, system design'}
+
+Technical Dimensions to Inherently Satisfy in Prose (DO NOT cite codes or abbreviations in output):
+${technicalCriteriaList.length > 0 ? technicalCriteriaList.join('\n') : '- Deep analytical engineering knowledge with rigorous mathematical and experimental validation.'}
+
+Real-World / Sustainable Impact Dimensions to Inherently Reflect:
+${sustainabilityGoalsList.length > 0 ? sustainabilityGoalsList.join('\n') : '- Advances modern technological infrastructure and efficient engineering design.'}
+
+Faculty Supervisor Notes / Preliminary Draft:
+${input.existingAbstract && input.existingAbstract.trim().length > 0 ? input.existingAbstract.trim() : 'Generate a comprehensive, engaging capstone engineering abstract for prospective students based on the title, domain, and technical dimensions above.'}
+
+REMINDER: Write fluent academic prose. Do NOT include any acronyms such as WP, WK, EA, SDG, or target numbers in the abstract. Prospective students must understand the project through clear technical explanations.`;
 
   const messages = [
     { role: 'system' as const, content: systemPrompt },
@@ -350,52 +365,62 @@ ${input.existingAbstract && input.existingAbstract.trim().length > 0 ? input.exi
   for (const provider of ordered) {
     try {
       const res = await callAiProvider(provider, messages, false);
-      const words = res.text.trim().split(/\s+/);
-      const capped = words.length > 500 ? words.slice(0, 500).join(' ') : res.text.trim();
+      const cleaned = cleanAccreditationJargon(res.text);
+      const words = cleaned.split(/\s+/);
+      const capped = words.length > 500 ? words.slice(0, 500).join(' ') : cleaned;
       return { description: capped, providerUsed: provider.name, isAi: true };
     } catch {
       continue; // Failover to next provider in sequence
     }
   }
 
-  // Fallback: If all AI providers fail, generate structured template satisfying WP1 >= Level 2 and explicit attribute/SDG statements
-  const fallbackKeywords = kwList || 'system design, simulation, and experimental prototyping';
+  // Fallback: If all AI providers fail, generate a professional, natural engineering abstract without acronym codes
+  const kwString = kwList || 'system modeling, numerical simulation, and hardware-in-the-loop prototyping';
+  const themeString =
+    input.theme && input.theme.trim().length > 0 ? input.theme.trim() : 'Electronics and Communication Engineering';
+
   const activeWps = (input.targetAttributes || []).filter((a) => a.level > 0 && a.code.startsWith('WP'));
   const activeWks = (input.targetAttributes || []).filter((a) => a.level > 0 && a.code.startsWith('WK'));
   const activeEas = (input.targetAttributes || []).filter((a) => a.level > 0 && a.code.startsWith('EA'));
   const activeSdgs = input.targetSdgs || [];
 
-  const wpSentences = activeWps.length > 0
-    ? activeWps.map((a) => {
-        const meta = ATTRIBUTE_METADATA[a.code];
-        return `${a.code} (${meta?.title || a.code}, Level ${a.level}): Resolving this challenge addresses "${meta?.statement || 'in-depth engineering formulation'}".`;
-      }).join(' ')
-    : 'Depth of Knowledge (WP1 >= Level 2): Resolving these challenges requires in-depth engineering knowledge spanning signal modeling, hardware/software co-design, and quantitative performance evaluation.';
+  const tradeOffText = activeWps.some((a) => a.code === 'WP2' || a.code === 'WP3')
+    ? 'A central design challenge lies in resolving coupled trade-offs between system throughput, power dissipation, signal integrity, and physical implementation constraints.'
+    : 'A primary focus is balancing operational performance, computational efficiency, and robust physical constraints under non-ideal operating conditions.';
 
-  const wkSentences = activeWks.length > 0
-    ? ` The methodology is systematically grounded in ${activeWks.map((a) => `${a.code} (${ATTRIBUTE_METADATA[a.code]?.title || a.code})`).join(', ')}, involving rigorous mathematical formulation and simulation.`
-    : '';
+  const methodologyText =
+    activeWks.length > 0
+      ? `The investigation is grounded in rigorous mathematical modeling and specialized domain principles within ${themeString}. Students will formulate analytical models, carry out extensive numerical simulations using industry-standard computational packages, and optimize parametric designs.`
+      : `The project develops comprehensive analytical models and system architectures within ${themeString}, validated through multi-parameter computational simulation and empirical data analysis.`;
 
-  const eaSentences = activeEas.length > 0
-    ? ` Execution involves ${activeEas.map((a) => `${a.code} (${ATTRIBUTE_METADATA[a.code]?.title || a.code})`).join(' and ')} across specialized laboratory toolchains.`
-    : '';
+  const toolsAndExecutionText =
+    activeEas.length > 0
+      ? `System implementation and testing utilize specialized laboratory equipment, simulation toolchains, and hardware prototyping platforms to validate theoretical predictions against measured benchmarks.`
+      : `Design synthesis and verification are carried out across modern engineering toolchains, emphasizing rigorous bench validation and reproducibility.`;
 
-  const sdgSentences = activeSdgs.length > 0
-    ? activeSdgs.map((s) => {
-        const meta = SDG_METADATA.find((m) => m.id === s.sdg);
-        const tgt = meta?.targets.find((t) => t.id === s.target);
-        return `Furthermore, the project directly advances UN SDG ${s.sdg} (${meta?.title || `Goal ${s.sdg}`})${s.target ? ` under Target ${s.target} ("${tgt?.description || ''}")` : ''} through verified prototype deployment.`;
-      }).join(' ')
-    : `Sustainable Development Alignment: Supports sustainable technology innovation (${input.sdgHint || 'SDG 9: Industry and Infrastructure'}).`;
+  const deliverablesText = `Project deliverables include a fully characterized hardware or software prototype, complete architectural design documentation, and verified experimental performance metrics meeting departmental engineering standards.`;
 
-  const fallback = `Project Title: ${input.title}.
-This capstone engineering project addresses key challenges in ${input.category} systems within ${input.theme || 'Electronics and Communication Engineering'}.
-${wpSentences}${wkSentences}${eaSentences}
-Technical Methodology: Utilizing core techniques in ${fallbackKeywords}, the work integrates analytical modeling, hardware/software synthesis, and experimental bench validation.
-Deliverables: The project produces a tested prototype and quantitative verification data meeting departmental standards.
-${sdgSentences}`;
+  const sustainabilityText =
+    activeSdgs.length > 0
+      ? activeSdgs
+          .map((s) => {
+            const meta = SDG_METADATA.find((m) => m.id === s.sdg);
+            const tgt = meta?.targets.find((t) => t.id === s.target);
+            const focus = tgt ? tgt.description.toLowerCase().replace(/\.$/, '') : 'sustainable technological advancement';
+            return `By addressing key challenges in ${meta?.title || 'modern engineering'}, this work contributes to practical technological upgrades supporting ${focus}.`;
+          })
+          .join(' ')
+      : `The project outcomes contribute directly to domestic technological innovation and resilient infrastructure development.`;
 
-  return { description: fallback, providerUsed: 'Keyword Rule Engine (AI Offline)', isAi: false };
+  const fallback = `This capstone engineering project investigates the design, modeling, and practical implementation of ${input.title}. Situated within the domain of ${themeString}, the research addresses critical engineering demands in modern ${input.category.toLowerCase()} systems.
+
+${tradeOffText} ${methodologyText} Key techniques explored throughout the project span ${kwString}, enabling students to translate abstract theoretical formulations into concrete system realizations.
+
+${toolsAndExecutionText} ${deliverablesText}
+
+${sustainabilityText}`;
+
+  return { description: fallback.trim(), providerUsed: 'Keyword Rule Engine (AI Offline)', isAi: false };
 }
 
 // --------------------------------------------------------

@@ -203,8 +203,8 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
 
     expect(res.providerUsed).toContain('Keyword Rule Engine');
     expect(res.description).toContain('FPGA Cryptographic Accelerator');
-    expect(res.description).toContain('Level 2');
-    expect(res.description).toContain('WP1');
+    expect(res.description).not.toMatch(/\b(WP\d|WK\d|EA\d)\b/);
+    expect(res.description).not.toMatch(/\bSDG\b/i);
   });
 
   it('draftDescription integrates existingAbstract, theme, targetAttributes and targetSdgs', async () => {
@@ -215,7 +215,7 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
         choices: [
           {
             message: {
-              content: 'Advanced IoT sensor node for Smart Agriculture addressing SDG 2 (Zero Hunger) with WP1 Depth of Knowledge Level 2.',
+              content: 'Advanced IoT sensor node for Smart Agriculture with high-depth soil telemetry and resilient sustainable crop monitoring.',
             },
           },
         ],
@@ -243,6 +243,7 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
 
     expect(res.description).toContain('Advanced IoT sensor node');
     expect(res.providerUsed).toBe('Google Gemini');
+    expect(res.description).not.toMatch(/\b(WP\d|WK\d|EA\d)\b/);
   });
 
   it('falls back to evaluateRules in mapTopicAttributes when AI response fails', async () => {
@@ -273,8 +274,8 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
     expect(codes.some((c) => c.startsWith('WK'))).toBe(true);
   });
 
-  it('draftDescription explicitly weaves statements of selected WPs, WKs, EAs, and dedicated SDG sentences into abstract', async () => {
-    // Test deterministic fallback generation for statement-grounded prose
+  it('draftDescription inherently embodies technical trade-offs and sustainability without printing raw acronym codes', async () => {
+    // Test deterministic fallback generation for professional, acronym-free prose
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -301,12 +302,13 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
     });
 
     expect(res.description).toContain('Solar Powered Smart Grid Telemetry Node');
-    expect(res.description).toContain('WP1');
-    expect(res.description).toContain('WP2');
-    expect(res.description).toContain('WK3');
-    expect(res.description).toContain('EA2');
-    expect(res.description).toContain('SDG 7');
-    expect(res.description).toContain('Target 7.2');
+    expect(res.description.toLowerCase()).toContain('trade-off');
+    expect(res.description.toLowerCase()).toContain('mathematical modeling');
+    expect(res.description.toLowerCase()).toContain('deliverables include');
+    // Ensure raw acronym codes are strictly avoided
+    expect(res.description).not.toMatch(/\b(WP\d|WK\d|EA\d)\b/);
+    expect(res.description).not.toMatch(/\b(UN\s+)?SDG\s*\d+\b/i);
+    expect(res.description).not.toMatch(/\bTarget \d+\.\d+\b/i);
   });
 
   it('evaluateSdgCoSatisfiability checks simultaneous co-satisfiability for multiple SDGs', async () => {
