@@ -11,7 +11,7 @@ import {
   createPasswordResetToken,
   validatePasswordResetToken,
 } from '@/lib/tokens';
-import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '@/app/actions/admin-directory';
+import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '@/lib/admin-priority';
 
 // ----------------------------------------------------
 // 1. Credentials Sign-In Action

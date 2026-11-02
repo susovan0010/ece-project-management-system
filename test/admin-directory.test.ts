@@ -21,9 +21,8 @@ import {
   removeAdminAction,
   transferUserRoleAction,
   updateUserInformationAction,
-  isPriorityAAdmin,
-  PRIORITY_A_ADMIN_EMAIL,
 } from '../app/actions/admin-directory';
+import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '../lib/admin-priority';
 import { prisma } from '../lib/prisma';
 import { auth } from '@/auth';
 

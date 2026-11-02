@@ -4,13 +4,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-
-export const PRIORITY_A_ADMIN_EMAIL = 'susovan.mandal@heritageit.edu';
-
-export function isPriorityAAdmin(email?: string | null): boolean {
-  if (!email) return false;
-  return email.toLowerCase().trim() === PRIORITY_A_ADMIN_EMAIL.toLowerCase();
-}
+import { PRIORITY_A_ADMIN_EMAIL, isPriorityAAdmin } from '@/lib/admin-priority';
 
 export interface AdminUserItem {
   id: string;

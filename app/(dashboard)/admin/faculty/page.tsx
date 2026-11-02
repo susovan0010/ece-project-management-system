@@ -8,10 +8,10 @@ import {
   removeAdminAction,
   transferUserRoleAction,
   updateUserInformationAction,
-  PRIORITY_A_ADMIN_EMAIL,
   AdminUserItem,
   SupervisorUserItem,
 } from '@/app/actions/admin-directory';
+import { PRIORITY_A_ADMIN_EMAIL } from '@/lib/admin-priority';
 
 export default function AdminFacultyPage() {
   // Directory Lists State
