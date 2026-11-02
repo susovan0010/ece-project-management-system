@@ -94,6 +94,9 @@ export default function ProposeTopicClient() {
     }> | null
   >(null);
 
+  // Accreditation Matrix & Capstone Preview Visibility Toggle (Default: false)
+  const [showAccreditationDetails, setShowAccreditationDetails] = useState(false);
+
   // Active Tab for mapping
   const [activeTab, setActiveTab] = useState<'WP' | 'WK' | 'EA'>('WP');
 
@@ -804,8 +807,65 @@ export default function ProposeTopicClient() {
             </div>
           </div>
 
-          {/* Card 3: Washington Accord Complexity Sliders */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+          {/* Sliding Switch Banner: Washington Accord Attribute Matrix & SDG Mapping Visibility */}
+          <div className="bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700 shrink-0 mt-0.5 sm:mt-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Washington Accord Attribute Matrix &amp; SDG Mapping
+                  </h3>
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      showAccreditationDetails
+                        ? 'bg-indigo-100 text-indigo-800'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {showAccreditationDetails ? 'Visualized (ON)' : 'Hidden by Default (OFF)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {showAccreditationDetails
+                    ? 'Attribute matrices, SDG targets, and live capstone qualification preview are currently visible for custom calibration.'
+                    : 'AI automatically calibrates Washington Accord levels (WP1 ≥ Level 2) and SDG mappings in the background as you write. Slide switch ON to inspect or customize.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 self-end sm:self-auto shrink-0">
+              <span className="text-xs font-bold text-slate-700">
+                {showAccreditationDetails ? 'ON' : 'OFF'}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showAccreditationDetails}
+                onClick={() => setShowAccreditationDetails(!showAccreditationDetails)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                  showAccreditationDetails ? 'bg-indigo-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    showAccreditationDetails ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Conditional Display of Section 3 (Attribute Matrix) and Section 4 (SDG Matrix) */}
+          {showAccreditationDetails && (
+            <>
+              {/* Card 3: Washington Accord Complexity Sliders */}
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-2">
               <div>
                 <h2 className="font-bold text-slate-900 text-sm uppercase tracking-wider">
@@ -1224,68 +1284,130 @@ export default function ProposeTopicClient() {
               })}
             </div>
           </div>
-        </div>
+        </>
+      )}
+    </div>
 
-        {/* Right Column (4 cols): Live Capstone Qualification Gauge & Save */}
+        {/* Right Column (4 cols): Capstone Qualification Preview (Toggleable) & Proposal Submission Actions */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm sticky top-6 space-y-5">
-            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider border-b border-slate-100 pb-2">
-              Capstone Qualification Preview
-            </h3>
-
-            {/* Gauge Status Banner */}
-            <div
-              className={`p-4 rounded-xl border text-center transition ${
-                qualResult.isQualified
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-sm'
-                  : 'bg-amber-50 border-amber-300 text-amber-900'
-              }`}
-            >
-              <div className="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center font-bold text-lg bg-white shadow-sm">
-                {qualResult.isQualified ? '✓' : '!'}
-              </div>
-              <h4 className="font-bold text-sm">
-                {qualResult.isQualified ? 'Meets Capstone Standards' : 'Threshold Not Met'}
-              </h4>
-              <p className="text-xs mt-1 opacity-90">
-                {qualResult.isQualified
-                  ? 'All Step 1 accreditation qualification gates passed.'
-                  : 'Adjust attribute levels or link an SDG target to qualify.'}
-              </p>
+            {/* Header with Title and Sliding Toggle */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">
+                {showAccreditationDetails ? 'Capstone Qualification' : 'Topic Submission'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAccreditationDetails(!showAccreditationDetails)}
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded transition ${
+                  showAccreditationDetails
+                    ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {showAccreditationDetails ? 'Hide Details' : 'Show Details'}
+              </button>
             </div>
 
-            {/* Checklist */}
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                <span className="font-medium text-slate-700">1. WP1 Depth of Knowledge (≥ Level 2)</span>
-                <span className={`font-bold ${qualResult.breakdown.wp1Met ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {qualResult.breakdown.wp1Met ? 'PASS' : 'FAIL'}
-                </span>
-              </div>
+            {/* When showAccreditationDetails is TRUE: Show full Capstone Qualification Preview Gauge & Checklist */}
+            {showAccreditationDetails ? (
+              <>
+                {/* Gauge Status Banner */}
+                <div
+                  className={`p-4 rounded-xl border text-center transition ${
+                    qualResult.isQualified
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-sm'
+                      : 'bg-amber-50 border-amber-300 text-amber-900'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center font-bold text-lg bg-white shadow-sm">
+                    {qualResult.isQualified ? '✓' : '!'}
+                  </div>
+                  <h4 className="font-bold text-sm">
+                    {qualResult.isQualified ? 'Meets Capstone Standards' : 'Threshold Not Met'}
+                  </h4>
+                  <p className="text-xs mt-1 opacity-90">
+                    {qualResult.isQualified
+                      ? 'All Step 1 accreditation qualification gates passed.'
+                      : 'Adjust attribute levels or link an SDG target to qualify.'}
+                  </p>
+                </div>
 
-              <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                <span className="font-medium text-slate-700">2. Three of WP2..WP7 (≥ Level 2)</span>
-                <span className={`font-bold ${qualResult.breakdown.wpOfSixMet ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {qualResult.breakdown.wpOfSixMet ? 'PASS' : 'FAIL'}
-                </span>
-              </div>
+                {/* Checklist */}
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+                    <span className="font-medium text-slate-700">1. WP1 Depth of Knowledge (≥ Level 2)</span>
+                    <span className={`font-bold ${qualResult.breakdown.wp1Met ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {qualResult.breakdown.wp1Met ? 'PASS' : 'FAIL'}
+                    </span>
+                  </div>
 
-              <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                <span className="font-medium text-slate-700">3. Two of EA1..EA5 (≥ Level 2)</span>
-                <span className={`font-bold ${qualResult.breakdown.eaMet ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {qualResult.breakdown.eaMet ? 'PASS' : 'FAIL'}
-                </span>
-              </div>
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+                    <span className="font-medium text-slate-700">2. Three of WP2..WP7 (≥ Level 2)</span>
+                    <span className={`font-bold ${qualResult.breakdown.wpOfSixMet ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {qualResult.breakdown.wpOfSixMet ? 'PASS' : 'FAIL'}
+                    </span>
+                  </div>
 
-              <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                <span className="font-medium text-slate-700">4. At least one SDG Target named</span>
-                <span className={`font-bold ${qualResult.breakdown.hasSdgTarget ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {qualResult.breakdown.hasSdgTarget ? 'PASS' : 'FAIL'}
-                </span>
-              </div>
-            </div>
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+                    <span className="font-medium text-slate-700">3. Two of EA1..EA5 (≥ Level 2)</span>
+                    <span className={`font-bold ${qualResult.breakdown.eaMet ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {qualResult.breakdown.eaMet ? 'PASS' : 'FAIL'}
+                    </span>
+                  </div>
 
-            {/* Actions */}
+                  <div className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+                    <span className="font-medium text-slate-700">4. At least one SDG Target named</span>
+                    <span className={`font-bold ${qualResult.breakdown.hasSdgTarget ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {qualResult.breakdown.hasSdgTarget ? 'PASS' : 'FAIL'}
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* When showAccreditationDetails is FALSE (Default): Clean, uncluttered supervisor summary */
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Abstract Length:</span>
+                    <span
+                      className={`font-mono font-bold ${
+                        isOverWordLimit
+                          ? 'text-red-600'
+                          : wordCount > 0
+                          ? 'text-emerald-600'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {wordCount} / 500 words
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Proposal Mode:</span>
+                    <span className="font-semibold text-slate-700">{category}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-indigo-50/60 border border-indigo-100 text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-semibold text-indigo-900">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>AI Accreditation Tracking Active</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-700 leading-relaxed">
+                    Washington Accord criteria (WP1 ≥ Level 2) and SDG mappings are being calibrated in the background.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAccreditationDetails(true)}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline block pt-0.5"
+                  >
+                    Turn ON Attribute Matrix &amp; Preview Switch →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Actions: Always available */}
             <div className="pt-4 border-t border-slate-100 space-y-2">
               <button
                 type="button"
