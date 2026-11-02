@@ -8,6 +8,8 @@ import {
   getAttainmentLevel,
   getAttainmentLevelDescription,
   calculateStudentAttainment,
+  calculateCohortAttainmentLevel,
+  DEFAULT_COHORT_STUDENT_TARGET_PCT,
   DEFAULT_ATTAINMENT_TARGET,
   MarkEntryInput,
   StudentMarkEntryInput,
@@ -142,13 +144,14 @@ export async function calculateAndSnapshotGroupAttainmentAction(groupId: string)
 // ----------------------------------------------------
 // 2. Get Faculty Attainment Analytics (Strict Supervisor Isolation)
 // ----------------------------------------------------
-export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
+export async function getFacultyAttainmentAnalyticsAction(batchId?: string, semester?: number | 'ALL') {
   const session = await auth();
   if (!session?.user?.id) {
     return { error: 'Unauthorized: You must be logged in to view attainment.' };
   }
 
   const supervisorId = session.user.id;
+  const semFilter = semester && semester !== 'ALL' ? Number(semester) : null;
 
   try {
     const where: any = { supervisorId };
@@ -171,6 +174,7 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
             },
           },
           markEntries: {
+            where: semFilter ? { criterion: { semester: semFilter } } : {},
             include: {
               criterion: {
                 include: {
@@ -219,7 +223,46 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
         };
       });
 
-      const enrichedSnapshots = (g.snapshots || []).map((s) => ({
+      let rawSnapshots = (g.snapshots || []);
+      if (semFilter) {
+        // Derive semester-specific group attainment directly from filtered rubric entries
+        const entriesMap = new Map<number, { marksSum: number; max: number; count: number; maps: string[] }>();
+        for (const m of (g.markEntries || [])) {
+          if (!m.criterion) continue;
+          const mappingCodes = (m.criterion.maps || []).map((map) => map.code);
+          if (!entriesMap.has(m.criterion.id)) {
+            entriesMap.set(m.criterion.id, {
+              marksSum: m.marks,
+              max: m.criterion.maxMarks,
+              count: 1,
+              maps: mappingCodes,
+            });
+          } else {
+            const ex = entriesMap.get(m.criterion.id)!;
+            ex.marksSum += m.marks;
+            ex.count += 1;
+          }
+        }
+        const markInputs: MarkEntryInput[] = Array.from(entriesMap.values()).map((e) => ({
+          marks: e.marksSum / e.count,
+          max: e.max,
+          maps: e.maps,
+        }));
+        rawSnapshots = metricsToEvaluate
+          .map((metric) => {
+            const ratio = attainment(markInputs, metric);
+            return ratio !== null
+              ? {
+                  metric,
+                  attainment: ratio,
+                  isAttained: isMetricAttained(ratio, DEFAULT_ATTAINMENT_TARGET),
+                }
+              : null;
+          })
+          .filter(Boolean) as any[];
+      }
+
+      const enrichedSnapshots = rawSnapshots.map((s: any) => ({
         ...s,
         percentage: Math.round(s.attainment * 100),
         level: getAttainmentLevel(s.attainment),
@@ -234,15 +277,25 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
     });
 
     // Aggregate PO attainment across supervisor groups
-    const poStats: Record<string, { totalRatios: number[]; count: number; levels: number[] }> = {};
+    const poStats: Record<string, { totalRatios: number[]; count: number; levels: number[]; studentPercentages: number[] }> = {};
     for (let i = 1; i <= 11; i++) {
-      poStats[`PO${i}`] = { totalRatios: [], count: 0, levels: [] };
+      poStats[`PO${i}`] = { totalRatios: [], count: 0, levels: [], studentPercentages: [] };
     }
 
     let totalMetricsCount = 0;
     let attainedMetricsCount = 0;
 
     enrichedGroups.forEach((g) => {
+      // Collect student percentages for cohort calculation
+      (g.studentsAttainment || []).forEach((st: any) => {
+        for (let i = 1; i <= 11; i++) {
+          const poCode = `PO${i}`;
+          if (st.attainments?.[poCode]) {
+            poStats[poCode].studentPercentages.push(st.attainments[poCode].percentage);
+          }
+        }
+      });
+
       g.snapshots.forEach((s) => {
         if (s.metric.startsWith('PO')) {
           if (poStats[s.metric]) {
@@ -262,7 +315,8 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
           ? Number((stat.totalRatios.reduce((a, b) => a + b, 0) / stat.totalRatios.length).toFixed(4))
           : 0;
 
-      const level = getAttainmentLevel(avg);
+      // Calculate NBA 60% Cumulative Student Cohort Level
+      const cohortData = calculateCohortAttainmentLevel(stat.studentPercentages, DEFAULT_COHORT_STUDENT_TARGET_PCT);
       const l0 = stat.levels.filter((lvl) => lvl === 0).length;
       const l1 = stat.levels.filter((lvl) => lvl === 1).length;
       const l2 = stat.levels.filter((lvl) => lvl === 2).length;
@@ -273,10 +327,11 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
         po: code,
         attainment: Math.round(avg * 100),
         ratio: avg,
-        level,
-        levelDescription: getAttainmentLevelDescription(level),
-        isAttained: level >= 1,
+        level: cohortData.attainmentLevel, // Official NBA 60% cumulative student cohort level
+        levelDescription: getAttainmentLevelDescription(cohortData.attainmentLevel),
+        isAttained: cohortData.isAttained,
         evaluatedGroups: stat.count,
+        cohortData,
         levelsDistribution: {
           l0Count: l0,
           l1Count: l1,
@@ -299,6 +354,7 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
       poAverages,
       overallAttainmentRate,
       targetThreshold: Math.round(DEFAULT_ATTAINMENT_TARGET * 100),
+      selectedSemester: semester || 'ALL',
     };
   } catch (err) {
     return { error: `Failed to load faculty attainment: ${(err as Error).message}` };
@@ -308,11 +364,13 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string) {
 // ----------------------------------------------------
 // 3. Get Admin Attainment Analytics (Department-wide)
 // ----------------------------------------------------
-export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
+export async function getAdminAttainmentAnalyticsAction(batchId?: string, semester?: number | 'ALL') {
   const session = await auth();
   if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
     return { error: 'Unauthorized: Only Project Committee Admins can access department audit.' };
   }
+
+  const semFilter = semester && semester !== 'ALL' ? Number(semester) : null;
 
   try {
     const where: any = {};
@@ -335,6 +393,7 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
             },
           },
           markEntries: {
+            where: semFilter ? { criterion: { semester: semFilter } } : {},
             include: {
               criterion: {
                 include: {
@@ -355,10 +414,10 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
       ...Array.from({ length: 5 }, (_, i) => `EA${i + 1}`),
     ];
 
-    // Track both group-level and student-level ratios for each PO
-    const poStats: Record<string, { ratios: number[]; levels: number[]; studentLevels: number[] }> = {};
+    // Track both group-level and student-level scores for each PO
+    const poStats: Record<string, { ratios: number[]; levels: number[]; studentPercentages: number[]; studentLevels: number[] }> = {};
     for (let i = 1; i <= 11; i++) {
-      poStats[`PO${i}`] = { ratios: [], levels: [], studentLevels: [] };
+      poStats[`PO${i}`] = { ratios: [], levels: [], studentPercentages: [], studentLevels: [] };
     }
 
     let totalEvaluated = 0;
@@ -382,12 +441,52 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
         for (let i = 1; i <= 11; i++) {
           const poCode = `PO${i}`;
           if (studentAttainments[poCode]) {
+            poStats[poCode].studentPercentages.push(studentAttainments[poCode].percentage);
             poStats[poCode].studentLevels.push(studentAttainments[poCode].level);
           }
         }
       });
 
-      const enrichedSnapshots = (g.snapshots || []).map((s) => {
+      let rawSnapshots = (g.snapshots || []);
+      if (semFilter) {
+        // Derive semester-specific group attainment directly from filtered rubric entries
+        const entriesMap = new Map<number, { marksSum: number; max: number; count: number; maps: string[] }>();
+        for (const m of (g.markEntries || [])) {
+          if (!m.criterion) continue;
+          const mappingCodes = (m.criterion.maps || []).map((map) => map.code);
+          if (!entriesMap.has(m.criterion.id)) {
+            entriesMap.set(m.criterion.id, {
+              marksSum: m.marks,
+              max: m.criterion.maxMarks,
+              count: 1,
+              maps: mappingCodes,
+            });
+          } else {
+            const ex = entriesMap.get(m.criterion.id)!;
+            ex.marksSum += m.marks;
+            ex.count += 1;
+          }
+        }
+        const markInputs: MarkEntryInput[] = Array.from(entriesMap.values()).map((e) => ({
+          marks: e.marksSum / e.count,
+          max: e.max,
+          maps: e.maps,
+        }));
+        rawSnapshots = metricsToEvaluate
+          .map((metric) => {
+            const ratio = attainment(markInputs, metric);
+            return ratio !== null
+              ? {
+                  metric,
+                  attainment: ratio,
+                  isAttained: isMetricAttained(ratio, DEFAULT_ATTAINMENT_TARGET),
+                }
+              : null;
+          })
+          .filter(Boolean) as any[];
+      }
+
+      const enrichedSnapshots = rawSnapshots.map((s: any) => {
         const lvl = getAttainmentLevel(s.attainment);
         if (s.metric.startsWith('PO') && poStats[s.metric]) {
           poStats[s.metric].ratios.push(s.attainment);
@@ -411,7 +510,9 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
 
     const poSummary = Object.entries(poStats).map(([po, data]) => {
       const avg = data.ratios.length > 0 ? data.ratios.reduce((a, b) => a + b, 0) / data.ratios.length : 0;
-      const level = getAttainmentLevel(avg);
+      
+      // Calculate NBA Official 60% Cumulative Student Cohort Level
+      const cohortData = calculateCohortAttainmentLevel(data.studentPercentages, DEFAULT_COHORT_STUDENT_TARGET_PCT);
       const totalGroupsCount = data.levels.length || 1;
 
       const l0 = data.levels.filter((l) => l === 0).length;
@@ -429,10 +530,11 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
         po,
         percentage: Math.round(avg * 100),
         ratio: Number(avg.toFixed(4)),
-        level,
-        levelDescription: getAttainmentLevelDescription(level),
-        isAttained: level >= 1,
+        level: cohortData.attainmentLevel, // Official NBA 60% Cumulative Student Cohort Level
+        levelDescription: getAttainmentLevelDescription(cohortData.attainmentLevel),
+        isAttained: cohortData.isAttained,
         count: data.ratios.length,
+        cohortData,
         // Group distributions
         l0Count: l0,
         l1Count: l1,
@@ -465,6 +567,7 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string) {
       overallAttainmentRate: totalEvaluated > 0 ? Math.round((totalAttained / totalEvaluated) * 100) : 0,
       targetThreshold: Math.round(DEFAULT_ATTAINMENT_TARGET * 100),
       groupsWithSnapshots: enrichedGroups.filter((g) => g.snapshots.length > 0).length,
+      selectedSemester: semester || 'ALL',
     };
   } catch (err) {
     return { error: `Failed to load admin attainment analytics: ${(err as Error).message}` };

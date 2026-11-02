@@ -41,6 +41,7 @@ export default function AdminAttainmentClient() {
 
   const [batches, setBatches] = useState<{ id: string; active: boolean }[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
+  const [selectedSemester, setSelectedSemester] = useState<number | 'ALL'>('ALL');
   const [groups, setGroups] = useState<any[]>([]);
   const [totalGroups, setTotalGroups] = useState<number>(0);
   const [groupsWithSnapshots, setGroupsWithSnapshots] = useState<number>(0);
@@ -48,10 +49,10 @@ export default function AdminAttainmentClient() {
   const [overallRate, setOverallRate] = useState<number>(0);
   const [threshold, setThreshold] = useState<number>(65);
 
-  async function loadData(batch = selectedBatch) {
+  async function loadData(batch = selectedBatch, semester = selectedSemester) {
     setLoading(true);
     setError(null);
-    const res = await getAdminAttainmentAnalyticsAction(batch);
+    const res = await getAdminAttainmentAnalyticsAction(batch, semester);
 
     if (res.error) {
       setError(res.error);
@@ -68,8 +69,8 @@ export default function AdminAttainmentClient() {
   }
 
   useEffect(() => {
-    loadData(selectedBatch);
-  }, [selectedBatch]);
+    loadData(selectedBatch, selectedSemester);
+  }, [selectedBatch, selectedSemester]);
 
   async function handleRecalculate(groupId: string) {
     setCalculatingId(groupId);
@@ -109,6 +110,9 @@ export default function AdminAttainmentClient() {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
               Locked Target: {threshold}%
             </span>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+              {selectedSemester === 'ALL' ? 'Final Closing Audit (Sem 6–8)' : `Semester ${selectedSemester} Audit`}
+            </span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mt-2">
             Department-wide PO Attainment Dashboard
@@ -134,6 +138,63 @@ export default function AdminAttainmentClient() {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Semester Progression Navigation Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-slate-100/90 rounded-2xl border border-slate-200">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider px-2 mr-1">Progression:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 'ALL'
+                ? 'bg-purple-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Final Closing (All Semesters Cumulative)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester(6)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 6
+                ? 'bg-purple-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Semester 6 (Rubrics A &amp; B)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester(7)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 7
+                ? 'bg-purple-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Semester 7 (Rubrics C &amp; D)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester(8)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 8
+                ? 'bg-purple-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Semester 8 (Rubrics E &amp; F)
+          </button>
+        </div>
+
+        <span className="text-[11px] font-semibold text-slate-500 px-2">
+          {selectedSemester === 'ALL'
+            ? 'Closing Cumulative Audit (Rubrics A–F)'
+            : `Showing Attainment isolated to Semester ${selectedSemester}`}
+        </span>
       </div>
 
       {/* Alerts */}
@@ -184,24 +245,24 @@ export default function AdminAttainmentClient() {
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-            NBA Standard 3-Tier Attainment Scale (HITK B.Tech ECE)
+            NBA SAR Criterion 3: 60% Cumulative Student Cohort Benchmark Rule
           </span>
           <p className="text-xs text-slate-500 mt-0.5">
-            Criteria marks are cumulative-averaged to grade groups and students into Level 0 (&lt;65%), Level 1 (65%-75%), Level 2 (75%-85%), Level 3 (≥85%).
+            The Department PO Attainment Level requires at least 60% of students to reach or exceed each score benchmark (cumulative from Level 3 down to Level 1).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-200/80 text-slate-700 border border-slate-300">
-            Level 0: &lt;65% (Not Attained)
+            Level 0: &lt;60% reach 65%
           </span>
           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-            Level 1: 65% – 75%
+            Level 1: ≥60% students score ≥65%
           </span>
           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
-            Level 2: 75% – 85%
+            Level 2: ≥60% students score ≥75%
           </span>
           <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-            Level 3: ≥85%
+            Level 3: ≥60% students score ≥85%
           </span>
         </div>
       </div>
@@ -325,11 +386,11 @@ export default function AdminAttainmentClient() {
               <tr>
                 <th className="px-5 py-3">PO Code</th>
                 <th className="px-5 py-3">Program Outcome Description</th>
-                <th className="px-3 py-3 text-center">Groups</th>
+                <th className="px-3 py-3 text-center">Students</th>
                 <th className="px-3 py-3 text-center">Avg %</th>
-                <th className="px-4 py-3 text-center">Attainment Level</th>
+                <th className="px-4 py-3 text-center">NBA PO Level (60% Rule)</th>
+                <th className="px-5 py-3 text-center">Cumulative Cohort Rate (Req: ≥60%)</th>
                 <th className="px-4 py-3 text-center">Group Distribution</th>
-                <th className="px-4 py-3 text-center">Student Cohort Distribution</th>
                 <th className="px-4 py-3 text-center">Accreditation Status</th>
               </tr>
             </thead>
@@ -337,11 +398,12 @@ export default function AdminAttainmentClient() {
               {poSummary.map((item) => {
                 const lvl = item.level ?? 0;
                 let levelBadge = 'bg-slate-100 text-slate-700 border-slate-300';
-                if (lvl === 3) levelBadge = 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold';
+                if (lvl === 3) levelBadge = 'bg-emerald-100 text-emerald-900 border-emerald-300 font-extrabold';
                 else if (lvl === 2) levelBadge = 'bg-blue-100 text-blue-900 border-blue-300 font-bold';
                 else if (lvl === 1) levelBadge = 'bg-amber-100 text-amber-900 border-amber-300 font-semibold';
 
-                const sDist = item.studentDistribution;
+                const cohort = item.cohortData;
+                const totalStudents = cohort?.totalStudents || item.totalStudentsEvaluated || 0;
 
                 return (
                   <tr key={item.po} className="hover:bg-slate-50/60 transition">
@@ -349,14 +411,52 @@ export default function AdminAttainmentClient() {
                     <td className="px-5 py-3.5 font-medium text-slate-700">
                       {PO_DEFINITIONS[item.po] || 'Program Outcome'}
                     </td>
-                    <td className="px-3 py-3.5 text-center font-mono">{item.count}</td>
+                    <td className="px-3 py-3.5 text-center font-mono">{totalStudents}</td>
                     <td className="px-3 py-3.5 text-center font-mono font-bold text-sm">
                       {item.percentage}%
                     </td>
                     <td className="px-4 py-3.5 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${levelBadge}`}>
+                      <span className={`px-2.5 py-1 rounded text-[11px] font-mono border ${levelBadge}`}>
                         Level {lvl}
                       </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center font-mono text-[11px]">
+                      {cohort ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span
+                            className={`px-1.5 py-0.5 rounded border text-[10px] ${
+                              cohort.pctGte85 >= 60
+                                ? 'bg-emerald-100 text-emerald-900 border-emerald-300 font-extrabold'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}
+                            title={`≥85% Marks: ${cohort.countGte85}/${cohort.totalStudents} students (${cohort.pctGte85}%). Target is ≥60% for Level 3.`}
+                          >
+                            ≥85%: <strong>{cohort.pctGte85}%</strong>
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded border text-[10px] ${
+                              cohort.pctGte75 >= 60
+                                ? 'bg-blue-100 text-blue-900 border-blue-300 font-extrabold'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}
+                            title={`≥75% Marks (Cumulative): ${cohort.countGte75}/${cohort.totalStudents} students (${cohort.pctGte75}%). Target is ≥60% for Level 2.`}
+                          >
+                            ≥75%: <strong>{cohort.pctGte75}%</strong>
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded border text-[10px] ${
+                              cohort.pctGte65 >= 60
+                                ? 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}
+                            title={`≥65% Marks (Cumulative): ${cohort.countGte65}/${cohort.totalStudents} students (${cohort.pctGte65}%). Target is ≥60% for Level 1.`}
+                          >
+                            ≥65%: <strong>{cohort.pctGte65}%</strong>
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-center font-mono text-[11px]">
                       <div className="flex items-center justify-center gap-1">
@@ -373,26 +473,6 @@ export default function AdminAttainmentClient() {
                           L0:{item.l0Pct}%
                         </span>
                       </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-center font-mono text-[11px]">
-                      {sDist ? (
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="px-1 py-0.5 rounded bg-emerald-50 text-emerald-800" title={`L3 (≥85%): ${sDist.l3Count} students`}>
-                            L3:{sDist.l3Pct}%
-                          </span>
-                          <span className="px-1 py-0.5 rounded bg-blue-50 text-blue-800" title={`L2 (75-85%): ${sDist.l2Count} students`}>
-                            L2:{sDist.l2Pct}%
-                          </span>
-                          <span className="px-1 py-0.5 rounded bg-amber-50 text-amber-800" title={`L1 (65-75%): ${sDist.l1Count} students`}>
-                            L1:{sDist.l1Pct}%
-                          </span>
-                          <span className="px-1 py-0.5 rounded bg-slate-100 text-slate-600" title={`L0 (<65%): ${sDist.l0Count} students`}>
-                            L0:{sDist.l0Pct}%
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <span

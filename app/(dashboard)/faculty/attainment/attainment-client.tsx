@@ -33,6 +33,7 @@ export default function FacultyAttainmentClient() {
 
   const [batches, setBatches] = useState<{ id: string; active: boolean }[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
+  const [selectedSemester, setSelectedSemester] = useState<number | 'ALL'>('ALL');
   const [groups, setGroups] = useState<any[]>([]);
   const [poAverages, setPoAverages] = useState<any[]>([]);
   const [overallRate, setOverallRate] = useState<number>(0);
@@ -43,10 +44,10 @@ export default function FacultyAttainmentClient() {
     setExpandedStudentGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   }
 
-  async function loadData(batch = selectedBatch) {
+  async function loadData(batch = selectedBatch, semester = selectedSemester) {
     setLoading(true);
     setError(null);
-    const res = await getFacultyAttainmentAnalyticsAction(batch);
+    const res = await getFacultyAttainmentAnalyticsAction(batch, semester);
 
     if (res.error) {
       setError(res.error);
@@ -61,8 +62,8 @@ export default function FacultyAttainmentClient() {
   }
 
   useEffect(() => {
-    loadData(selectedBatch);
-  }, [selectedBatch]);
+    loadData(selectedBatch, selectedSemester);
+  }, [selectedBatch, selectedSemester]);
 
   // Recalculate group attainment action
   async function handleRecalculate(groupId: string) {
@@ -128,6 +129,63 @@ export default function FacultyAttainmentClient() {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Semester Progression Navigation Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-slate-100/90 rounded-2xl border border-slate-200">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider px-2 mr-1">Progression:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 'ALL'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Final Closing (All Semesters Cumulative)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester(6)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 6
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Semester 6 (Rubrics A &amp; B)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester(7)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 7
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Semester 7 (Rubrics C &amp; D)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedSemester(8)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              selectedSemester === 8
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 bg-white border border-slate-200'
+            }`}
+          >
+            Semester 8 (Rubrics E &amp; F)
+          </button>
+        </div>
+
+        <span className="text-[11px] font-semibold text-slate-500 px-2">
+          {selectedSemester === 'ALL'
+            ? 'Cumulative closing across all semesters'
+            : `Showing Supervisor Group Attainment for Semester ${selectedSemester}`}
+        </span>
       </div>
 
       {/* Alerts */}

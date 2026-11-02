@@ -153,6 +153,90 @@ export function getAttainmentLevelDescription(level: number): string {
   }
 }
 
+/**
+ * Department student cohort threshold benchmark for NBA PO attainment:
+ * 60% of students must achieve the level's benchmark score.
+ */
+export const DEFAULT_COHORT_STUDENT_TARGET_PCT = 60;
+
+export interface CohortCumulativeDistribution {
+  totalStudents: number;
+  countGte85: number; // Level 3 mark (>= 85%)
+  countGte75: number; // Level 2 mark (>= 75%, cumulative)
+  countGte65: number; // Level 1 mark (>= 65%, cumulative)
+  countLt65: number;  // Level 0 mark (< 65%)
+  pctGte85: number;
+  pctGte75: number;
+  pctGte65: number;
+  pctLt65: number;
+  attainmentLevel: number; // 0, 1, 2, or 3
+  isAttained: boolean;     // attainmentLevel >= 1
+}
+
+/**
+ * Computes NBA Department PO Attainment Level based on the 60% Cumulative Student Cohort Rule:
+ * - Level 3: >= 60% of students scored >= 85% marks
+ * - Level 2: >= 60% of students scored >= 75% marks (cumulative: includes >= 85% and 75%-85%)
+ * - Level 1: >= 60% of students scored >= 65% marks (cumulative: includes all >= 65%)
+ * - Level 0: < 60% of students scored >= 65% marks (Not Attained)
+ */
+export function calculateCohortAttainmentLevel(
+  studentPercentages: number[],
+  cohortTargetPct: number = DEFAULT_COHORT_STUDENT_TARGET_PCT
+): CohortCumulativeDistribution {
+  const total = studentPercentages.length;
+  if (total === 0) {
+    return {
+      totalStudents: 0,
+      countGte85: 0,
+      countGte75: 0,
+      countGte65: 0,
+      countLt65: 0,
+      pctGte85: 0,
+      pctGte75: 0,
+      pctGte65: 0,
+      pctLt65: 0,
+      attainmentLevel: 0,
+      isAttained: false,
+    };
+  }
+
+  const countGte85 = studentPercentages.filter((p) => p >= 85).length;
+  const countGte75 = studentPercentages.filter((p) => p >= 75).length;
+  const countGte65 = studentPercentages.filter((p) => p >= 65).length;
+  const countLt65 = studentPercentages.filter((p) => p < 65).length;
+
+  const pctGte85 = Math.round((countGte85 / total) * 100);
+  const pctGte75 = Math.round((countGte75 / total) * 100);
+  const pctGte65 = Math.round((countGte65 / total) * 100);
+  const pctLt65 = Math.round((countLt65 / total) * 100);
+
+  let attainmentLevel = 0;
+  if (pctGte85 >= cohortTargetPct) {
+    attainmentLevel = 3;
+  } else if (pctGte75 >= cohortTargetPct) {
+    attainmentLevel = 2;
+  } else if (pctGte65 >= cohortTargetPct) {
+    attainmentLevel = 1;
+  } else {
+    attainmentLevel = 0;
+  }
+
+  return {
+    totalStudents: total,
+    countGte85,
+    countGte75,
+    countGte65,
+    countLt65,
+    pctGte85,
+    pctGte75,
+    pctGte65,
+    pctLt65,
+    attainmentLevel,
+    isAttained: attainmentLevel >= 1,
+  };
+}
+
 export interface StudentMarkEntryInput {
   studentId?: string | null;
   marks: number;

@@ -20,6 +20,7 @@ import {
   getAttainmentLevel,
   getAttainmentLevelDescription,
   calculateStudentAttainment,
+  calculateCohortAttainmentLevel,
   DEFAULT_ATTAINMENT_TARGET,
   MarkEntryInput,
   StudentMarkEntryInput,
@@ -132,6 +133,40 @@ describe('Attainment Pure Engine: 65% Benchmark & Ratio Calculation', () => {
     // Student 2 PO3 inherits group mark: 8 / 10 = 80% (Level 2)
     expect(st2Attainments.PO3.percentage).toBe(80);
     expect(st2Attainments.PO3.level).toBe(2);
+  });
+
+  it('evaluates NBA 60% cumulative student cohort rule for department PO attainment', () => {
+    // Case 1: >= 60% of students achieved >= 85% marks -> Level 3
+    const cohortL3 = [90, 88, 86, 85, 78, 62]; // 4 of 6 (67%) >= 85
+    const resL3 = calculateCohortAttainmentLevel(cohortL3, 60);
+    expect(resL3.attainmentLevel).toBe(3);
+    expect(resL3.isAttained).toBe(true);
+    expect(resL3.pctGte85).toBe(67);
+
+    // Case 2: Cumulative Level 2:
+    // Only 2 of 6 (33%) >= 85%, BUT 3 are between 75-85%. Total >= 75% is 5 of 6 (83%) >= 60% -> Level 2
+    const cohortL2 = [90, 86, 80, 78, 76, 60];
+    const resL2 = calculateCohortAttainmentLevel(cohortL2, 60);
+    expect(resL2.attainmentLevel).toBe(2);
+    expect(resL2.isAttained).toBe(true);
+    expect(resL2.pctGte75).toBe(83);
+    expect(resL2.pctGte85).toBe(33);
+
+    // Case 3: Cumulative Level 1:
+    // Only 1 of 5 (20%) >= 75%, but 4 of 5 (80%) >= 65% -> Level 1
+    const cohortL1 = [78, 72, 70, 66, 55];
+    const resL1 = calculateCohortAttainmentLevel(cohortL1, 60);
+    expect(resL1.attainmentLevel).toBe(1);
+    expect(resL1.isAttained).toBe(true);
+    expect(resL1.pctGte65).toBe(80);
+
+    // Case 4: Level 0 (Not Attained):
+    // Only 2 of 5 (40%) >= 65% (< 60% threshold) -> Level 0
+    const cohortL0 = [80, 70, 60, 58, 50];
+    const resL0 = calculateCohortAttainmentLevel(cohortL0, 60);
+    expect(resL0.attainmentLevel).toBe(0);
+    expect(resL0.isAttained).toBe(false);
+    expect(resL0.pctGte65).toBe(40);
   });
 });
 
