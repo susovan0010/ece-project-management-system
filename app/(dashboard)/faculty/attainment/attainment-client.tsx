@@ -37,6 +37,11 @@ export default function FacultyAttainmentClient() {
   const [poAverages, setPoAverages] = useState<any[]>([]);
   const [overallRate, setOverallRate] = useState<number>(0);
   const [threshold, setThreshold] = useState<number>(65);
+  const [expandedStudentGroups, setExpandedStudentGroups] = useState<Record<string, boolean>>({});
+
+  function toggleGroupStudents(groupId: string) {
+    setExpandedStudentGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  }
 
   async function loadData(batch = selectedBatch) {
     setLoading(true);
@@ -168,6 +173,33 @@ export default function FacultyAttainmentClient() {
         </div>
       </div>
 
+      {/* NBA Attainment 3-Tier Scale Reference Box */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+            NBA 3-Tier Attainment Scale (HITK ECE Standard)
+          </span>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Individual students and groups are graded into discrete attainment levels based on cumulative rubric marks.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-200/80 text-slate-700 border border-slate-300">
+            Level 0: &lt;65% (Not Attained)
+          </span>
+          <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+            Level 1: 65% – 75%
+          </span>
+          <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
+            Level 2: 75% – 85%
+          </span>
+          <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+            Level 3: ≥85%
+          </span>
+        </div>
+      </div>
+
       {/* Visual Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Bar Chart (8 cols) */}
@@ -264,6 +296,10 @@ export default function FacultyAttainmentClient() {
 
               const groupPos = g.snapshots.filter((s: any) => s.metric.startsWith('PO'));
               const groupWps = g.snapshots.filter((s: any) => s.metric.startsWith('WP'));
+              const groupWks = g.snapshots.filter((s: any) => s.metric.startsWith('WK'));
+              const groupEas = g.snapshots.filter((s: any) => s.metric.startsWith('EA'));
+              const students = g.studentsAttainment || [];
+              const isStudentsOpen = expandedStudentGroups[g.id] || false;
 
               return (
                 <div
@@ -284,11 +320,29 @@ export default function FacultyAttainmentClient() {
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Batch: {g.batchId} | Snapshots recorded: {g.snapshots.length}
+                        Batch: {g.batchId} | Snapshots recorded: {g.snapshots.length} | Members: {students.length}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {students.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupStudents(g.id)}
+                          className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-xs transition inline-flex items-center gap-1.5"
+                        >
+                          <svg
+                            className={`w-3.5 h-3.5 transition-transform ${isStudentsOpen ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                          {isStudentsOpen ? 'Hide Individual Students' : `Student Scores (${students.length})`}
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleRecalculate(g.id)}
                         disabled={isCalculating}
@@ -309,25 +363,103 @@ export default function FacultyAttainmentClient() {
                     </div>
                   </div>
 
-                  {/* Snapshots chips */}
+                  {/* Group PO Attainment Badges */}
                   {groupPos.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-slate-200/60">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Calculated PO Scores (≥65% Target):
+                        Group Program Outcome Attainment Levels:
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {groupPos.map((s: any) => (
-                          <span
-                            key={s.metric}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                              s.isAttained
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                : 'bg-amber-100 text-amber-800 border border-amber-200'
-                            }`}
-                          >
-                            {s.metric}: {Math.round(s.attainment * 100)}%
-                          </span>
-                        ))}
+                        {groupPos.map((s: any) => {
+                          const lvl = s.level ?? 0;
+                          const pct = s.percentage ?? Math.round(s.attainment * 100);
+                          let badgeClass = 'bg-slate-100 text-slate-700 border-slate-300';
+                          if (lvl === 3) badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold';
+                          else if (lvl === 2) badgeClass = 'bg-blue-100 text-blue-800 border-blue-300 font-bold';
+                          else if (lvl === 1) badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 font-semibold';
+
+                          return (
+                            <span
+                              key={s.metric}
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono border ${badgeClass}`}
+                              title={`${s.metric}: Level ${lvl} (${pct}%)`}
+                            >
+                              {s.metric}: L{lvl} ({pct}%)
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Group Washington Accord Attributes Badges (WPs, WKs, EAs) */}
+                  {(groupWps.length > 0 || groupWks.length > 0 || groupEas.length > 0) && (
+                    <div className="mt-2 pt-2 border-t border-dashed border-slate-200/60">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                        Group Washington Accord Attribute Attainment:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[...groupWps, ...groupWks, ...groupEas].map((s: any) => {
+                          const lvl = s.level ?? 0;
+                          const pct = s.percentage ?? Math.round(s.attainment * 100);
+                          let badgeClass = 'bg-slate-100 text-slate-700 border-slate-300';
+                          if (lvl === 3) badgeClass = 'bg-teal-100 text-teal-900 border-teal-300 font-extrabold';
+                          else if (lvl === 2) badgeClass = 'bg-cyan-100 text-cyan-900 border-cyan-300 font-bold';
+                          else if (lvl === 1) badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 font-semibold';
+
+                          return (
+                            <span
+                              key={s.metric}
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono border ${badgeClass}`}
+                              title={`${s.metric}: Level ${lvl} (${pct}%)`}
+                            >
+                              {s.metric}: L{lvl} ({pct}%)
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expandable Individual Student Attainment Table */}
+                  {isStudentsOpen && students.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 bg-white rounded-xl p-3 border border-slate-200 shadow-xs">
+                      <span className="text-xs font-bold text-slate-900 block mb-2">
+                        Individual Student Attainment Levels (Cumulative Rubric Breakdown):
+                      </span>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-[11px] text-slate-700 border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                              <th className="py-2 px-3">Roll No</th>
+                              <th className="py-2 px-3">Student Name</th>
+                              {Array.from({ length: 11 }, (_, i) => `PO${i + 1}`).map((po) => (
+                                <th key={po} className="py-2 px-2 text-center font-mono">{po}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-mono">
+                            {students.map((st: any) => (
+                              <tr key={st.studentId} className="hover:bg-slate-50/70">
+                                <td className="py-2 px-3 font-bold text-slate-900">{st.roll}</td>
+                                <td className="py-2 px-3 font-sans font-medium text-slate-800">{st.name}</td>
+                                {Array.from({ length: 11 }, (_, i) => `PO${i + 1}`).map((po) => {
+                                  const att = st.attainments?.[po];
+                                  if (!att) return <td key={po} className="py-2 px-2 text-center text-slate-300">-</td>;
+                                  let color = 'text-slate-500';
+                                  if (att.level === 3) color = 'text-emerald-700 font-bold bg-emerald-50/60';
+                                  else if (att.level === 2) color = 'text-blue-700 font-bold bg-blue-50/60';
+                                  else if (att.level === 1) color = 'text-amber-700 font-semibold bg-amber-50/60';
+                                  return (
+                                    <td key={po} className={`py-2 px-2 text-center ${color}`} title={`${po}: Level ${att.level} (${att.percentage}%)`}>
+                                      L{att.level} <span className="text-[9px] opacity-75">({att.percentage}%)</span>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}

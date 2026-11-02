@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getMyConfirmedTopicsAction } from '@/app/actions/faculty-topics';
 import { updateTopicCategoryAction } from '@/app/actions/topics';
-import { deriveMappedPoCodes } from '@/lib/engine';
+import { deriveMappedPoCodes, getAttainmentLevel } from '@/lib/engine';
 import { evaluateRules } from '@/lib/rules';
 import {
   completeAndArchiveTopicAction,
@@ -369,7 +369,7 @@ export default function MyTopicsClient() {
                       </p>
                     </div>
 
-                    {/* WP, WK, EA, PO & SDG Tags */}
+                    {/* WP, WK, EA, PO & SDG Tags & Attainment Progress */}
                     {(() => {
                       const effectiveAttrs =
                         t.attributes && t.attributes.length > 0
@@ -396,53 +396,154 @@ export default function MyTopicsClient() {
                         }))
                       );
 
+                      // Gather evaluated group snapshots to compute attained levels vs target
+                      const allGroupSnapshots = (t.groups || []).flatMap((g: any) => g.snapshots || []);
+                      const groupAttainedMap: Record<string, { ratio: number; level: number; percentage: number }> = {};
+                      allGroupSnapshots.forEach((s: any) => {
+                        const lvl = getAttainmentLevel(s.attainment);
+                        if (!groupAttainedMap[s.metric] || lvl > groupAttainedMap[s.metric].level) {
+                          groupAttainedMap[s.metric] = {
+                            ratio: s.attainment,
+                            level: lvl,
+                            percentage: Math.round(s.attainment * 100),
+                          };
+                        }
+                      });
+
+                      const taggedCodes = new Set(effectiveAttrs.map((a: any) => a.code));
+                      const additionallyAttained = Object.entries(groupAttainedMap).filter(([code, data]) => {
+                        const isAccordAttr = code.startsWith('WP') || code.startsWith('WK') || code.startsWith('EA');
+                        return isAccordAttr && data.level >= 1 && !taggedCodes.has(code);
+                      });
+
                       return (
-                        <div className="flex flex-wrap gap-1 pt-1">
-                          {wpAttrs.map((a: any) => (
-                            <span
-                              key={a.code}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
-                              title="Complex Problem Solving (WP)"
-                            >
-                              {a.code} (L{a.level})
-                            </span>
-                          ))}
-                          {wkAttrs.map((a: any) => (
-                            <span
-                              key={a.code}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200"
-                              title="Engineering Knowledge (WK)"
-                            >
-                              {a.code} (L{a.level})
-                            </span>
-                          ))}
-                          {eaAttrs.map((a: any) => (
-                            <span
-                              key={a.code}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200"
-                              title="Engineering Activity (EA)"
-                            >
-                              {a.code} (L{a.level})
-                            </span>
-                          ))}
-                          {poCodes.map((po) => (
-                            <span
-                              key={po}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-800 border border-violet-200"
-                              title="Mapped Program Outcome (PO)"
-                            >
-                              {po}
-                            </span>
-                          ))}
-                          {t.sdgs &&
-                            t.sdgs.map((s: any) => (
-                              <span
-                                key={s.sdgId}
-                                className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              >
-                                SDG {s.sdg.id}
+                        <div className="space-y-2 pt-1">
+                          <div className="flex flex-wrap gap-1.5">
+                            {wpAttrs.map((a: any) => {
+                              const att = groupAttainedMap[a.code];
+                              const isTargetMet = att && att.level >= a.level;
+                              return (
+                                <span
+                                  key={a.code}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    att
+                                      ? isTargetMet
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                        : 'bg-amber-50 text-amber-800 border-amber-300'
+                                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                                  }`}
+                                  title={`Complex Problem Solving: Target Level ${a.level}${att ? ` | Attained Level ${att.level} (${att.percentage}%)` : ' (Pending Evaluation)'}`}
+                                >
+                                  {a.code} (Target L{a.level}
+                                  {att ? (
+                                    <span className="ml-1 text-[9px] font-extrabold text-blue-700">
+                                      → Attained L{att.level} [{att.percentage}%] {isTargetMet ? '✓' : ''}
+                                    </span>
+                                  ) : null}
+                                  )
+                                </span>
+                              );
+                            })}
+                            {wkAttrs.map((a: any) => {
+                              const att = groupAttainedMap[a.code];
+                              const isTargetMet = att && att.level >= a.level;
+                              return (
+                                <span
+                                  key={a.code}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    att
+                                      ? isTargetMet
+                                        ? 'bg-blue-50 text-blue-900 border-blue-300'
+                                        : 'bg-amber-50 text-amber-800 border-amber-300'
+                                      : 'bg-blue-50 text-blue-800 border-blue-200'
+                                  }`}
+                                  title={`Engineering Knowledge: Target Level ${a.level}${att ? ` | Attained Level ${att.level} (${att.percentage}%)` : ' (Pending Evaluation)'}`}
+                                >
+                                  {a.code} (Target L{a.level}
+                                  {att ? (
+                                    <span className="ml-1 text-[9px] font-extrabold text-indigo-700">
+                                      → Attained L{att.level} [{att.percentage}%] {isTargetMet ? '✓' : ''}
+                                    </span>
+                                  ) : null}
+                                  )
+                                </span>
+                              );
+                            })}
+                            {eaAttrs.map((a: any) => {
+                              const att = groupAttainedMap[a.code];
+                              const isTargetMet = att && att.level >= a.level;
+                              return (
+                                <span
+                                  key={a.code}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    att
+                                      ? isTargetMet
+                                        ? 'bg-teal-50 text-teal-900 border-teal-300'
+                                        : 'bg-amber-50 text-amber-800 border-amber-300'
+                                      : 'bg-teal-50 text-teal-800 border-teal-200'
+                                  }`}
+                                  title={`Engineering Activity: Target Level ${a.level}${att ? ` | Attained Level ${att.level} (${att.percentage}%)` : ' (Pending Evaluation)'}`}
+                                >
+                                  {a.code} (Target L{a.level}
+                                  {att ? (
+                                    <span className="ml-1 text-[9px] font-extrabold text-teal-800">
+                                      → Attained L{att.level} [{att.percentage}%] {isTargetMet ? '✓' : ''}
+                                    </span>
+                                  ) : null}
+                                  )
+                                </span>
+                              );
+                            })}
+                            {poCodes.map((po) => {
+                              const att = groupAttainedMap[po];
+                              return (
+                                <span
+                                  key={po}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    att && att.level >= 1
+                                      ? 'bg-violet-100 text-violet-900 border-violet-300'
+                                      : 'bg-violet-50 text-violet-800 border-violet-200'
+                                  }`}
+                                  title={`Mapped Program Outcome: ${po}${att ? ` | Attained Level ${att.level} (${att.percentage}%)` : ''}`}
+                                >
+                                  {po}
+                                  {att ? ` (L${att.level})` : ''}
+                                </span>
+                              );
+                            })}
+                            {t.sdgs &&
+                              t.sdgs.map((s: any) => (
+                                <span
+                                  key={s.sdgId}
+                                  className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                >
+                                  SDG {s.sdg.id}
+                                </span>
+                              ))}
+                          </div>
+
+                          {/* Additionally Attained Attributes (achieved through group rubric evaluation) */}
+                          {additionallyAttained.length > 0 && (
+                            <div className="pt-2 border-t border-dashed border-slate-200">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                Additionally Attained Attributes (From Evaluation Rubrics):
                               </span>
-                            ))}
+                              <div className="flex flex-wrap gap-1.5">
+                                {additionallyAttained.map(([code, data]) => (
+                                  <span
+                                    key={code}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-xs inline-flex items-center gap-1"
+                                    title={`Evaluated & Attained at Level ${data.level} (${data.percentage}%) though not initially tagged.`}
+                                  >
+                                    <span>+ {code}</span>
+                                    <span className="text-[9px] px-1 py-0.2 bg-emerald-200/70 rounded text-emerald-950 font-semibold">
+                                      Level {data.level} ({data.percentage}%)
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

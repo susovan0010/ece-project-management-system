@@ -244,7 +244,10 @@ export async function getMyConfirmedTopicsAction() {
         attributes: { include: { attribute: true } },
         groups: {
           where: { supervisorId: userId },
-          include: { batch: true },
+          include: {
+            batch: true,
+            snapshots: true,
+          },
         },
         proposer: { select: { id: true, name: true, email: true } },
       },

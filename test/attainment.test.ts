@@ -17,8 +17,12 @@ vi.mock('next/cache', () => ({
 import {
   attainment,
   isMetricAttained,
+  getAttainmentLevel,
+  getAttainmentLevelDescription,
+  calculateStudentAttainment,
   DEFAULT_ATTAINMENT_TARGET,
   MarkEntryInput,
+  StudentMarkEntryInput,
 } from '../lib/engine';
 import {
   calculateAndSnapshotGroupAttainmentAction,
@@ -61,6 +65,73 @@ describe('Attainment Pure Engine: 65% Benchmark & Ratio Calculation', () => {
     expect(isMetricAttained(0.649, DEFAULT_ATTAINMENT_TARGET)).toBe(false);
     // Far below 65%
     expect(isMetricAttained(0.40, DEFAULT_ATTAINMENT_TARGET)).toBe(false);
+  });
+
+  it('correctly maps ratios and percentages to NBA 3-tier attainment levels (0, 1, 2, 3)', () => {
+    // Level 0: < 65%
+    expect(getAttainmentLevel(0.40)).toBe(0);
+    expect(getAttainmentLevel(0.649)).toBe(0);
+    expect(getAttainmentLevel(64)).toBe(0);
+
+    // Level 1: 65% to 75%
+    expect(getAttainmentLevel(0.65)).toBe(1);
+    expect(getAttainmentLevel(0.70)).toBe(1);
+    expect(getAttainmentLevel(0.749)).toBe(1);
+    expect(getAttainmentLevel(74)).toBe(1);
+
+    // Level 2: 75% to 85%
+    expect(getAttainmentLevel(0.75)).toBe(2);
+    expect(getAttainmentLevel(0.80)).toBe(2);
+    expect(getAttainmentLevel(0.849)).toBe(2);
+    expect(getAttainmentLevel(84)).toBe(2);
+
+    // Level 3: >= 85%
+    expect(getAttainmentLevel(0.85)).toBe(3);
+    expect(getAttainmentLevel(0.92)).toBe(3);
+    expect(getAttainmentLevel(1.0)).toBe(3);
+    expect(getAttainmentLevel(95)).toBe(3);
+
+    // Edge cases
+    expect(getAttainmentLevel(null)).toBe(0);
+    expect(getAttainmentLevel(NaN)).toBe(0);
+
+    // Descriptions
+    expect(getAttainmentLevelDescription(3)).toContain('Level 3');
+    expect(getAttainmentLevelDescription(2)).toContain('Level 2');
+    expect(getAttainmentLevelDescription(1)).toContain('Level 1');
+    expect(getAttainmentLevelDescription(0)).toContain('Level 0');
+  });
+
+  it('calculates individual student attainment combining group-scope and individual-scope marks', () => {
+    const entries: StudentMarkEntryInput[] = [
+      // Group-scope criterion (studentId is null): e.g. Novelty out of 10 marks
+      { marks: 8, max: 10, maps: ['PO3', 'WP3'], studentId: null },
+      // Individual-scope criterion: e.g. Viva voce out of 10 marks for Student 1
+      { marks: 9, max: 10, maps: ['PO1', 'PO9', 'WP1'], studentId: 'student-1' },
+      // Individual-scope criterion for Student 2
+      { marks: 6, max: 10, maps: ['PO1', 'PO9', 'WP1'], studentId: 'student-2' },
+    ];
+
+    // Student 1 PO1: 9 / 10 = 90% (Level 3)
+    const st1Attainments = calculateStudentAttainment(entries, 'student-1', ['PO1', 'PO3', 'PO9']);
+    expect(st1Attainments.PO1).toBeDefined();
+    expect(st1Attainments.PO1.percentage).toBe(90);
+    expect(st1Attainments.PO1.level).toBe(3);
+    expect(st1Attainments.PO1.isAttained).toBe(true);
+
+    // Student 1 PO3: 8 / 10 = 80% (Level 2)
+    expect(st1Attainments.PO3.percentage).toBe(80);
+    expect(st1Attainments.PO3.level).toBe(2);
+
+    // Student 2 PO1: 6 / 10 = 60% (Level 0)
+    const st2Attainments = calculateStudentAttainment(entries, 'student-2', ['PO1', 'PO3', 'PO9']);
+    expect(st2Attainments.PO1.percentage).toBe(60);
+    expect(st2Attainments.PO1.level).toBe(0);
+    expect(st2Attainments.PO1.isAttained).toBe(false);
+
+    // Student 2 PO3 inherits group mark: 8 / 10 = 80% (Level 2)
+    expect(st2Attainments.PO3.percentage).toBe(80);
+    expect(st2Attainments.PO3.level).toBe(2);
   });
 });
 

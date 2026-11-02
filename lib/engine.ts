@@ -124,6 +124,84 @@ export function attainment(
 export const DEFAULT_ATTAINMENT_TARGET = 0.65;
 
 /**
+ * NBA Standard 3-tier Attainment Level Scale:
+ * - Level 0: < 65% (Not Attained)
+ * - Level 1: 65% to 75% [0.65, 0.75)
+ * - Level 2: 75% to 85% [0.75, 0.85)
+ * - Level 3: >= 85% [0.85, 1.0]
+ * Accepts either ratio (0.0 .. 1.0) or percentage (0 .. 100).
+ */
+export function getAttainmentLevel(scoreOrRatio: number | null): number {
+  if (scoreOrRatio === null || isNaN(scoreOrRatio)) return 0;
+  const percentage = scoreOrRatio <= 1.0 && scoreOrRatio >= 0 ? scoreOrRatio * 100 : scoreOrRatio;
+  if (percentage >= 85) return 3;
+  if (percentage >= 75) return 2;
+  if (percentage >= 65) return 1;
+  return 0;
+}
+
+export function getAttainmentLevelDescription(level: number): string {
+  switch (level) {
+    case 3:
+      return 'Level 3 (≥85% - High)';
+    case 2:
+      return 'Level 2 (75% to 85% - Moderate)';
+    case 1:
+      return 'Level 1 (65% to 75% - Threshold)';
+    default:
+      return 'Level 0 (<65% - Not Attained)';
+  }
+}
+
+export interface StudentMarkEntryInput {
+  studentId?: string | null;
+  marks: number;
+  max: number;
+  maps: string[];
+}
+
+export interface MetricAttainmentResult {
+  metric: string;
+  ratio: number;
+  percentage: number;
+  level: number;
+  isAttained: boolean;
+}
+
+/**
+ * Computes individual student attainment across mapped criteria.
+ * Inherits group-scope marks (studentId === null) and incorporates individual-scope marks.
+ */
+export function calculateStudentAttainment(
+  entries: StudentMarkEntryInput[],
+  studentId: string,
+  metrics: string[]
+): Record<string, MetricAttainmentResult> {
+  const relevantEntries = entries.filter(
+    (e) => !e.studentId || e.studentId === studentId
+  );
+
+  const results: Record<string, MetricAttainmentResult> = {};
+  for (const metric of metrics) {
+    const mapped = relevantEntries.filter((e) => e.maps.includes(metric));
+    const maxTotal = mapped.reduce((s, e) => s + e.max, 0);
+    if (maxTotal === 0) continue;
+    const marksTotal = mapped.reduce((s, e) => s + e.marks, 0);
+    const ratio = Number((marksTotal / maxTotal).toFixed(4));
+    const percentage = Math.round(ratio * 100);
+    const level = getAttainmentLevel(ratio);
+    results[metric] = {
+      metric,
+      ratio,
+      percentage,
+      level,
+      isAttained: level >= 1,
+    };
+  }
+  return results;
+}
+
+/**
  * Determines whether a calculated attainment ratio achieves the departmental target (>= 65%)
  */
 export function isMetricAttained(
