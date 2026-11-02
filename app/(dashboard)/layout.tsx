@@ -3,6 +3,8 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { Sidebar } from '@/components/sidebar';
 import { FirstLoginModal } from '@/components/first-login-modal';
+import { resolveUserAuthority, getOrCreateDepartmentAuthority } from '@/lib/authority-service';
+import { HodConsentBanner } from '@/components/hod-consent-banner';
 
 export default async function DashboardLayout({
   children,
@@ -32,10 +34,31 @@ export default async function DashboardLayout({
   const userEmail = dbUser?.email || session.user.email || '';
   const mustChangePassword = dbUser?.mustChangePassword ?? false;
 
+  const authority = await getOrCreateDepartmentAuthority();
+  const authorityLevel = await resolveUserAuthority({
+    id: session.user.id,
+    email: userEmail,
+    role,
+  });
+
+  const isHodPendingRemoval =
+    Boolean(authority.hodRemovalRequested && authority.hodUserId === session.user.id);
+
   return (
     <div className="flex min-h-screen bg-slate-50 print:block print:min-h-0 print:bg-white">
-      <Sidebar role={role} userName={userName} userEmail={userEmail} />
+      <Sidebar
+        role={role}
+        authorityLevel={authorityLevel}
+        userName={userName}
+        userEmail={userEmail}
+      />
       <div className="flex-1 flex flex-col min-w-0 print:block">
+        {isHodPendingRemoval && (
+          <HodConsentBanner
+            requestedAt={authority.hodRemovalRequestedAt?.toISOString()}
+            superAdminName={authority.superAdminUser?.name || 'Super Admin Type A'}
+          />
+        )}
         {/* Top Header */}
         <header className="no-print print:hidden h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10">
           <div>

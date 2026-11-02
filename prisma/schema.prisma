@@ -433,3 +433,12 @@ model PasswordResetToken {
   @@index([token])
   @@index([email])
 }
+
+model DepartmentAuthority {
+  id                    String    @id @default("HITK_ECE_AUTHORITY")
+  hodUserId             String?   @unique
+  superAdminUserId      String
+  hodRemovalRequested   Boolean   @default(false)
+  hodRemovalRequestedAt DateTime?
+  updatedAt             DateTime  @updatedAt
+}
