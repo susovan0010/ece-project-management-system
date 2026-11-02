@@ -190,6 +190,9 @@ export default function AdminFacultyPage() {
     const formData = new FormData();
     formData.append('email', email);
     formData.append('role', role);
+    if (typeof window !== 'undefined' && window.location.origin) {
+      formData.append('origin', window.location.origin);
+    }
 
     const result = await createInviteAction(null, formData);
     setLoading(false);
@@ -197,7 +200,22 @@ export default function AdminFacultyPage() {
     if (result.error) {
       setError(result.error);
     } else if (result.success && result.inviteUrl) {
-      setInviteUrl(result.inviteUrl);
+      let finalUrl = result.inviteUrl;
+      // Self-heal: If returned URL has localhost but client is on a deployed domain, normalize to current origin
+      if (
+        finalUrl.includes('localhost') &&
+        typeof window !== 'undefined' &&
+        window.location.origin &&
+        !window.location.origin.includes('localhost')
+      ) {
+        try {
+          const parsed = new URL(finalUrl);
+          finalUrl = `${window.location.origin}${parsed.pathname}${parsed.search}`;
+        } catch {
+          // Keep original if URL parse fails
+        }
+      }
+      setInviteUrl(finalUrl);
       setEmail('');
     }
   }

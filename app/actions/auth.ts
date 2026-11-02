@@ -12,6 +12,7 @@ import {
   validatePasswordResetToken,
 } from '@/lib/tokens';
 import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '@/lib/admin-priority';
+import { getBaseUrl } from '@/lib/url';
 
 // ----------------------------------------------------
 // 1. Credentials Sign-In Action
@@ -100,7 +101,8 @@ export async function createInviteAction(prevState: unknown, formData: FormData)
   }
 
   const invite = await createInviteToken(email, role, 72);
-  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+  const explicitOrigin = formData.get('origin') as string | null;
+  const baseUrl = getBaseUrl(explicitOrigin);
   const inviteUrl = `${baseUrl}/accept-invite?token=${invite.token}`;
 
   await prisma.auditLog.create({
@@ -198,7 +200,8 @@ export async function requestPasswordResetAction(prevState: unknown, formData: F
   }
 
   const resetToken = await createPasswordResetToken(email, 2);
-  const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+  const explicitOrigin = formData.get('origin') as string | null;
+  const baseUrl = getBaseUrl(explicitOrigin);
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken.token}`;
 
   // Log in audit log
