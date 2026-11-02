@@ -11,6 +11,7 @@ import {
   createPasswordResetToken,
   validatePasswordResetToken,
 } from '@/lib/tokens';
+import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '@/app/actions/admin-directory';
 
 // ----------------------------------------------------
 // 1. Credentials Sign-In Action
@@ -82,6 +83,12 @@ export async function createInviteAction(prevState: unknown, formData: FormData)
 
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const role = ((formData.get('role') as string) || 'FACULTY') as 'FACULTY' | 'ADMIN';
+
+  if (role === 'ADMIN' && !isPriorityAAdmin(session.user.email)) {
+    return {
+      error: `Permission denied: Only Priority A Admin (${PRIORITY_A_ADMIN_EMAIL}) can generate invites for Project Committee Admins.`,
+    };
+  }
 
   if (!email || !z.string().email().safeParse(email).success) {
     return { error: 'Please provide a valid faculty email address.' };
@@ -400,6 +407,12 @@ export async function createFacultyAccountAction(prevState: unknown, formData: F
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const tempPassword = (formData.get('tempPassword') as string) || '';
   const role = ((formData.get('role') as string) || 'FACULTY') as 'FACULTY' | 'ADMIN';
+
+  if (role === 'ADMIN' && !isPriorityAAdmin(session.user.email)) {
+    return {
+      error: `Permission denied: Only Priority A Admin (${PRIORITY_A_ADMIN_EMAIL}) can create new Project Committee Admins.`,
+    };
+  }
 
   if (!name || name.length < 2) {
     return { error: 'Please provide the faculty member’s full user name.' };

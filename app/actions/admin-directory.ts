@@ -3,6 +3,14 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+export const PRIORITY_A_ADMIN_EMAIL = 'susovan.mandal@heritageit.edu';
+
+export function isPriorityAAdmin(email?: string | null): boolean {
+  if (!email) return false;
+  return email.toLowerCase().trim() === PRIORITY_A_ADMIN_EMAIL.toLowerCase();
+}
 
 export interface AdminUserItem {
   id: string;
@@ -10,6 +18,7 @@ export interface AdminUserItem {
   email: string;
   active: boolean;
   mustChangePassword: boolean;
+  priority: 'A' | 'B';
   createdAt: string;
 }
 
@@ -129,6 +138,7 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
       email: a.email,
       active: a.active,
       mustChangePassword: a.mustChangePassword,
+      priority: isPriorityAAdmin(a.email) ? 'A' : 'B',
       createdAt: a.createdAt.toISOString(),
     }));
 
@@ -210,6 +220,9 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
       supervisors,
       students: studentRows,
       batches,
+      currentUserPriority: isPriorityAAdmin(session.user.email) ? ('A' as const) : ('B' as const),
+      currentUserId: session.user.id,
+      currentUserEmail: session.user.email,
       kpis: {
         totalTopics,
         sihTopics,
@@ -351,5 +364,284 @@ export async function removeStudentAction(studentId: string) {
     };
   } catch (err) {
     return { error: `Failed to remove student: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 4. Remove an Admin (Priority Type A Only)
+// ----------------------------------------------------
+export async function removeAdminAction(adminId: string) {
+  const session = await auth();
+  const user = session?.user as { id?: string; email?: string; role?: string } | undefined;
+
+  // Rule 1: Strict server-side ADMIN role check
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can remove admins.' };
+  }
+
+  // Priority Check: Only Priority Type A admin can remove an admin
+  if (!isPriorityAAdmin(user.email)) {
+    return {
+      error: `Permission denied: Only Priority A Admin (${PRIORITY_A_ADMIN_EMAIL}) can remove committee admin members.`,
+    };
+  }
+
+  if (adminId === user.id) {
+    return { error: 'Operation rejected: You cannot remove your own admin account.' };
+  }
+
+  try {
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    if (!admin) {
+      return { error: 'Admin account not found.' };
+    }
+
+    if (admin.role !== 'ADMIN') {
+      return { error: 'Target user is not an administrator.' };
+    }
+
+    if (isPriorityAAdmin(admin.email)) {
+      return { error: 'Operation rejected: Priority A Admin account cannot be removed.' };
+    }
+
+    // Detach any topics, mark entries, groups, and user audit logs, then delete the admin user
+    await prisma.topic.updateMany({
+      where: { proposerId: adminId },
+      data: { proposerId: null },
+    });
+
+    await prisma.markEntry.deleteMany({
+      where: { enteredById: adminId },
+    });
+
+    await prisma.group.deleteMany({
+      where: { supervisorId: adminId },
+    });
+
+    await prisma.auditLog.deleteMany({
+      where: { userId: adminId },
+    });
+
+    await prisma.user.delete({
+      where: { id: adminId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'REMOVE_ADMIN',
+        entity: 'User',
+        entityId: adminId,
+        payload: {
+          removedName: admin.name,
+          removedEmail: admin.email,
+        },
+      },
+    });
+
+    revalidatePath('/admin/faculty');
+    revalidatePath('/admin/dashboard');
+
+    return {
+      success: true,
+      message: `Admin ${admin.name} (${admin.email}) has been removed.`,
+    };
+  } catch (err) {
+    return { error: `Failed to remove admin: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 5. Transfer User Role (Admin <-> Faculty Supervisor)
+// ----------------------------------------------------
+export async function transferUserRoleAction(userId: string, targetRole: 'ADMIN' | 'FACULTY') {
+  const session = await auth();
+  const user = session?.user as { id?: string; email?: string; role?: string } | undefined;
+
+  // Rule 1: Strict server-side ADMIN role check
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can transfer roles.' };
+  }
+
+  const isCallerTypeA = isPriorityAAdmin(user.email);
+
+  try {
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    if (!targetUser) {
+      return { error: 'User account not found.' };
+    }
+
+    if (targetUser.role === targetRole) {
+      return { error: `User is already in role ${targetRole}.` };
+    }
+
+    // Protection: Priority A admin cannot be demoted from ADMIN
+    if (targetUser.role === 'ADMIN' && targetRole === 'FACULTY' && isPriorityAAdmin(targetUser.email)) {
+      return { error: 'Operation rejected: Priority A Admin cannot be demoted to Faculty Supervisor.' };
+    }
+
+    // Case 1: Promoting to ADMIN -> Only Priority A Admin can grant Admin role
+    if (targetRole === 'ADMIN') {
+      if (!isCallerTypeA) {
+        return {
+          error: `Permission denied: Only Priority A Admin (${PRIORITY_A_ADMIN_EMAIL}) can transfer a member to Admin role.`,
+        };
+      }
+    }
+
+    // Case 2: Transferring ADMIN to FACULTY
+    // Allowed if caller is Priority A, OR if the admin member is transferring him/herself
+    if (targetRole === 'FACULTY') {
+      const isSelfTransfer = userId === user.id;
+      if (!isCallerTypeA && !isSelfTransfer) {
+        return {
+          error:
+            'Permission denied: Priority B Admins can only transfer themselves to Faculty Supervisor. Only Priority A Admin can transfer other admins.',
+        };
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: targetRole },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'TRANSFER_USER_ROLE',
+        entity: 'User',
+        entityId: userId,
+        payload: {
+          userName: targetUser.name,
+          userEmail: targetUser.email,
+          previousRole: targetUser.role,
+          newRole: targetRole,
+        },
+      },
+    });
+
+    revalidatePath('/admin/faculty');
+    revalidatePath('/admin/dashboard');
+
+    return {
+      success: true,
+      message: `${targetUser.name} (${targetUser.email}) transferred to ${
+        targetRole === 'ADMIN' ? 'Project Committee Admin' : 'Faculty Supervisor'
+      } role.`,
+    };
+  } catch (err) {
+    return { error: `Failed to transfer user role: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 6. Update User Information (Name & Email)
+// ----------------------------------------------------
+export async function updateUserInformationAction(payload: {
+  userId: string;
+  name: string;
+  email: string;
+}) {
+  const session = await auth();
+  const user = session?.user as { id?: string; email?: string; role?: string } | undefined;
+
+  // Rule 1: Strict server-side ADMIN role check
+  if (!user?.id || user.role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can edit user information.' };
+  }
+
+  const { userId, name, email } = payload;
+  const cleanName = name?.trim();
+  const cleanEmail = email?.toLowerCase().trim();
+
+  if (!cleanName || cleanName.length < 2) {
+    return { error: 'Full name must be at least 2 characters.' };
+  }
+
+  if (!cleanEmail || !z.string().email().safeParse(cleanEmail).success) {
+    return { error: 'Please enter a valid institute email address.' };
+  }
+
+  const isCallerTypeA = isPriorityAAdmin(user.email);
+
+  try {
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    if (!targetUser) {
+      return { error: 'User account not found.' };
+    }
+
+    // Permission check when target is an ADMIN:
+    // Only Priority A Admin or the admin themselves can edit an admin account
+    if (targetUser.role === 'ADMIN') {
+      const isSelf = userId === user.id;
+      if (!isCallerTypeA && !isSelf) {
+        return {
+          error: 'Permission denied: Priority B Admins cannot edit other Project Committee Admin accounts.',
+        };
+      }
+    }
+
+    // Check email uniqueness if email changed
+    if (cleanEmail !== targetUser.email.toLowerCase()) {
+      const existing = await prisma.user.findUnique({
+        where: { email: cleanEmail },
+      });
+      if (existing && existing.id !== userId) {
+        return { error: `The email "${cleanEmail}" is already registered to another account.` };
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: cleanName,
+        email: cleanEmail,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'UPDATE_USER_INFO',
+        entity: 'User',
+        entityId: userId,
+        payload: {
+          previousName: targetUser.name,
+          newName: cleanName,
+          previousEmail: targetUser.email,
+          newEmail: cleanEmail,
+          role: targetUser.role,
+        },
+      },
+    });
+
+    revalidatePath('/admin/faculty');
+    revalidatePath('/admin/dashboard');
+
+    return {
+      success: true,
+      message: `User information updated successfully for ${cleanName} (${cleanEmail}).`,
+      user: {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+        role: updated.role,
+      },
+    };
+  } catch (err) {
+    return { error: `Failed to update user information: ${(err as Error).message}` };
   }
 }

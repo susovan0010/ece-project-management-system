@@ -5,6 +5,10 @@ import { createInviteAction, createFacultyAccountAction } from '@/app/actions/au
 import {
   getAdminDirectoryDataAction,
   removeSupervisorAction,
+  removeAdminAction,
+  transferUserRoleAction,
+  updateUserInformationAction,
+  PRIORITY_A_ADMIN_EMAIL,
   AdminUserItem,
   SupervisorUserItem,
 } from '@/app/actions/admin-directory';
@@ -15,6 +19,11 @@ export default function AdminFacultyPage() {
   const [supervisors, setSupervisors] = useState<SupervisorUserItem[]>([]);
   const [loadingDirectory, setLoadingDirectory] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [transferringId, setTransferringId] = useState<string | null>(null);
+
+  // Current Logged-in Admin Identity
+  const [currentUserPriority, setCurrentUserPriority] = useState<'A' | 'B'>('B');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
 
   // Direct Account Creation State
   const [directName, setDirectName] = useState('');
@@ -33,12 +42,30 @@ export default function AdminFacultyPage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // User Information Edit Modal State
+  const [editingUser, setEditingUser] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    role: 'ADMIN' | 'FACULTY';
+  } | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   async function loadAccounts() {
     setLoadingDirectory(true);
     const res = await getAdminDirectoryDataAction();
     if (!res.error) {
       setAdmins(res.admins || []);
       setSupervisors(res.supervisors || []);
+      if (res.currentUserPriority) {
+        setCurrentUserPriority(res.currentUserPriority);
+      }
+      if (res.currentUserId) {
+        setCurrentUserId(res.currentUserId);
+      }
     }
     setLoadingDirectory(false);
   }
@@ -62,6 +89,71 @@ export default function AdminFacultyPage() {
     setRemovingId(null);
   }
 
+  async function handleRemoveAdmin(adminId: string, name: string) {
+    if (
+      !window.confirm(
+        `Are you sure you want to remove administrator "${name}"? This will permanently remove their admin access.`
+      )
+    )
+      return;
+    setRemovingId(adminId);
+    setDirectError(null);
+    setDirectSuccess(null);
+    const res = await removeAdminAction(adminId);
+    if (res.error) {
+      setDirectError(res.error);
+    } else {
+      setDirectSuccess(res.message || `Admin ${name} removed.`);
+      await loadAccounts();
+    }
+    setRemovingId(null);
+  }
+
+  async function handleTransferRole(userId: string, targetRole: 'ADMIN' | 'FACULTY', name: string) {
+    const roleLabel = targetRole === 'ADMIN' ? 'Project Committee Admin' : 'Faculty Supervisor';
+    if (!window.confirm(`Are you sure you want to transfer "${name}" to ${roleLabel} role?`)) return;
+    setTransferringId(userId);
+    setDirectError(null);
+    setDirectSuccess(null);
+    const res = await transferUserRoleAction(userId, targetRole);
+    if (res.error) {
+      setDirectError(res.error);
+    } else {
+      setDirectSuccess(res.message || `${name} transferred to ${roleLabel}.`);
+      await loadAccounts();
+    }
+    setTransferringId(null);
+  }
+
+  function handleOpenEdit(user: { id: string; name: string; email: string; role: 'ADMIN' | 'FACULTY' }) {
+    setEditingUser(user);
+    setEditName(user.name);
+    setEditEmail(user.email);
+    setEditError(null);
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditLoading(true);
+    setEditError(null);
+
+    const res = await updateUserInformationAction({
+      userId: editingUser.id,
+      name: editName,
+      email: editEmail,
+    });
+    setEditLoading(false);
+
+    if (res.error) {
+      setEditError(res.error);
+    } else {
+      setDirectSuccess(res.message || 'User information updated successfully.');
+      setEditingUser(null);
+      await loadAccounts();
+    }
+  }
+
   async function handleCreateDirectAccount(e: React.FormEvent) {
     e.preventDefault();
     setDirectError(null);
@@ -80,7 +172,7 @@ export default function AdminFacultyPage() {
     if (result.error) {
       setDirectError(result.error);
     } else if (result.success) {
-      setDirectSuccess(result.message || 'Faculty account created!');
+      setDirectSuccess(result.message || 'Account created successfully!');
       setDirectName('');
       setDirectEmail('');
       setDirectTempPassword('');
@@ -119,36 +211,59 @@ export default function AdminFacultyPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-          Faculty Account Management
-        </h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Provision faculty supervisor accounts with fixed user names or generate expiring invitation links.
-        </p>
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+            Faculty &amp; Admin Account Management
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Provision faculty and admin accounts, manage tiered priority roles, and edit profile credentials.
+          </p>
+        </div>
+        <div>
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-xs ${
+              currentUserPriority === 'A'
+                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                : 'bg-slate-100 text-slate-800 border border-slate-300'
+            }`}
+          >
+            <span>{currentUserPriority === 'A' ? '👑' : '🛡️'}</span>
+            <span>Your Access: Priority Type {currentUserPriority}</span>
+            <span className="text-[10px] font-normal opacity-80">
+              ({currentUserPriority === 'A' ? 'Super Admin' : 'Admin'})
+            </span>
+          </span>
+        </div>
       </div>
 
-      {/* Direct Faculty Account Provisioning Card */}
+      {directError && (
+        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start gap-2">
+          <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>{directError}</div>
+        </div>
+      )}
+
+      {directSuccess && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium flex items-start gap-2">
+          <svg className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <div>{directSuccess}</div>
+        </div>
+      )}
+
+      {/* Direct Account Provisioning Card */}
       <div className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-sm">
         <h3 className="text-base font-bold text-slate-900 mb-1">
-          Create Faculty Account (With Fixed User Name & Temporary Password)
+          Create Account (With User Name &amp; Temporary Password)
         </h3>
         <p className="text-xs text-slate-500 mb-5">
-          Faculty user names are locked and cannot be altered by the faculty member. When they log in for the first time with the temporary password, a prompt will automatically appear requiring them to set a new personal password.
+          User names and email addresses are initialized with a temporary password. Users will automatically be prompted to customize their password upon first login.
         </p>
-
-        {directError && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
-            {directError}
-          </div>
-        )}
-
-        {directSuccess && (
-          <div className="mb-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
-            {directSuccess}
-          </div>
-        )}
 
         <form onSubmit={handleCreateDirectAccount} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -156,7 +271,7 @@ export default function AdminFacultyPage() {
               htmlFor="directName"
               className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5"
             >
-              Faculty Full Name (Locked User Name)
+              Full Name
             </label>
             <input
               id="directName"
@@ -174,7 +289,7 @@ export default function AdminFacultyPage() {
               htmlFor="directEmail"
               className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5"
             >
-              Faculty Login Email
+              Login Email
             </label>
             <input
               id="directEmail"
@@ -220,8 +335,19 @@ export default function AdminFacultyPage() {
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
             >
               <option value="FACULTY">FACULTY (Supervisor)</option>
-              <option value="ADMIN">ADMIN (Committee Member)</option>
+              {currentUserPriority === 'A' ? (
+                <option value="ADMIN">ADMIN (Committee Member)</option>
+              ) : (
+                <option value="ADMIN" disabled>
+                  ADMIN (Committee Member) — Only Priority A
+                </option>
+              )}
             </select>
+            {currentUserPriority === 'B' && (
+              <p className="text-[11px] text-slate-400 mt-1">
+                Only Priority A Admin ({PRIORITY_A_ADMIN_EMAIL}) can create new committee admin accounts.
+              </p>
+            )}
           </div>
 
           <div className="sm:col-span-2">
@@ -238,9 +364,9 @@ export default function AdminFacultyPage() {
 
       {/* Invite Generator Card */}
       <div className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-sm">
-        <h3 className="text-base font-bold text-slate-900 mb-1">Invite New Faculty Supervisor</h3>
+        <h3 className="text-base font-bold text-slate-900 mb-1">Invite Faculty or Admin</h3>
         <p className="text-xs text-slate-500 mb-5">
-          Invites expire in 72 hours. Once generated, share the secure activation link with the teacher.
+          Invites expire in 72 hours. Once generated, share the secure activation link with the member.
         </p>
 
         {error && (
@@ -255,7 +381,7 @@ export default function AdminFacultyPage() {
               htmlFor="email"
               className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5"
             >
-              Faculty Email
+              Login Email
             </label>
             <input
               id="email"
@@ -282,7 +408,13 @@ export default function AdminFacultyPage() {
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
             >
               <option value="FACULTY">FACULTY (Supervisor)</option>
-              <option value="ADMIN">ADMIN (Committee Member)</option>
+              {currentUserPriority === 'A' ? (
+                <option value="ADMIN">ADMIN (Committee Member)</option>
+              ) : (
+                <option value="ADMIN" disabled>
+                  ADMIN (Committee Member) — Only Priority A
+                </option>
+              )}
             </select>
           </div>
 
@@ -326,7 +458,7 @@ export default function AdminFacultyPage() {
               Project Committee Admins ({admins.length})
             </h3>
             <p className="text-xs text-slate-500">
-              List of all registered committee administrator accounts.
+              List of all registered committee administrators with priority hierarchy.
             </p>
           </div>
         </div>
@@ -337,48 +469,116 @@ export default function AdminFacultyPage() {
               <tr>
                 <th className="px-6 py-3">Admin Name</th>
                 <th className="px-6 py-3">Login Email</th>
+                <th className="px-6 py-3 text-center">Priority</th>
                 <th className="px-6 py-3 text-center">Security Status</th>
                 <th className="px-6 py-3 text-right">Created On</th>
+                <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loadingDirectory ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
                     Loading admins...
                   </td>
                 </tr>
               ) : admins.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
                     No admins found.
                   </td>
                 </tr>
               ) : (
-                admins.map((adm) => (
-                  <tr key={adm.id} className="hover:bg-slate-50/70 transition">
-                    <td className="px-6 py-3.5 font-bold text-slate-900">{adm.name}</td>
-                    <td className="px-6 py-3.5 font-mono text-slate-600">{adm.email}</td>
-                    <td className="px-6 py-3.5 text-center">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          adm.mustChangePassword
-                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        }`}
-                      >
-                        {adm.mustChangePassword ? 'INITIAL CREDENTIALS' : 'CUSTOMIZED'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3.5 text-right font-mono text-slate-500">
-                      {new Date(adm.createdAt).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </td>
-                  </tr>
-                ))
+                admins.map((adm) => {
+                  const isTypeA = adm.priority === 'A';
+                  const isSelf = adm.id === currentUserId;
+                  const canEdit = currentUserPriority === 'A' || isSelf;
+                  const canTransferToSupervisor = !isTypeA && (currentUserPriority === 'A' || isSelf);
+                  const canRemove = currentUserPriority === 'A' && !isTypeA && !isSelf;
+
+                  return (
+                    <tr key={adm.id} className="hover:bg-slate-50/70 transition">
+                      <td className="px-6 py-3.5 font-bold text-slate-900">
+                        {adm.name}
+                        {isSelf && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                            You
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3.5 font-mono text-slate-600">{adm.email}</td>
+                      <td className="px-6 py-3.5 text-center">
+                        {isTypeA ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1 shadow-xs">
+                            <span>👑</span> Priority Type A (Super Admin)
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 inline-flex items-center gap-1">
+                            <span>🛡️</span> Priority Type B (Admin)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3.5 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            adm.mustChangePassword
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          {adm.mustChangePassword ? 'INITIAL CREDENTIALS' : 'CUSTOMIZED'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5 text-right font-mono text-slate-500">
+                        {new Date(adm.createdAt).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="px-6 py-3.5 text-right space-x-2 whitespace-nowrap">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenEdit({
+                                id: adm.id,
+                                name: adm.name,
+                                email: adm.email,
+                                role: 'ADMIN',
+                              })
+                            }
+                            className="px-2.5 py-1 rounded text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                          >
+                            Edit
+                          </button>
+                        )}
+
+                        {canTransferToSupervisor && (
+                          <button
+                            type="button"
+                            disabled={transferringId === adm.id}
+                            onClick={() => handleTransferRole(adm.id, 'FACULTY', adm.name)}
+                            className="px-2.5 py-1 rounded text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition disabled:opacity-50"
+                          >
+                            {transferringId === adm.id ? 'Transferring...' : 'Transfer to Supervisor'}
+                          </button>
+                        )}
+
+                        {canRemove && (
+                          <button
+                            type="button"
+                            disabled={removingId === adm.id}
+                            onClick={() => handleRemoveAdmin(adm.id, adm.name)}
+                            className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
+                          >
+                            {removingId === adm.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -459,7 +659,33 @@ export default function AdminFacultyPage() {
                         {sup.mustChangePassword ? 'FIRST LOGIN PENDING' : 'CHANGED'}
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-right">
+                    <td className="px-6 py-3.5 text-right space-x-2 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleOpenEdit({
+                            id: sup.id,
+                            name: sup.name,
+                            email: sup.email,
+                            role: 'FACULTY',
+                          })
+                        }
+                        className="px-2.5 py-1 rounded text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                      >
+                        Edit
+                      </button>
+
+                      {currentUserPriority === 'A' && (
+                        <button
+                          type="button"
+                          disabled={transferringId === sup.id}
+                          onClick={() => handleTransferRole(sup.id, 'ADMIN', sup.name)}
+                          className="px-2.5 py-1 rounded text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition disabled:opacity-50"
+                        >
+                          {transferringId === sup.id ? 'Transferring...' : 'Transfer to Admin'}
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         disabled={removingId === sup.id}
@@ -476,6 +702,77 @@ export default function AdminFacultyPage() {
           </table>
         </div>
       </div>
+
+      {/* Edit User Information Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in-50">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900">
+                Edit {editingUser.role === 'ADMIN' ? 'Committee Admin' : 'Faculty Supervisor'} Details
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Login Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
+                >
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
