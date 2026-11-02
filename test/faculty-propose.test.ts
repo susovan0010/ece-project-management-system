@@ -14,6 +14,7 @@ import {
   getFacultyProposalMetadataAction,
   saveFacultyTopicProposalAction,
   checkCapstoneQualificationAction,
+  generateAiDescriptionDraftAction,
 } from '../app/actions/faculty-propose';
 import { prisma } from '../lib/prisma';
 import { auth } from '@/auth';
@@ -127,5 +128,36 @@ describe('Faculty Proposal: Live Capstone Qualification Check', () => {
     const res = await checkCapstoneQualificationAction(levels, false);
     expect(res.isQualified).toBe(false);
     expect(res.breakdown.hasSdgTarget).toBe(false);
+  });
+});
+
+describe('Faculty Proposal: AI Abstract Drafting with Extended Context', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('generates abstract draft reflecting WP1 Level 2 and project context', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    (vi.spyOn(prisma.aiProvider, 'findMany') as any).mockResolvedValue([]);
+    (vi.spyOn(prisma.user, 'findUnique') as any).mockResolvedValue({ preferredAiProvider: null });
+
+    const res = await generateAiDescriptionDraftAction({
+      title: 'Design of Reconfigurable Intelligent Surface for 6G',
+      category: 'HARDWARE',
+      theme: 'Wireless Communications',
+      tags: ['RIS', '6G', 'Metasurface'],
+      existingAbstract: 'Initial work on unit cell phase control.',
+      targetAttributes: [{ code: 'WP1', level: 2, reason: 'Complex depth of knowledge' }],
+      targetSdgs: [{ sdg: 9, target: '9.5', title: 'Industry, Innovation and Infrastructure' }],
+    });
+
+    expect(res.description).toBeDefined();
+    expect(res.description).toContain('Design of Reconfigurable Intelligent Surface for 6G');
+    expect(res.description).toContain('WP1');
+    expect(res.description).toContain('Level 2');
+    expect(res.providerUsed).toBeDefined();
   });
 });

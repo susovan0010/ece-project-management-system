@@ -88,14 +88,21 @@ export async function getFacultyProposalMetadataAction() {
 }
 
 // ----------------------------------------------------
-// 2. AI Draft Abstract Action (Capped at 500 words)
+// 2. AI Draft Abstract Action (Capped at 500 words, WP1 >= Level 2)
 // ----------------------------------------------------
-export async function generateAiDescriptionDraftAction(input: {
+export interface GenerateAiDraftParams {
   title: string;
   category: string;
-  keywords: string[];
+  theme?: string;
+  keywords?: string[];
+  tags?: string[];
+  existingAbstract?: string;
+  targetAttributes?: Array<{ code: string; level: number; reason?: string }>;
+  targetSdgs?: Array<{ sdg: number; target?: string; title?: string }>;
   sdgHint?: string;
-}) {
+}
+
+export async function generateAiDescriptionDraftAction(input: GenerateAiDraftParams) {
   const session = await auth();
   if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
     return { error: 'Unauthorized.' };
@@ -150,12 +157,15 @@ export async function generateAiDescriptionDraftAction(input: {
 // ----------------------------------------------------
 // 3. AI Evaluate Washington Accord Complexity Action
 // ----------------------------------------------------
-export async function evaluateAiTopicMappingAction(input: {
+export interface EvaluateAiMappingParams {
   title: string;
   description: string;
   category: string;
+  theme?: string;
   tags?: string[];
-}) {
+}
+
+export async function evaluateAiTopicMappingAction(input: EvaluateAiMappingParams) {
   const session = await auth();
   if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
     return { error: 'Unauthorized.' };

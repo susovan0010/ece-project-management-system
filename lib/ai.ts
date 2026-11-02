@@ -242,34 +242,69 @@ export async function testAiProvider(provider: ProviderConfig): Promise<{ succes
 }
 
 // --------------------------------------------------------
-// 6. Prompt 1: Draft Description (Max 500 words)
 // --------------------------------------------------------
+// 6. Prompt 1: Draft Description (Max 500 words, WP1 >= Level 2)
+// --------------------------------------------------------
+
+export interface DraftDescriptionInput {
+  title: string;
+  category: string;
+  theme?: string;
+  keywords?: string[];
+  tags?: string[];
+  existingAbstract?: string;
+  targetAttributes?: Array<{ code: string; level: number; reason?: string }>;
+  targetSdgs?: Array<{ sdg: number; target?: string; title?: string }>;
+  sdgHint?: string;
+}
 
 export async function draftDescription(
   providers: ProviderConfig[],
-  input: {
-    title: string;
-    category: string;
-    sdgHint?: string;
-    keywords?: string[];
-  },
+  input: DraftDescriptionInput,
   preferredProviderName?: string
 ): Promise<{ description: string; providerUsed: string; isAi: boolean }> {
   const ordered = orderProvidersByPreference(providers, preferredProviderName);
 
-  const systemPrompt = `You are an expert academic curriculum advisor for accredited B.Tech ECE capstone projects.
-Draft a rigorous, well-structured project abstract of at most 500 words covering:
-1. Problem Statement & Context
-2. Technical Methodology & Engineering Design
-3. Expected Outcomes & Prototype Deliverables
-4. Relevance to Sustainable Development Goals (SDGs)
-Do not exceed 500 words. Return description prose only.`;
+  const systemPrompt = `You are an expert academic curriculum advisor and NBA accreditation evaluator for B.Tech Electronics and Communication Engineering (ECE) capstone projects.
+Draft a rigorous, well-structured, professional engineering project abstract of at most 500 words covering:
+1. Problem Statement & Context: Clear engineering challenge within the domain.
+2. Technical Methodology & Engineering Design: Technical architecture, simulation/hardware tools, algorithmic formulation, and implementation pipelines.
+3. Expected Outcomes & Hardware/Software Prototype Deliverables: Tangible, verifiable deliverables meeting departmental quality benchmarks.
+4. Relevance to Sustainable Development Goals (SDGs): Specific alignment with target UN SDGs.
 
-  const kwList = (input.keywords || []).join(', ');
-  const userPrompt = `Title: ${input.title}
+MANDATORY NBA ACCREDITATION REQUIREMENTS:
+- Washington Accord WP1 (Depth of Knowledge Required): The abstract MUST explicitly satisfy WP1 at Level 2 (or higher) by demonstrating clear depth of engineering knowledge (e.g. theoretical foundations, analytical formulation, system design, or mathematical rigor) appropriate for a B.Tech ECE capstone project.
+- If target Washington Accord attributes (WPs, WKs, EAs) and levels are provided, ensure the abstract text explicitly incorporates, substantiates, and reflects those specific technical dimensions.
+- If target SDGs are provided, clearly articulate how the project contributes towards achieving those specific sustainable development targets.
+- If an existing faculty abstract or draft notes are provided, synthesize, incorporate, and elevate them into a comprehensive capstone abstract rather than discarding them.
+- Do not exceed 500 words. Return abstract prose only without conversational preamble or meta-commentary.`;
+
+  const kwList = (input.keywords || input.tags || []).join(', ');
+
+  let targetAttrText = 'None specified';
+  if (input.targetAttributes && input.targetAttributes.length > 0) {
+    targetAttrText = input.targetAttributes
+      .filter((a) => a.level > 0)
+      .map((a) => `${a.code} (Level ${a.level}${a.reason ? `: ${a.reason}` : ''})`)
+      .join(', ');
+  }
+
+  let targetSdgText = input.sdgHint || 'None specified';
+  if (input.targetSdgs && input.targetSdgs.length > 0) {
+    targetSdgText = input.targetSdgs
+      .map((s) => `SDG ${s.sdg}${s.target ? ` (Target ${s.target})` : ''}${s.title ? `: ${s.title}` : ''}`)
+      .join(', ');
+  }
+
+  const userPrompt = `Project Title: ${input.title}
 Category: ${input.category}
-SDG Hint: ${input.sdgHint || 'None'}
-Keywords: ${kwList}`;
+Project Theme: ${input.theme || 'Electronics and Communication Engineering'}
+Technical Keywords: ${kwList}
+Mandatory Requirement: WP1 Depth of Knowledge must satisfy at least Level 2.
+Target Washington Accord Attributes: ${targetAttrText}
+Target Sustainable Development Goals: ${targetSdgText}
+Existing Faculty Notes / Abstract Draft:
+${input.existingAbstract && input.existingAbstract.trim().length > 0 ? input.existingAbstract.trim() : 'No existing draft provided; generate a fresh, comprehensive proposal abstract.'}`;
 
   const messages = [
     { role: 'system' as const, content: systemPrompt },
@@ -287,13 +322,14 @@ Keywords: ${kwList}`;
     }
   }
 
-  // Fallback: If all AI providers fail, generate structured template from keywords
-  const fallbackKeywords = kwList || 'system design and experimental prototyping';
+  // Fallback: If all AI providers fail, generate structured template satisfying WP1 >= Level 2
+  const fallbackKeywords = kwList || 'system design, simulation, and experimental prototyping';
   const fallback = `Project Title: ${input.title}.
-This capstone engineering project addresses key challenges in ${input.category} systems within electronics and communication engineering.
-Methodology: Utilizing key techniques in ${fallbackKeywords}, the work involves system design, modeling, and rigorous testing.
-Expected Deliverables: Verified hardware/software implementation aligned with departmental standards.
-SDG Alignment: Supports sustainable technology development (${input.sdgHint || 'Goal 9: Industry and Innovation'}).`;
+This capstone engineering project addresses key challenges in ${input.category} systems within ${input.theme || 'Electronics and Communication Engineering'}.
+Depth of Knowledge (WP1 >= Level 2): Resolving these challenges requires in-depth engineering knowledge spanning signal modeling, hardware/software co-design, and quantitative performance evaluation.
+Methodology: Utilizing key techniques in ${fallbackKeywords}, the work involves mathematical formulation, full system modeling, component design, and rigorous validation.
+Expected Deliverables: Verified hardware/software implementation aligned with departmental standards and Washington Accord criteria.
+SDG Alignment: Supports sustainable technology development (${input.sdgHint || targetSdgText || 'Goal 9: Industry and Innovation'}).`;
 
   return { description: fallback, providerUsed: 'Keyword Rule Engine (AI Offline)', isAi: false };
 }
@@ -308,6 +344,7 @@ export async function mapTopicAttributes(
     title: string;
     description: string;
     category: string;
+    theme?: string;
     tags?: string[];
   },
   preferredProviderName?: string
@@ -327,6 +364,7 @@ Respond in JSON format with keys:
 
   const userPrompt = `Project Title: ${input.title}
 Category: ${input.category}
+Project Theme: ${input.theme || 'Electronics and Communication Engineering'}
 Description: ${input.description}
 Keywords: ${(input.tags || []).join(', ')}`;
 

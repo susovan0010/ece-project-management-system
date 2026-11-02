@@ -201,6 +201,46 @@ describe('AI Layer: Adapter, Failover & Rule Fallback', () => {
 
     expect(res.providerUsed).toContain('Keyword Rule Engine');
     expect(res.description).toContain('FPGA Cryptographic Accelerator');
+    expect(res.description).toContain('Level 2');
+    expect(res.description).toContain('WP1');
+  });
+
+  it('draftDescription integrates existingAbstract, theme, targetAttributes and targetSdgs', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: 'Advanced IoT sensor node for Smart Agriculture addressing SDG 2 (Zero Hunger) with WP1 Depth of Knowledge Level 2.',
+            },
+          },
+        ],
+      }),
+    });
+
+    const providers: ProviderConfig[] = [
+      { name: 'Google Gemini', baseUrl: 'https://gemini.com', model: 'gemini-1.5-flash', encryptedKey: dummyKey, priority: 1, enabled: true },
+    ];
+
+    const res = await draftDescription(providers, {
+      title: 'Precision IoT Soil Monitoring',
+      category: 'HARDWARE',
+      theme: 'Precision Agriculture',
+      tags: ['LoRa', 'Soil Sensor'],
+      existingAbstract: 'Initial faculty draft regarding soil moisture probe calibration.',
+      targetAttributes: [
+        { code: 'WP1', level: 2, reason: 'Depth of engineering knowledge required' },
+        { code: 'WK3', level: 2, reason: 'Specialist engineering knowledge' },
+      ],
+      targetSdgs: [
+        { sdg: 2, target: '2.4', title: 'Zero Hunger' },
+      ],
+    });
+
+    expect(res.description).toContain('Advanced IoT sensor node');
+    expect(res.providerUsed).toBe('Google Gemini');
   });
 
   it('falls back to evaluateRules in mapTopicAttributes when AI response fails', async () => {

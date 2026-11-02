@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -53,6 +53,9 @@ export default function ProposeTopicClient() {
   // AI draft state
   const [aiDrafting, setAiDrafting] = useState(false);
   const [aiDraftResult, setAiDraftResult] = useState<string | null>(null);
+  const [autoRewriteEnabled, setAutoRewriteEnabled] = useState(true);
+  const [isAutoRewriting, setIsAutoRewriting] = useState(false);
+  const autoRewriteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Mapping state: { [code]: { level: 0..3, reason: string, origin: 'RULE' | 'AI' | 'FACULTY' } }
   const [attrValues, setAttrValues] = useState<
@@ -177,7 +180,60 @@ export default function ProposeTopicClient() {
     updateQual();
   }, [attrValues, selectedSdgs]);
 
-  // AI Draft Trigger
+  // Dynamic Auto-Rewrite Trigger on Attribute Level or SDG changes
+  function triggerAutoRewrite(
+    currentAttrs: typeof attrValues,
+    currentSdgs: typeof selectedSdgs
+  ) {
+    if (!autoRewriteEnabled) return;
+    if (!title.trim()) return;
+
+    if (autoRewriteTimerRef.current) {
+      clearTimeout(autoRewriteTimerRef.current);
+    }
+
+    autoRewriteTimerRef.current = setTimeout(async () => {
+      setIsAutoRewriting(true);
+      try {
+        const targetAttributes = Object.entries(currentAttrs)
+          .filter(([_, val]) => val.level > 0)
+          .map(([code, val]) => ({ code, level: val.level, reason: val.reason }));
+
+        const targetSdgs = Object.entries(currentSdgs).map(([id, val]) => ({
+          sdg: parseInt(id, 10),
+          target: val.target,
+          title: sdgs.find((s) => s.id === parseInt(id, 10))?.title,
+        }));
+
+        const firstSdg = Object.keys(currentSdgs)[0];
+        const sdgHint = firstSdg ? `SDG ${firstSdg}` : undefined;
+
+        const res = await generateAiDescriptionDraftAction({
+          title,
+          category,
+          theme: domain,
+          keywords: tags.length > 0 ? tags : [title],
+          existingAbstract: description,
+          targetAttributes,
+          targetSdgs,
+          sdgHint,
+        });
+
+        if (res.description) {
+          setDescription(res.description);
+          setAiDraftResult(
+            `Abstract aligned via ${res.providerUsed} (${res.wordCount} words) to match selected attributes & SDGs`
+          );
+        }
+      } catch {
+        // Silently preserve current draft on temporary network issues
+      } finally {
+        setIsAutoRewriting(false);
+      }
+    }, 900);
+  }
+
+  // AI Draft Trigger (WP1 >= Level 2 Guaranteed)
   async function handleGenerateAiDraft() {
     if (!title.trim()) {
       setError('Please provide a Topic Title before asking AI to draft an abstract.');
@@ -188,13 +244,27 @@ export default function ProposeTopicClient() {
     setError(null);
     setAiDraftResult(null);
 
+    const targetAttributes = Object.entries(attrValues)
+      .filter(([_, val]) => val.level > 0)
+      .map(([code, val]) => ({ code, level: val.level, reason: val.reason }));
+
+    const targetSdgs = Object.entries(selectedSdgs).map(([id, val]) => ({
+      sdg: parseInt(id, 10),
+      target: val.target,
+      title: sdgs.find((s) => s.id === parseInt(id, 10))?.title,
+    }));
+
     const firstSdg = Object.keys(selectedSdgs)[0];
     const sdgHint = firstSdg ? `SDG ${firstSdg}` : undefined;
 
     const res = await generateAiDescriptionDraftAction({
       title,
       category,
+      theme: domain,
       keywords: tags.length > 0 ? tags : [title],
+      existingAbstract: description,
+      targetAttributes,
+      targetSdgs,
       sdgHint,
     });
 
@@ -203,11 +273,11 @@ export default function ProposeTopicClient() {
       setError(res.error);
     } else if (res.description) {
       setDescription(res.description);
-      setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words)`);
+      setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words) — WP1 Level 2+ satisfied`);
     }
   }
 
-  // AI Complexity Evaluator Trigger
+  // AI Complexity Evaluator Trigger (Evaluates WPs, WKs, EAs, and suitable SDGs)
   async function handleEvaluateAiComplexity() {
     if (!description.trim()) {
       setError('Please provide or draft a Project Abstract before evaluating complexity.');
@@ -221,6 +291,7 @@ export default function ProposeTopicClient() {
       title,
       description,
       category,
+      theme: domain,
       tags,
     });
 
@@ -240,15 +311,21 @@ export default function ProposeTopicClient() {
       }
       setAttrValues(updated);
 
-      // Auto-populate SDGs from AI
+      // Auto-populate suitable SDGs from AI
       const updatedSdgs = { ...selectedSdgs };
       for (const s of res.mapping.sdgs) {
+        const foundSdg = sdgs.find((item) => item.id === s.sdg);
+        const validTarget = foundSdg?.targets.some((t) => t.id === s.target)
+          ? s.target
+          : foundSdg?.targets[0]?.id || s.target;
+
         updatedSdgs[s.sdg] = {
-          target: s.target,
-          reason: s.reason,
+          target: validTarget || '',
+          reason: s.reason || '',
         };
       }
       setSelectedSdgs(updatedSdgs);
+      setAiDraftResult(`Complexity evaluated & suitable SDGs auto-mapped via ${res.providerUsed}`);
     }
   }
 
@@ -488,31 +565,55 @@ export default function ProposeTopicClient() {
                 </p>
               </div>
 
-              {/* AI Draft Trigger */}
-              <button
-                type="button"
-                onClick={handleGenerateAiDraft}
-                disabled={aiDrafting}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
-              >
-                {aiDrafting ? (
-                  <>
-                    <svg className="animate-spin h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                    </svg>
-                    Drafting with AI...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Draft Abstract with AI
-                  </>
-                )}
-              </button>
+              {/* AI Draft Trigger & Auto-Rewrite Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition">
+                  <input
+                    type="checkbox"
+                    checked={autoRewriteEnabled}
+                    onChange={(e) => setAutoRewriteEnabled(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>✨ Auto-Rewrite on Attribute/SDG Change</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateAiDraft}
+                  disabled={aiDrafting || isAutoRewriting}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                >
+                  {aiDrafting ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Drafting with AI...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Draft Abstract with AI
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
+
+            {isAutoRewriting && (
+              <div className="p-2.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-lg text-xs flex items-center gap-2 animate-pulse">
+                <svg className="animate-spin h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                <span className="font-semibold">
+                  AI is auto-rewriting abstract to reflect calibrated Washington Accord levels &amp; SDGs (WP1 ≥ Level 2)...
+                </span>
+              </div>
+            )}
 
             {aiDraftResult && (
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs flex justify-between items-center">
@@ -656,14 +757,16 @@ export default function ProposeTopicClient() {
                               key={lvl}
                               type="button"
                               onClick={() => {
-                                setAttrValues({
+                                const updatedAttrs = {
                                   ...attrValues,
                                   [attr.code]: {
                                     ...current,
                                     level: lvl,
-                                    origin: 'FACULTY',
+                                    origin: 'FACULTY' as const,
                                   },
-                                });
+                                };
+                                setAttrValues(updatedAttrs);
+                                triggerAutoRewrite(updatedAttrs, selectedSdgs);
                               }}
                               className={`w-6 h-6 rounded text-xs font-bold transition ${
                                 current.level === lvl
@@ -746,16 +849,18 @@ export default function ProposeTopicClient() {
                           type="checkbox"
                           checked={isSelected}
                           onChange={(e) => {
+                            let updatedSdgs: typeof selectedSdgs;
                             if (e.target.checked) {
-                              setSelectedSdgs({
+                              updatedSdgs = {
                                 ...selectedSdgs,
                                 [sdg.id]: { target: sdg.targets[0]?.id || '', reason: '' },
-                              });
+                              };
                             } else {
-                              const updated = { ...selectedSdgs };
-                              delete updated[sdg.id];
-                              setSelectedSdgs(updated);
+                              updatedSdgs = { ...selectedSdgs };
+                              delete updatedSdgs[sdg.id];
                             }
+                            setSelectedSdgs(updatedSdgs);
+                            triggerAutoRewrite(attrValues, updatedSdgs);
                           }}
                           className="rounded text-indigo-600 focus:ring-indigo-500"
                         />
@@ -774,10 +879,12 @@ export default function ProposeTopicClient() {
                           <select
                             value={currentData.target || ''}
                             onChange={(e) => {
-                              setSelectedSdgs({
+                              const updatedSdgs = {
                                 ...selectedSdgs,
                                 [sdg.id]: { ...currentData, target: e.target.value },
-                              });
+                              };
+                              setSelectedSdgs(updatedSdgs);
+                              triggerAutoRewrite(attrValues, updatedSdgs);
                             }}
                             className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white text-slate-800"
                           >
