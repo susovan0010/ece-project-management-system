@@ -3,6 +3,7 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/lib/email';
 
 export interface RubricCompletionStat {
   code: string;
@@ -288,20 +289,56 @@ export async function sendSupervisorReminderAction(input: {
       return { error: 'Supervisor not found.' };
     }
 
+    const emailRes = await sendEmail({
+      to: supervisor.email,
+      subject: `[ECE HITK] Urgent: Pending Capstone Marks Submission (Semester ${input.semester})`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+          <div style="background-color: #1e3a8a; color: white; padding: 18px 24px;">
+            <h2 style="margin: 0; font-size: 18px;">Department of Electronics and Communication Engineering</h2>
+            <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata</p>
+          </div>
+          <div style="padding: 24px;">
+            <p>Dear <strong>${supervisor.name}</strong>,</p>
+            <p>This is an official notification from the ECE Project Committee. You currently have <strong>${input.groupsCount} allocated group(s)</strong> with pending marks evaluation for <strong>Semester ${input.semester}</strong>.</p>
+            <p>Please log in to your supervisor portal to record and submit the evaluation rubrics for your assigned groups:</p>
+            <div style="margin: 22px 0; text-align: center;">
+              <a href="https://ece-project-management-system.vercel.app/faculty/marks" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+                Access Faculty Marks Portal →
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+              ECE Project Committee Administration<br/>
+              Sender: susovan.mandal@heritageit.edu
+            </p>
+          </div>
+        </div>
+      `,
+    });
+
     // Record in ReminderLog table
     await prisma.reminderLog.create({
       data: {
         supervisorId: input.supervisorId,
         semester: input.semester,
         groupsCount: input.groupsCount,
-        success: true,
+        success: emailRes.success,
+        ...(emailRes.error ? { error: emailRes.error } : {}),
       },
     });
 
     revalidatePath('/admin/marks-tracker');
+
+    if (!emailRes.success) {
+      return {
+        error: `Email transport notice: ${emailRes.error || 'Failed to dispatch email'}. (Reminder log recorded).`,
+      };
+    }
+
+    const modeNotice = emailRes.simulated ? ' [Simulation Mode - Check Vercel RESEND_API_KEY for live delivery]' : '';
     return {
       success: true,
-      message: `Reminder email successfully dispatched to ${supervisor.name} (${supervisor.email}).`,
+      message: `Reminder email successfully dispatched to ${supervisor.name} (${supervisor.email})${modeNotice}.`,
     };
   } catch (err) {
     return { error: `Failed to send reminder: ${(err as Error).message}` };
@@ -318,14 +355,6 @@ export async function sendBulkRemindersAction(semester: number) {
   }
 
   try {
-    const openWindows = await prisma.markWindow.findMany({
-      where: { semester, isLocked: false },
-    });
-
-    if (openWindows.length === 0) {
-      return { error: `No active or open mark windows found for Semester ${semester}.` };
-    }
-
     // Find all supervisors with groups in this semester
     const groups = await prisma.group.findMany({
       include: {
@@ -336,40 +365,79 @@ export async function sendBulkRemindersAction(semester: number) {
       },
     });
 
-    const pendingSupervisors = new Map<string, number>();
+    const pendingSupervisors = new Map<string, { count: number; name: string; email: string }>();
 
     groups.forEach((g) => {
       const hasEntries = g.markEntries.some((m) => m.criterion?.semester === semester);
       if (!hasEntries) {
-        pendingSupervisors.set(
-          g.supervisor.id,
-          (pendingSupervisors.get(g.supervisor.id) || 0) + 1
-        );
+        const existing = pendingSupervisors.get(g.supervisor.id);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          pendingSupervisors.set(g.supervisor.id, {
+            count: 1,
+            name: g.supervisor.name,
+            email: g.supervisor.email,
+          });
+        }
       }
     });
 
     if (pendingSupervisors.size === 0) {
-      return { success: true, count: 0, message: 'All supervisors have completed marks for this semester!' };
+      return { success: true, count: 0, message: `All supervisors have completed marks for Semester ${semester}!` };
     }
 
     let dispatched = 0;
-    for (const [supId, count] of Array.from(pendingSupervisors.entries())) {
+    let anySimulated = false;
+
+    for (const [supId, info] of Array.from(pendingSupervisors.entries())) {
+      const emailRes = await sendEmail({
+        to: info.email,
+        subject: `[ECE HITK] Reminder: Pending Capstone Marks for Semester ${semester}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #1e3a8a; color: white; padding: 18px 24px;">
+              <h2 style="margin: 0; font-size: 18px;">Department of Electronics and Communication Engineering</h2>
+              <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata</p>
+            </div>
+            <div style="padding: 24px;">
+              <p>Dear <strong>${info.name}</strong>,</p>
+              <p>This is a bulk reminder from the ECE Project Committee. You have <strong>${info.count} assigned project group(s)</strong> with pending marks evaluation for <strong>Semester ${semester}</strong>.</p>
+              <p>Kindly complete the pending marks entries for your allotted students in the portal:</p>
+              <div style="margin: 22px 0; text-align: center;">
+                <a href="https://ece-project-management-system.vercel.app/faculty/marks" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+                  Open Faculty Marks Portal →
+                </a>
+              </div>
+              <p style="font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                ECE Project Committee Administration<br/>
+                Sender: susovan.mandal@heritageit.edu
+              </p>
+            </div>
+          </div>
+        `,
+      });
+
+      if (emailRes.simulated) anySimulated = true;
+
       await prisma.reminderLog.create({
         data: {
           supervisorId: supId,
           semester,
-          groupsCount: count,
-          success: true,
+          groupsCount: info.count,
+          success: emailRes.success,
+          ...(emailRes.error ? { error: emailRes.error } : {}),
         },
       });
       dispatched++;
     }
 
     revalidatePath('/admin/marks-tracker');
+    const simNotice = anySimulated ? ' (Simulation Mode active - configure live RESEND_API_KEY on Vercel for inbox delivery)' : '';
     return {
       success: true,
       count: dispatched,
-      message: `Dispatched automated reminders to ${dispatched} supervisors with pending marks.`,
+      message: `Dispatched reminders to ${dispatched} pending supervisors${simNotice}.`,
     };
   } catch (err) {
     return { error: `Failed to dispatch bulk reminders: ${(err as Error).message}` };

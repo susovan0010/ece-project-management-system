@@ -333,8 +333,10 @@ export default function AdminMarksTrackerClient() {
             <tbody className="divide-y divide-slate-200">
               {windows.map((w) => {
                 const isActionLoading = actionLoadingId === w.id;
+                const isDateLoading = actionLoadingId === `date-${w.id}`;
                 const dDate = new Date(w.deadline);
                 const isPast = dDate.getTime() < Date.now();
+                const isoDateStr = !isNaN(dDate.getTime()) ? dDate.toISOString().split('T')[0] : '';
 
                 return (
                   <tr key={w.id} className="hover:bg-slate-50/60 transition">
@@ -343,19 +345,31 @@ export default function AdminMarksTrackerClient() {
                     </td>
                     <td className="px-6 py-3.5 font-medium text-slate-700">Semester {w.semester}</td>
                     <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-slate-700">
-                          {dDate.toLocaleDateString('en-IN', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </span>
-                        {isPast && !w.isLocked && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="date"
+                            key={isoDateStr}
+                            defaultValue={isoDateStr}
+                            disabled={isDateLoading}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleUpdateDeadline(w.id, e.target.value);
+                              }
+                            }}
+                            className="px-2.5 py-1 text-xs font-mono font-semibold border border-slate-300 rounded-lg bg-white text-slate-800 shadow-sm hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer disabled:opacity-50"
+                            title="Click to open calendar and set deadline"
+                          />
+                        </div>
+                        {isDateLoading ? (
+                          <span className="text-[10px] text-purple-600 font-semibold animate-pulse whitespace-nowrap">
+                            Saving...
+                          </span>
+                        ) : isPast && !w.isLocked ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
                             Deadline Passed
                           </span>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-6 py-3.5 text-center">
