@@ -613,19 +613,21 @@ export default function AdminAllocationPage() {
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
               <tr>
-                <th className="px-5 py-3">Group & Batch</th>
-                <th className="px-5 py-3">Roll Number</th>
-                <th className="px-5 py-3">Student Name</th>
-                <th className="px-5 py-3">Contact</th>
-                <th className="px-5 py-3">Project Topic</th>
-                <th className="px-5 py-3">Supervisor</th>
-                <th className="px-5 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">Group</th>
+                <th className="px-4 py-3">Batch</th>
+                <th className="px-4 py-3">Roll Number</th>
+                <th className="px-4 py-3">Student Name</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Phone</th>
+                <th className="px-4 py-3">Project Topic</th>
+                <th className="px-4 py-3">Supervisor</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rosterLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={9} className="px-6 py-10 text-center text-slate-400">
                     Loading student-group roster...
                   </td>
                 </tr>
@@ -637,6 +639,9 @@ export default function AdminAllocationPage() {
                     return (
                       s.name.toLowerCase().includes(q) ||
                       s.roll.toLowerCase().includes(q) ||
+                      (s.email && s.email.toLowerCase().includes(q)) ||
+                      (s.phone && s.phone.toLowerCase().includes(q)) ||
+                      (s.batchId && s.batchId.toLowerCase().includes(q)) ||
                       (s.topicCode && s.topicCode.toLowerCase().includes(q)) ||
                       (s.topicTitle && s.topicTitle.toLowerCase().includes(q)) ||
                       (s.supervisorName && s.supervisorName.toLowerCase().includes(q)) ||
@@ -647,7 +652,7 @@ export default function AdminAllocationPage() {
                   if (filtered.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                        <td colSpan={9} className="px-6 py-10 text-center text-slate-400">
                           No allocated students found matching the criteria.
                         </td>
                       </tr>
@@ -656,27 +661,40 @@ export default function AdminAllocationPage() {
 
                   return filtered.map((st, idx) => (
                     <tr key={`${st.studentId}-${st.groupId || idx}`} className="hover:bg-slate-50/70 transition">
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         {st.groupNumber !== null ? (
-                          <div>
-                            <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              Group {st.groupNumber}
-                            </span>
-                            <div className="text-[10px] text-slate-400 mt-1 font-mono">{st.batchId}</div>
-                          </div>
+                          <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
+                            Group {st.groupNumber}
+                          </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500">
                             Unassigned
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 font-mono font-bold text-slate-900">{st.roll}</td>
-                      <td className="px-5 py-3.5 font-semibold text-slate-900">{st.name}</td>
-                      <td className="px-5 py-3.5 text-slate-500">
-                        <div>{st.email || '-'}</div>
-                        {st.phone && <div className="text-[10px] font-mono text-slate-400">{st.phone}</div>}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {st.batchId || '-'}
+                        </span>
                       </td>
-                      <td className="px-5 py-3.5 max-w-xs">
+                      <td className="px-4 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">{st.roll}</td>
+                      <td className="px-4 py-3.5 font-semibold text-slate-900 whitespace-nowrap">{st.name}</td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {st.email ? (
+                          <a
+                            href={`mailto:${st.email}`}
+                            className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {st.email}
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-xs text-slate-600 whitespace-nowrap">
+                        {st.phone || <span className="text-slate-400 italic">-</span>}
+                      </td>
+                      <td className="px-4 py-3.5 max-w-xs">
                         {st.topicCode ? (
                           <div>
                             <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
@@ -690,17 +708,17 @@ export default function AdminAllocationPage() {
                           <span className="text-slate-400 italic">Not allotted</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
                         {st.supervisorName ? (
                           <div>
-                            <div className="font-semibold text-slate-900">{st.supervisorName}</div>
+                            <div className="font-semibold text-slate-900 whitespace-nowrap">{st.supervisorName}</div>
                             <div className="text-[10px] text-slate-400">{st.supervisorEmail}</div>
                           </div>
                         ) : (
                           <span className="text-slate-400 italic">-</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-right">
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
                         <button
                           type="button"
                           disabled={removingStudentId === st.studentId}
