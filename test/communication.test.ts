@@ -184,4 +184,51 @@ describe('Communication Hub: Message Dispatch & History', () => {
     expect(res.recipients).toContain('ananya.sen@heritageit.edu');
     expect(upsertSpy).toHaveBeenCalled();
   });
+
+  it('delivers broadcast message to Department Faculty Google Group (hit_ece_faculties@googlegroups.com)', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null as any);
+    const upsertSpy = vi.spyOn(prisma.setting, 'upsert').mockResolvedValue({} as any);
+
+    const res = await sendGroupCommunicationAction({
+      sendToFacultyGoogleGroup: true,
+      subject: 'Important Faculty Meeting Notice',
+      messageBody: 'All ECE faculty are requested to attend the meeting tomorrow.',
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.count).toBe(1);
+    expect(res.recipients).toContain('hit_ece_faculties@googlegroups.com');
+    expect(upsertSpy).toHaveBeenCalled();
+  });
+
+  it('delivers messages to individual faculty supervisors via login email IDs', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null as any);
+
+    vi.spyOn(prisma.user, 'findMany').mockResolvedValue([
+      { id: 'fac-1', name: 'Dr. Debasish Saha', email: 'debasish@hitk.edu' },
+      { id: 'fac-2', name: 'Prof. Ananya Chattopadhyay', email: 'ananya.chattopadhyay@heritageit.edu' },
+    ] as any);
+
+    const upsertSpy = vi.spyOn(prisma.setting, 'upsert').mockResolvedValue({} as any);
+
+    const res = await sendGroupCommunicationAction({
+      selectedFacultyUserIds: ['fac-1', 'fac-2'],
+      subject: 'Capstone Project Evaluation Guidelines for Supervisors',
+      messageBody: 'Guidelines for 6th semester evaluation rubrics attached.',
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.count).toBe(2);
+    expect(res.recipients).toContain('debasish@hitk.edu');
+    expect(res.recipients).toContain('ananya.chattopadhyay@heritageit.edu');
+    expect(upsertSpy).toHaveBeenCalled();
+  });
 });

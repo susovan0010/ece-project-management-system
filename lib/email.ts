@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 
 export const DEFAULT_SENDER_EMAIL = 'susovan.mandal@heritageit.edu';
 export const DEFAULT_SENDER_NAME = 'Dr. Susovan Mandal (ECE Project Committee)';
+export const FACULTY_GOOGLE_GROUP_EMAIL = 'hit_ece_faculties@googlegroups.com';
 
 export interface CommunicationConfig {
   senderEmail: string;

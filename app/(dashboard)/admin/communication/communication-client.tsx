@@ -10,7 +10,10 @@ import {
   getCommunicationHistoryAction,
   CommunicationGroupSummary,
   CommunicationHistoryItem,
+  FacultyDirectoryItem,
 } from '@/app/actions/communication';
+
+const FACULTY_GOOGLE_GROUP_EMAIL = 'hit_ece_faculties@googlegroups.com';
 
 export default function CommunicationClient() {
   const [loading, setLoading] = useState(true);
@@ -24,7 +27,13 @@ export default function CommunicationClient() {
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [showConfigEdit, setShowConfigEdit] = useState(false);
 
-  // Roster & Selection State
+  // Faculty Directory & Google Group State
+  const [facultyList, setFacultyList] = useState<FacultyDirectoryItem[]>([]);
+  const [selectedFacultyIds, setSelectedFacultyIds] = useState<string[]>([]);
+  const [sendToFacultyGoogleGroup, setSendToFacultyGoogleGroup] = useState(false);
+  const [facultySearch, setFacultySearch] = useState('');
+
+  // Roster & Group Selection State
   const [batches, setBatches] = useState<{ id: string; active: boolean }[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
   const [groups, setGroups] = useState<CommunicationGroupSummary[]>([]);
@@ -68,11 +77,11 @@ export default function CommunicationClient() {
 
     if (rosterRes.error) {
       setError(rosterRes.error);
-    } else if (rosterRes.groups) {
+    } else {
       setBatches(rosterRes.batches || []);
       setGroups(rosterRes.groups || []);
-      // Default to selecting all groups in current view
-      setSelectedGroupIds(rosterRes.groups.map((g) => g.id));
+      setFacultyList(rosterRes.facultyList || []);
+      setSelectedGroupIds(rosterRes.groups?.map((g) => g.id) || []);
     }
 
     if (histRes) {
@@ -126,7 +135,13 @@ export default function CommunicationClient() {
     } else {
       setSuccessMsg(res.message || 'Email updated successfully.');
       setEditingEmailId(null);
+
       // Update in local state
+      if (type === 'FACULTY') {
+        setFacultyList((prev) =>
+          prev.map((f) => (f.id === id ? { ...f, email: editingEmailValue } : f))
+        );
+      }
       setGroups((prev) =>
         prev.map((g) => {
           if (type === 'FACULTY' && g.supervisor.id === id) {
@@ -147,7 +162,37 @@ export default function CommunicationClient() {
     }
   }
 
-  // Add Custom Recipient
+  // Faculty Supervisor Selection Helpers
+  function toggleFaculty(id: string) {
+    setSelectedFacultyIds((prev) =>
+      prev.includes(id) ? prev.filter((fid) => fid !== id) : [...prev, id]
+    );
+  }
+
+  function selectAllFaculty() {
+    setSelectedFacultyIds(facultyList.map((f) => f.id));
+  }
+
+  function deselectAllFaculty() {
+    setSelectedFacultyIds([]);
+  }
+
+  // Group Selection Helpers
+  function toggleGroup(id: string) {
+    setSelectedGroupIds((prev) =>
+      prev.includes(id) ? prev.filter((gid) => gid !== id) : [...prev, id]
+    );
+  }
+
+  function selectAllGroups() {
+    setSelectedGroupIds(groups.map((g) => g.id));
+  }
+
+  function deselectAllGroups() {
+    setSelectedGroupIds([]);
+  }
+
+  // Custom Recipients Helpers
   function handleAddCustomRecipient() {
     if (!newCustomEmail || !newCustomEmail.includes('@')) {
       setError('Please enter a valid email for the custom recipient.');
@@ -169,24 +214,14 @@ export default function CommunicationClient() {
     setCustomRecipients((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // Select / Deselect Groups
-  function toggleGroup(id: string) {
-    setSelectedGroupIds((prev) =>
-      prev.includes(id) ? prev.filter((gid) => gid !== id) : [...prev, id]
-    );
-  }
-
-  function selectAllGroups() {
-    setSelectedGroupIds(groups.map((g) => g.id));
-  }
-
-  function deselectAllGroups() {
-    setSelectedGroupIds([]);
-  }
-
   // Quick Message Templates
-  function applyTemplate(type: 'viva' | 'deadline' | 'report') {
-    if (type === 'viva') {
+  function applyTemplate(type: 'faculty' | 'viva' | 'deadline' | 'report') {
+    if (type === 'faculty') {
+      setSubject('Notice: Project Committee Meeting & Evaluation Schedule for Faculty Supervisors');
+      setMessageBody(
+        `Dear Colleagues & Supervisors,\n\nThis is an official notice regarding the upcoming Capstone Project evaluation cycle for B.Tech ECE.\n\nAll faculty supervisors are requested to review project topic allocations and ensure continuous assessment rubrics are up to date on the departmental portal.\n\nPlease feel free to reach out to the Project Committee for any queries.\n\nWarm regards,\nDr. Susovan Mandal\nProject Committee, Department of ECE\nHeritage Institute of Technology`
+      );
+    } else if (type === 'viva') {
       setSubject('Notice: Capstone Project Viva Voce & Evaluation Schedule');
       setMessageBody(
         `Dear Students,\n\nThis is to notify all members of the selected project groups that the Capstone Project Viva Voce evaluation will be conducted as scheduled.\n\nAll members of each group are required to be present with their project documentation, design diagrams, and working prototype demonstrations.\n\nAttendance is mandatory. Please coordinate with your faculty supervisor for presentation timing.\n\nWarm regards,\nECE Capstone Project Committee`
@@ -214,8 +249,15 @@ export default function CommunicationClient() {
       setError('Please write message content before sending.');
       return;
     }
-    if (selectedGroupIds.length === 0 && customRecipients.length === 0) {
-      setError('Please select at least one project group or add custom recipients.');
+
+    const hasAnyTarget =
+      sendToFacultyGoogleGroup ||
+      selectedFacultyIds.length > 0 ||
+      selectedGroupIds.length > 0 ||
+      customRecipients.length > 0;
+
+    if (!hasAnyTarget) {
+      setError('Please select at least one recipient (Faculty Google Group, Faculty Supervisors, Project Groups, or Custom Recipients).');
       return;
     }
 
@@ -227,6 +269,8 @@ export default function CommunicationClient() {
       selectedGroupIds,
       includeStudents,
       includeFaculty,
+      sendToFacultyGoogleGroup,
+      selectedFacultyUserIds: selectedFacultyIds,
       customRecipients,
       subject,
       messageBody,
@@ -266,8 +310,20 @@ export default function CommunicationClient() {
     }
   });
 
+  const activeIndividualFaculty = facultyList.filter((f) => selectedFacultyIds.includes(f.id));
+
   const totalCalculatedRecipients =
-    activeStudentRecipients.length + activeSupervisorRecipients.length + customRecipients.length;
+    (sendToFacultyGoogleGroup ? 1 : 0) +
+    activeIndividualFaculty.length +
+    activeStudentRecipients.length +
+    activeSupervisorRecipients.length +
+    customRecipients.length;
+
+  const filteredFaculty = facultyList.filter((f) => {
+    if (!facultySearch) return true;
+    const q = facultySearch.toLowerCase();
+    return f.name.toLowerCase().includes(q) || f.email.toLowerCase().includes(q);
+  });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -278,15 +334,15 @@ export default function CommunicationClient() {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
               Project Committee Admin
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
               Department Communication Hub
             </span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mt-2">
-            Communication &amp; Group Messaging Portal
+            Communication &amp; Official Messaging Portal
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Dispatch announcements, notices, and reminders directly to student members and faculty supervisors across capstone project groups.
+            Dispatch announcements, meeting notices, and evaluation deadlines directly to individual supervisors, the faculty Google Group, or student project groups.
           </p>
         </div>
 
@@ -329,7 +385,7 @@ export default function CommunicationClient() {
             <div>
               <h3 className="font-bold text-slate-900 text-base">Sender Email &amp; Identity Configuration</h3>
               <p className="text-xs text-slate-500">
-                All communications sent to students and faculty will use this email address as the verified sender.
+                All communications sent to faculty and students will use this email address as the verified sender.
               </p>
             </div>
             <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-semibold border border-blue-200">
@@ -399,16 +455,130 @@ export default function CommunicationClient() {
         </div>
       )}
 
-      {/* Main Grid: Composer & Recipients Selection */}
+      {/* Main Grid: Targets Selection & Composer */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Group Selection & Options (5 Cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Target Audience & Group Filter */}
+        {/* Left Column: Target Channels (5 Cols) */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Channel A: Department Faculty & Google Group */}
+          <div className="bg-white border-2 border-purple-200 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                  Faculty Supervisors &amp; Google Group
+                </h3>
+                <p className="text-xs text-slate-500">Target individual supervisor login accounts and/or the Google Group.</p>
+              </div>
+              <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                {facultyList.length} Faculty
+              </span>
+            </div>
+
+            {/* 1-Click Faculty Google Group Toggle */}
+            <div className={`p-3.5 rounded-xl border transition ${
+              sendToFacultyGoogleGroup
+                ? 'bg-purple-50/70 border-purple-400 shadow-xs'
+                : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
+            }`}>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendToFacultyGoogleGroup}
+                  onChange={(e) => setSendToFacultyGoogleGroup(e.target.checked)}
+                  className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
+                />
+                <div>
+                  <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    Send to Faculty Google Group
+                    <span className="text-[10px] bg-purple-200 text-purple-900 font-mono px-1.5 py-0.2 rounded font-semibold">
+                      Broadcast
+                    </span>
+                  </div>
+                  <div className="font-mono text-xs text-purple-800 font-semibold mt-0.5">
+                    {FACULTY_GOOGLE_GROUP_EMAIL}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Broadcasts message to all department faculty members in one email.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            {/* Individual Faculty Supervisors Directory */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800">
+                  Individual Supervisor Login IDs ({selectedFacultyIds.length} of {facultyList.length} selected)
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllFaculty}
+                    className="text-[11px] font-semibold text-purple-700 hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={deselectAllFaculty}
+                    className="text-[11px] font-semibold text-slate-500 hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Faculty Search Filter */}
+              <input
+                type="text"
+                placeholder="Search faculty name or login email..."
+                value={facultySearch}
+                onChange={(e) => setFacultySearch(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              />
+
+              {/* Scrollable Faculty Checkbox List */}
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                {filteredFaculty.map((f) => {
+                  const isChecked = selectedFacultyIds.includes(f.id);
+                  return (
+                    <label
+                      key={f.id}
+                      className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition ${
+                        isChecked
+                          ? 'border-purple-300 bg-purple-50/50'
+                          : 'border-slate-100 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleFaculty(f.id)}
+                          className="rounded text-purple-600 focus:ring-purple-500 h-3.5 w-3.5"
+                        />
+                        <div>
+                          <div className="font-semibold text-slate-900">{f.name}</div>
+                          <div className="font-mono text-[11px] text-slate-500">{f.email}</div>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Channel B: Student Project Groups & Batches */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-sm">1. Select Target Batch &amp; Groups</h3>
-                <p className="text-xs text-slate-500">Pick which project groups receive this communication.</p>
+                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                  Student Project Groups
+                </h3>
+                <p className="text-xs text-slate-500">Pick which student groups receive this notice.</p>
               </div>
 
               {/* Batch Selector */}
@@ -426,9 +596,8 @@ export default function CommunicationClient() {
               </select>
             </div>
 
-            {/* Recipient Role Options */}
+            {/* Recipient Options */}
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-              <div className="text-xs font-semibold text-slate-700">Delivery Options:</div>
               <label className="flex items-center gap-2 text-xs text-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
@@ -437,7 +606,7 @@ export default function CommunicationClient() {
                   className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                 />
                 <span className="font-semibold text-slate-900">
-                  Deliver to Individual Student Member Emails (Default)
+                  Deliver to Individual Student Member Emails
                 </span>
               </label>
 
@@ -448,7 +617,7 @@ export default function CommunicationClient() {
                   onChange={(e) => setIncludeFaculty(e.target.checked)}
                   className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
                 />
-                <span>Include Faculty Supervisors of selected groups</span>
+                <span>Include Faculty Guides of Selected Groups</span>
               </label>
             </div>
 
@@ -471,16 +640,16 @@ export default function CommunicationClient() {
                   onClick={deselectAllGroups}
                   className="text-[11px] font-semibold text-slate-500 hover:underline"
                 >
-                  Deselect All
+                  Clear
                 </button>
               </div>
             </div>
 
             {/* Groups Grid / List */}
-            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {groups.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400">
-                  No project groups found for this batch.
+                <div className="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  No project groups formed in this batch yet.
                 </div>
               ) : (
                 groups.map((g) => {
@@ -499,7 +668,7 @@ export default function CommunicationClient() {
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => {}} // handled by parent onClick
+                          onChange={() => {}}
                           className="mt-0.5 rounded text-blue-600 h-4 w-4"
                         />
                         <div>
@@ -515,7 +684,7 @@ export default function CommunicationClient() {
                           <div className="text-[11px] text-slate-600 truncate max-w-[220px]">
                             {g.topicTitle || 'Topic Title Pending'}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1">
+                          <div className="text-[10px] text-slate-400 mt-0.5">
                             Guide: <span className="font-medium text-slate-600">{g.supervisor.name}</span>
                           </div>
                         </div>
@@ -533,11 +702,11 @@ export default function CommunicationClient() {
             </div>
           </div>
 
-          {/* Ad-hoc Custom Recipients Box */}
+          {/* Channel C: Ad-hoc Custom Recipients */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
-            <h3 className="font-bold text-slate-900 text-sm">Add Additional / Ad-hoc Recipients</h3>
+            <h3 className="font-bold text-slate-900 text-sm">Additional / Ad-hoc Recipients</h3>
             <p className="text-xs text-slate-500">
-              Optionally add individual email addresses outside the selected groups.
+              Optionally enter any other specific email address.
             </p>
 
             <div className="flex gap-2">
@@ -589,21 +758,28 @@ export default function CommunicationClient() {
           </div>
         </div>
 
-        {/* Right Column: Message Composer & Recipient Roster (7 Cols) */}
+        {/* Right Column: Message Composer & Recipient Inboxes (7 Cols) */}
         <div className="lg:col-span-7 space-y-6">
           {/* Message Composer Card */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-base">2. Compose Announcement / Message</h3>
+                <h3 className="font-bold text-slate-900 text-base">Compose Official Communication</h3>
                 <p className="text-xs text-slate-500">
-                  Delivered individually to the inbox of every selected recipient.
+                  Delivered from <strong className="font-mono text-blue-700">{senderEmail}</strong> directly to all chosen inboxes.
                 </p>
               </div>
 
               {/* Quick Templates */}
-              <div className="flex items-center gap-1.5 self-start sm:self-auto">
+              <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
                 <span className="text-[10px] text-slate-400 font-semibold uppercase">Templates:</span>
+                <button
+                  type="button"
+                  onClick={() => applyTemplate('faculty')}
+                  className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+                >
+                  Faculty Notice
+                </button>
                 <button
                   type="button"
                   onClick={() => applyTemplate('viva')}
@@ -621,7 +797,7 @@ export default function CommunicationClient() {
                 <button
                   type="button"
                   onClick={() => applyTemplate('report')}
-                  className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+                  className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200"
                 >
                   Report
                 </button>
@@ -638,7 +814,7 @@ export default function CommunicationClient() {
                 required
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="e.g. Urgent: Schedule for Capstone Project Viva Voce & Progress Review"
+                placeholder="e.g. Notice: Capstone Project Evaluation Meeting & Guidelines"
                 className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium text-slate-900"
               />
             </div>
@@ -653,7 +829,7 @@ export default function CommunicationClient() {
                 rows={9}
                 value={messageBody}
                 onChange={(e) => setMessageBody(e.target.value)}
-                placeholder="Write your announcement or instructions here. It will be delivered cleanly formatted to all individual student and faculty email addresses..."
+                placeholder="Write your announcement, guidelines, or instructions here. It will be delivered cleanly formatted to all individual supervisor and student email addresses..."
                 className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-sans leading-relaxed text-slate-800"
               />
             </div>
@@ -662,13 +838,29 @@ export default function CommunicationClient() {
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-bold text-slate-900">
-                  Ready to Deliver to {totalCalculatedRecipients} Recipient(s)
+                  Ready to Deliver to {totalCalculatedRecipients} Recipient Inbox(es)
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  Sender: <span className="font-mono text-blue-700 font-medium">{senderEmail}</span>
-                  {includeStudents && ` • ${activeStudentRecipients.length} Students`}
-                  {includeFaculty && ` • ${activeSupervisorRecipients.length} Supervisors`}
-                  {customRecipients.length > 0 && ` • ${customRecipients.length} Custom`}
+                <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap gap-1.5">
+                  {sendToFacultyGoogleGroup && (
+                    <span className="font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                      Google Group (Broadcast)
+                    </span>
+                  )}
+                  {activeIndividualFaculty.length > 0 && (
+                    <span className="font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                      {activeIndividualFaculty.length} Faculty Supervisors
+                    </span>
+                  )}
+                  {activeStudentRecipients.length > 0 && (
+                    <span className="font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      {activeStudentRecipients.length} Students
+                    </span>
+                  )}
+                  {customRecipients.length > 0 && (
+                    <span className="font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      {customRecipients.length} Custom
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -684,7 +876,7 @@ export default function CommunicationClient() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    Dispatching Messages...
+                    Dispatching via Google Workspace...
                   </>
                 ) : (
                   <>
@@ -698,15 +890,15 @@ export default function CommunicationClient() {
             </div>
           </div>
 
-          {/* Interactive Recipients Roster & Inline Email Editor */}
+          {/* Interactive Recipients Roster Table */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">
-                  3. Recipient Inboxes &amp; Email Address Verification ({totalCalculatedRecipients})
+                  Recipient Inboxes &amp; Email Verification ({totalCalculatedRecipients})
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Review and edit recipient email IDs directly. Changes save permanently to student and faculty profiles.
+                  Full list of destination inboxes for this communication.
                 </p>
               </div>
             </div>
@@ -715,33 +907,125 @@ export default function CommunicationClient() {
               <table className="w-full text-left text-xs text-slate-700">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-2.5">Group</th>
-                    <th className="px-4 py-2.5">Role</th>
-                    <th className="px-4 py-2.5">Name &amp; Roll</th>
+                    <th className="px-4 py-2.5">Category</th>
+                    <th className="px-4 py-2.5">Recipient Name</th>
                     <th className="px-4 py-2.5">Email Address</th>
-                    <th className="px-4 py-2.5 text-right">Edit Email</th>
+                    <th className="px-4 py-2.5 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {totalCalculatedRecipients === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
-                        No groups selected or no recipients match the criteria.
+                      <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
+                        No recipients selected yet. Check Faculty Google Group, select supervisors, or choose project groups.
                       </td>
                     </tr>
                   ) : (
                     <>
-                      {/* Students List */}
+                      {/* 1. Faculty Google Group */}
+                      {sendToFacultyGoogleGroup && (
+                        <tr className="bg-purple-50/40 hover:bg-purple-50/70 transition">
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                              Google Group
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 font-bold text-purple-900">
+                            ECE Department Faculty Google Group
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-purple-800 font-bold">
+                            {FACULTY_GOOGLE_GROUP_EMAIL}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSendToFacultyGoogleGroup(false)}
+                              className="text-red-500 hover:underline text-xs"
+                            >
+                              Exclude
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+
+                      {/* 2. Individual Faculty Supervisors */}
+                      {activeIndividualFaculty.map((f) => {
+                        const isEditing = editingEmailId === f.id;
+                        return (
+                          <tr key={`fac-${f.id}`} className="hover:bg-purple-50/30 transition">
+                            <td className="px-4 py-2.5 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                                Faculty Supervisor
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 whitespace-nowrap">
+                              <div className="font-semibold text-slate-900">{f.name}</div>
+                              <div className="text-[10px] text-slate-400">Login ID Account</div>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {isEditing ? (
+                                <input
+                                  type="email"
+                                  autoFocus
+                                  value={editingEmailValue}
+                                  onChange={(e) => setEditingEmailValue(e.target.value)}
+                                  className="px-2.5 py-1 text-xs font-mono border border-purple-400 rounded-md w-60 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                />
+                              ) : (
+                                <span className="font-mono text-purple-700 font-medium">{f.email}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                              {isEditing ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={isUpdatingEmail}
+                                    onClick={() => handleSaveRecipientEmail('FACULTY', f.id)}
+                                    className="px-2 py-0.5 bg-purple-600 text-white rounded text-[11px] font-semibold hover:bg-purple-700 disabled:opacity-50"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingEmailId(null)}
+                                    className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[11px] hover:bg-slate-200"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingEmailId(f.id);
+                                    setEditingEmailValue(f.email || '');
+                                  }}
+                                  className="text-purple-600 hover:text-purple-800 text-xs font-semibold mr-2"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleFaculty(f.id)}
+                                className="text-slate-400 hover:text-red-500 text-xs"
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {/* 3. Students List */}
                       {activeStudentRecipients.map(({ groupNum, student }) => {
                         const isEditing = editingEmailId === student.id;
                         return (
                           <tr key={`st-${student.id}`} className="hover:bg-slate-50/70 transition">
-                            <td className="px-4 py-2.5 font-bold text-emerald-800 whitespace-nowrap">
-                              Group {groupNum}
-                            </td>
                             <td className="px-4 py-2.5 whitespace-nowrap">
                               <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Student
+                                Group {groupNum} Student
                               </span>
                             </td>
                             <td className="px-4 py-2.5 whitespace-nowrap">
@@ -761,7 +1045,7 @@ export default function CommunicationClient() {
                                 <span className="font-mono text-blue-700">{student.email}</span>
                               ) : (
                                 <span className="text-rose-500 font-bold bg-rose-50 px-2 py-0.5 rounded text-[10px] border border-rose-200">
-                                  Missing Email (Click Edit)
+                                  Missing Email
                                 </span>
                               )}
                             </td>
@@ -801,79 +1085,9 @@ export default function CommunicationClient() {
                         );
                       })}
 
-                      {/* Faculty List */}
-                      {activeSupervisorRecipients.map(({ groupNum, supervisor }) => {
-                        const isEditing = editingEmailId === supervisor.id;
-                        return (
-                          <tr key={`sup-${supervisor.id}`} className="hover:bg-slate-50/70 transition bg-purple-50/20">
-                            <td className="px-4 py-2.5 font-bold text-purple-800 whitespace-nowrap">
-                              Group {groupNum}
-                            </td>
-                            <td className="px-4 py-2.5 whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-                                Supervisor
-                              </span>
-                            </td>
-                            <td className="px-4 py-2.5 whitespace-nowrap">
-                              <div className="font-semibold text-slate-900">{supervisor.name}</div>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              {isEditing ? (
-                                <input
-                                  type="email"
-                                  autoFocus
-                                  value={editingEmailValue}
-                                  onChange={(e) => setEditingEmailValue(e.target.value)}
-                                  className="px-2.5 py-1 text-xs font-mono border border-purple-400 rounded-md w-60 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                                />
-                              ) : supervisor.email ? (
-                                <span className="font-mono text-purple-700">{supervisor.email}</span>
-                              ) : (
-                                <span className="text-rose-500 font-bold bg-rose-50 px-2 py-0.5 rounded text-[10px] border border-rose-200">
-                                  Missing Email
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                              {isEditing ? (
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    type="button"
-                                    disabled={isUpdatingEmail}
-                                    onClick={() => handleSaveRecipientEmail('FACULTY', supervisor.id)}
-                                    className="px-2 py-0.5 bg-purple-600 text-white rounded text-[11px] font-semibold hover:bg-purple-700 disabled:opacity-50"
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingEmailId(null)}
-                                    className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[11px] hover:bg-slate-200"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingEmailId(supervisor.id);
-                                    setEditingEmailValue(supervisor.email || '');
-                                  }}
-                                  className="text-purple-600 hover:text-purple-800 text-xs font-semibold"
-                                >
-                                  Edit
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-
-                      {/* Custom Recipients */}
+                      {/* 4. Custom Recipients */}
                       {customRecipients.map((cr, idx) => (
                         <tr key={`cr-${idx}`} className="hover:bg-slate-50/70 transition bg-amber-50/20">
-                          <td className="px-4 py-2.5 font-bold text-amber-800 whitespace-nowrap">-</td>
                           <td className="px-4 py-2.5 whitespace-nowrap">
                             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                               Custom
@@ -907,7 +1121,7 @@ export default function CommunicationClient() {
           <div>
             <h3 className="font-bold text-slate-900 text-sm">Dispatched Communications Audit Log</h3>
             <p className="text-xs text-slate-500">
-              Audit trail of all official notices and group messages sent from this portal.
+              Complete history of all official notices and communications sent from this portal.
             </p>
           </div>
           <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-lg">
@@ -922,7 +1136,7 @@ export default function CommunicationClient() {
                 <th className="px-5 py-3">Dispatched At</th>
                 <th className="px-5 py-3">Subject Line</th>
                 <th className="px-4 py-3">Sender</th>
-                <th className="px-4 py-3 text-center">Batch &amp; Groups</th>
+                <th className="px-4 py-3 text-center">Batch &amp; Target</th>
                 <th className="px-4 py-3 text-center">Recipients</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -954,7 +1168,7 @@ export default function CommunicationClient() {
                           <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 whitespace-pre-wrap font-sans text-xs">
                             {item.messageBody}
                             <div className="mt-3 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
-                              <strong>Recipient Inboxes ({item.recipients.length}):</strong>{' '}
+                              <strong>Destination Inboxes ({item.recipients.length}):</strong>{' '}
                               {item.recipients.map((r) => r.email).join(', ')}
                             </div>
                           </div>
