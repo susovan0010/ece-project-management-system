@@ -16,6 +16,12 @@ export default auth((req) => {
     pathname === '/forgot-password' ||
     pathname === '/reset-password' ||
     pathname === '/healthz' ||
+    pathname === '/app-icon.png' ||
+    pathname === '/icon.png' ||
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.ico') ||
+    pathname.endsWith('.svg') ||
+    pathname.endsWith('.webp') ||
     pathname.startsWith('/api/auth');
 
   if (isPublic) {
@@ -49,5 +55,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ['/((?!api/auth|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
 };

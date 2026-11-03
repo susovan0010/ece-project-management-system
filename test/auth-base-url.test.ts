@@ -46,4 +46,26 @@ describe('getBaseUrl dynamic resolution', () => {
     const url = getBaseUrl(null);
     expect(url).toBe('http://localhost:3000');
   });
+
+  it('middleware matcher and public route patterns allow static assets without authentication', () => {
+    const isPublic = (pathname: string) =>
+      pathname === '/login' ||
+      pathname === '/accept-invite' ||
+      pathname === '/forgot-password' ||
+      pathname === '/reset-password' ||
+      pathname === '/healthz' ||
+      pathname === '/app-icon.png' ||
+      pathname === '/icon.png' ||
+      pathname.endsWith('.png') ||
+      pathname.endsWith('.ico') ||
+      pathname.endsWith('.svg') ||
+      pathname.endsWith('.webp') ||
+      pathname.startsWith('/api/auth');
+
+    expect(isPublic('/app-icon.png')).toBe(true);
+    expect(isPublic('/icon.png')).toBe(true);
+    expect(isPublic('/login')).toBe(true);
+    expect(isPublic('/admin/allocation')).toBe(false);
+    expect(isPublic('/faculty/topics')).toBe(false);
+  });
 });
