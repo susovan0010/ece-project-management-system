@@ -14,6 +14,14 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: vi.fn(() => ({
+      sendMail: vi.fn().mockResolvedValue({ messageId: 'mock-tracker-msg-id-123' }),
+    })),
+  },
+}));
+
 import {
   getMarksTrackerAction,
   toggleMarkWindowLockAction,

@@ -14,6 +14,14 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: vi.fn(() => ({
+      sendMail: vi.fn().mockResolvedValue({ messageId: 'mock-smtp-msg-id-123' }),
+    })),
+  },
+}));
+
 import {
   getCommunicationConfigAction,
   updateCommunicationConfigAction,
