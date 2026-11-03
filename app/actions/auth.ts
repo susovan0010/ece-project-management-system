@@ -13,6 +13,7 @@ import {
 } from '@/lib/tokens';
 import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '@/lib/admin-priority';
 import { getBaseUrl } from '@/lib/url';
+import { sendEmail } from '@/lib/email';
 
 // ----------------------------------------------------
 // 1. Credentials Sign-In Action
@@ -104,6 +105,57 @@ export async function createInviteAction(prevState: unknown, formData: FormData)
   const explicitOrigin = formData.get('origin') as string | null;
   const baseUrl = getBaseUrl(explicitOrigin);
   const inviteUrl = `${baseUrl}/accept-invite?token=${invite.token}`;
+
+  // Automatically dispatch invitation email to recipient
+  const inviteEmailHtml = `
+  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+    <div style="background-color: #1e3a8a; padding: 24px; text-align: center; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Department of Electronics and Communication Engineering</h2>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #93c5fd;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+    </div>
+    
+    <div style="padding: 32px 28px; color: #1e293b; line-height: 1.6;">
+      <h3 style="margin: 0 0 16px 0; font-size: 18px; color: #0f172a;">Portal Invitation</h3>
+      
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">
+        You have been invited to join the <strong>HITK ECE Project Management System</strong> portal as a <strong>${role === 'ADMIN' ? 'Project Committee Administrator' : 'Faculty Supervisor'}</strong>.
+      </p>
+
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #334155;">
+        Please click the button below to accept your invitation and activate your account:
+      </p>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${inviteUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 8px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+          Accept Invitation & Set Password
+        </a>
+      </div>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 24px 0; font-size: 12px; color: #64748b;">
+        <strong>Notice:</strong> This invitation link is valid for <strong>72 hours</strong>.
+      </div>
+
+      <p style="margin: 20px 0 6px 0; font-size: 12px; color: #64748b;">
+        If the button does not work, copy and paste this link into your browser:
+      </p>
+      <p style="margin: 0; font-size: 12px; word-break: break-all; color: #2563eb;">
+        <a href="${inviteUrl}" style="color: #2563eb; text-decoration: underline;">${inviteUrl}</a>
+      </p>
+    </div>
+
+    <div style="background-color: #f1f5f9; padding: 16px 24px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+      <p style="margin: 0;">Sent by Project Committee Administration, Department of Electronics and Communication Engineering</p>
+      <p style="margin: 4px 0 0 0;">Heritage Institute of Technology, Kolkata</p>
+    </div>
+  </div>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `Portal Invitation - HITK ECE Project Management System (${role === 'ADMIN' ? 'Committee Admin' : 'Faculty'})`,
+    html: inviteEmailHtml,
+    text: `Portal Invitation\n\nYou have been invited to join the HITK ECE Project Management System portal as ${role}.\n\nPlease accept your invitation at:\n${inviteUrl}\n\nThis link is valid for 72 hours.`,
+  }).catch((err) => console.error('Failed to send invite email:', err));
 
   await prisma.auditLog.create({
     data: {
@@ -204,6 +256,58 @@ export async function requestPasswordResetAction(prevState: unknown, formData: F
   const baseUrl = getBaseUrl(explicitOrigin);
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken.token}`;
 
+  // Build branded HTML template for password reset email
+  const resetEmailHtml = `
+  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+    <div style="background-color: #1e3a8a; padding: 24px; text-align: center; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Department of Electronics and Communication Engineering</h2>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #93c5fd;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+    </div>
+    
+    <div style="padding: 32px 28px; color: #1e293b; line-height: 1.6;">
+      <h3 style="margin: 0 0 16px 0; font-size: 18px; color: #0f172a;">Password Reset Request</h3>
+      
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #334155;">
+        Dear <strong>${user.name || 'Faculty Member'}</strong>,
+      </p>
+
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #334155;">
+        We received a request to reset the password for your account (<strong>${user.email}</strong>) on the <strong>ECE Project Management System</strong> portal. Click the button below to set a new password:
+      </p>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 8px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+          Reset My Password
+        </a>
+      </div>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 24px 0; font-size: 12px; color: #64748b;">
+        <strong>Security Notice:</strong> This link is single-use and will automatically expire in <strong>2 hours</strong>. If you did not make this request, you can safely ignore this email — your account remains completely secure.
+      </div>
+
+      <p style="margin: 20px 0 6px 0; font-size: 12px; color: #64748b;">
+        If the button above does not work, copy and paste the following URL into your browser:
+      </p>
+      <p style="margin: 0; font-size: 12px; word-break: break-all; color: #2563eb;">
+        <a href="${resetUrl}" style="color: #2563eb; text-decoration: underline;">${resetUrl}</a>
+      </p>
+    </div>
+
+    <div style="background-color: #f1f5f9; padding: 16px 24px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+      <p style="margin: 0;">Sent by Project Committee Administration, Department of Electronics and Communication Engineering</p>
+      <p style="margin: 4px 0 0 0;">Heritage Institute of Technology, Kolkata</p>
+      <p style="margin: 4px 0 0 0; color: #94a3b8;">This is an automated security dispatch from the HITK ECE Project Management System.</p>
+    </div>
+  </div>
+  `;
+
+  const emailResult = await sendEmail({
+    to: user.email,
+    subject: 'Password Reset Request - HITK ECE Project Management System',
+    html: resetEmailHtml,
+    text: `Password Reset Request\n\nDear ${user.name || 'Faculty Member'},\n\nWe received a request to reset your password. Please visit the following link to set a new password:\n\n${resetUrl}\n\nThis link is valid for 2 hours. If you did not request this, please ignore this email.\n\nProject Committee Administration\nDepartment of Electronics and Communication Engineering\nHeritage Institute of Technology, Kolkata`,
+  });
+
   // Log in audit log
   await prisma.auditLog.create({
     data: {
@@ -211,7 +315,11 @@ export async function requestPasswordResetAction(prevState: unknown, formData: F
       action: 'REQUEST_PASSWORD_RESET',
       entity: 'PasswordResetToken',
       entityId: resetToken.id,
-      payload: { email },
+      payload: {
+        email,
+        emailDispatched: emailResult.success,
+        provider: emailResult.provider,
+      },
     },
   });
 

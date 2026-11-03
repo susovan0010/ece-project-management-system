@@ -17,10 +17,19 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: vi.fn(() => ({
+      sendMail: vi.fn().mockResolvedValue({ messageId: 'mock-reset-mail-id-123' }),
+    })),
+  },
+}));
+
 import {
   loginAction,
   completeFirstLoginAction,
   createFacultyAccountAction,
+  requestPasswordResetAction,
 } from '../app/actions/auth';
 import { prisma } from '../lib/prisma';
 import { auth, signIn } from '@/auth';
@@ -262,5 +271,39 @@ describe('First-Time Login Credential Update (Admin vs Faculty)', () => {
     const res = await loginAction(null, formData);
     expect(res.error).toContain('Access denied');
     expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a branded password reset email via sendEmail when user exists', async () => {
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'faculty-99',
+      name: 'Dr. Debasish Test',
+      email: 'debasish.test@heritageit.edu',
+      role: 'FACULTY',
+    } as any);
+
+    vi.spyOn(prisma.passwordResetToken, 'create').mockResolvedValue({
+      id: 'token-reset-123',
+      token: 'mock-reset-token-xyz',
+      email: 'debasish.test@heritageit.edu',
+      expiresAt: new Date(Date.now() + 7200000),
+    } as any);
+
+    vi.spyOn(prisma.auditLog, 'create').mockResolvedValue({ id: 'audit-1' } as any);
+
+    const formData = new FormData();
+    formData.append('email', 'debasish.test@heritageit.edu');
+    formData.append('origin', 'https://ece-project-management-system.vercel.app');
+
+    const res = await requestPasswordResetAction(null, formData);
+    expect(res.success).toBe(true);
+    expect(res.message).toContain('If an account exists with this email, a reset link has been dispatched');
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'REQUEST_PASSWORD_RESET',
+          userId: 'faculty-99',
+        }),
+      })
+    );
   });
 });
