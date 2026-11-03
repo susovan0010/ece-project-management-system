@@ -365,6 +365,14 @@ export async function sendBulkRemindersAction(semester: number) {
       },
     });
 
+    if (groups.length === 0) {
+      return {
+        success: true,
+        count: 0,
+        message: 'No project groups are currently formed or allocated. Enrol and allocate student groups in "Student Allocation" to track and remind supervisors.',
+      };
+    }
+
     const pendingSupervisors = new Map<string, { count: number; name: string; email: string }>();
 
     groups.forEach((g) => {
