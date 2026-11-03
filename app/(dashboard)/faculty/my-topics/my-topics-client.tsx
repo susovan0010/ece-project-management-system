@@ -603,9 +603,9 @@ export default function MyTopicsClient() {
                         </button>
                       </div>
                     ) : isDraft ? (
-                      /* Unconfirmed (DRAFT) Actions: Direct Confirm or Direct Delete */
+                      /* Unconfirmed (DRAFT) Actions: Direct Confirm, Edit, or Delete */
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             disabled={processingId === t.id}
@@ -614,6 +614,12 @@ export default function MyTopicsClient() {
                           >
                             {processingId === t.id ? 'Confirming...' : 'Confirm Project'}
                           </button>
+                          <Link
+                            href={`/faculty/topics/new?edit=${t.code}`}
+                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1"
+                          >
+                            Edit Project
+                          </Link>
                           <button
                             type="button"
                             disabled={processingId === t.id}
@@ -632,9 +638,15 @@ export default function MyTopicsClient() {
                         </Link>
                       </div>
                     ) : (
-                      /* Confirmed (ACTIVE / ALLOTTED) Actions: Request Delete to Admin or Complete/Archive */
+                      /* Confirmed (ACTIVE / ALLOTTED) Actions: Edit, Request Delete to Admin, or Complete/Archive */
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                         <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/faculty/topics/new?edit=${t.code}`}
+                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1"
+                          >
+                            Edit Project
+                          </Link>
                           <button
                             type="button"
                             disabled={processingId === t.id}

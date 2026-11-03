@@ -577,10 +577,10 @@ export default function FacultyTopicsSearchPage() {
                       )
                     )}
                     <Link
-                      href={`/faculty/topics/new?adopt=${t.code}`}
+                      href={`/faculty/topics/new?edit=${t.code}`}
                       className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition"
                     >
-                      Customize
+                      Customize / Edit
                     </Link>
                   </div>
                 </div>
@@ -783,10 +783,10 @@ export default function FacultyTopicsSearchPage() {
                     </button>
                   )}
                   <Link
-                    href={`/faculty/topics/new?adopt=${detailTopic.code}`}
+                    href={`/faculty/topics/new?edit=${detailTopic.code}`}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition"
                   >
-                    Customize &amp; Confirm →
+                    Customize / Edit &amp; Confirm →
                   </Link>
                 </div>
               </div>

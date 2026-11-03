@@ -82,6 +82,13 @@ export async function claimAndConfirmBankTopicAction(topicId: string) {
       };
     }
 
+    if (!existing.description || existing.description.trim().length === 0) {
+      return {
+        error:
+          'Cannot confirm project: Project Abstract is mandatory and cannot be blank. Please click "Customize / Edit" to add an abstract before confirming.',
+      };
+    }
+
     const nextStatus =
       existing.status === TopicStatus.ALLOTTED ? TopicStatus.ALLOTTED : TopicStatus.CONFIRMED;
 
@@ -446,7 +453,7 @@ export async function confirmDraftTopicAction(topicId: string) {
   try {
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
-      select: { id: true, code: true, title: true, status: true, proposerId: true },
+      select: { id: true, code: true, title: true, description: true, status: true, proposerId: true },
     });
 
     if (!topic) {
@@ -455,6 +462,13 @@ export async function confirmDraftTopicAction(topicId: string) {
 
     if (topic.proposerId !== user.id) {
       return { error: 'Forbidden: You can only confirm your own draft topic.' };
+    }
+
+    if (!topic.description || topic.description.trim().length === 0) {
+      return {
+        error:
+          'Cannot confirm project: Project Abstract is mandatory and cannot be blank. Please edit your draft and provide an abstract before confirming.',
+      };
     }
 
     if (topic.status !== TopicStatus.DRAFT) {

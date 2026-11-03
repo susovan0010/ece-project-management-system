@@ -10,6 +10,10 @@ vi.mock('@/auth', () => ({
   auth: vi.fn(),
 }));
 
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import {
   getFacultyProposalMetadataAction,
   saveFacultyTopicProposalAction,
@@ -204,5 +208,138 @@ describe('Faculty Proposal: AI Abstract Drafting with Extended Context', () => {
     expect(res.suggestions).toBeDefined();
     expect(res.suggestions?.length).toBeGreaterThan(0);
     expect(res.suggestions?.some((s) => s.sdg === 2)).toBe(true);
+  });
+});
+
+describe('Faculty Proposal: Project Editing, SIH Title Lock & Mandatory Abstract', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rejects topic proposal or edit if project abstract is blank', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    const res = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-001',
+      title: 'Valid Project Title',
+      category: 'Hardware',
+      description: '   ',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Project Abstract is mandatory');
+  });
+
+  it('prohibits editing the title of an SIH topic while allowing abstract updates', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    vi.spyOn(prisma.attribute, 'findMany').mockResolvedValue([
+      { id: 1, code: 'WP1' },
+      { id: 2, code: 'WK5' },
+    ] as any);
+
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'sih-topic-1',
+      code: 'SIH26001',
+      title: 'Smart Disaster Early Warning Mesh Network',
+      source: 'SIH',
+      category: 'Hardware',
+      description: 'Old abstract description.',
+      proposerId: null,
+      attributes: [],
+      sdgs: [],
+    } as any);
+
+    // Attempting to change title of SIH topic
+    const res = await saveFacultyTopicProposalAction({
+      code: 'SIH26001',
+      title: 'Modified SIH Title Not Allowed',
+      category: 'Hardware',
+      description: 'New refined abstract for SIH disaster management challenge.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Titles of SIH projects are locked');
+  });
+
+  it('allows editing both the title and abstract for UG Research topics', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    vi.spyOn(prisma.attribute, 'findMany').mockResolvedValue([
+      { id: 1, code: 'WP1' },
+      { id: 2, code: 'WK5' },
+    ] as any);
+
+    vi.spyOn(prisma.aiProvider, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({ preferredAiProvider: null } as any);
+
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'ugr-topic-1',
+      code: 'UGR-017',
+      title: 'Initial UG Research Title',
+      source: 'UG_RESEARCH',
+      category: 'Both',
+      description: 'Initial UG research abstract description.',
+      proposerId: null,
+      attributes: [],
+      sdgs: [],
+    } as any);
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => {
+      return cb({
+        topic: {
+          update: vi.fn().mockResolvedValue({
+            id: 'ugr-topic-1',
+            code: 'UGR-017',
+            title: 'Updated Advanced UG Research Title',
+            status: 'CONFIRMED',
+          }),
+        },
+        topicAttribute: {
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+          create: vi.fn().mockResolvedValue({}),
+        },
+        topicSdg: {
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+          create: vi.fn().mockResolvedValue({}),
+        },
+        descriptionVersion: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+        auditLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+      });
+    });
+
+    const res = await saveFacultyTopicProposalAction({
+      code: 'UGR-017',
+      title: 'Updated Advanced UG Research Title',
+      category: 'Both',
+      description: 'Deep technical abstract incorporating hardware telemetry and SDR analysis.',
+      tags: ['SDR', 'DSP'],
+      status: 'CONFIRMED',
+      attributes: [{ code: 'WP1', level: 2, reason: 'Depth of knowledge', origin: 'FACULTY' }],
+      sdgs: [{ sdgId: 9, target: '9.5', reason: 'Infrastructure and innovation' }],
+      reEvaluateAiOnConfirm: true,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.code).toBe('UGR-017');
+    expect(res.updated).toBe(true);
   });
 });

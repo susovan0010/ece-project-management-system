@@ -68,6 +68,7 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
       id: 'topic-1',
       code: 'UGR-015',
       title: 'RISC-V Processor Design on FPGA',
+      description: 'A hardware RISC-V implementation abstract for undergraduate research.',
       status: 'DRAFT',
       proposerId: null,
       proposer: null,
@@ -109,6 +110,26 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
 
     const res = await claimAndConfirmBankTopicAction('topic-1');
     expect(res.error).toContain('already been selected and confirmed by Dr. S. Roy');
+  });
+
+  it('rejects confirming a topic when project abstract is blank', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY', email: 'fac1@heritageit.edu' },
+    } as any);
+
+    (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'topic-empty-desc',
+      code: 'UGR-099',
+      title: 'Blank Abstract Topic',
+      description: '   ',
+      status: 'DRAFT',
+      proposerId: null,
+      proposer: null,
+    });
+
+    const res = await claimAndConfirmBankTopicAction('topic-empty-desc');
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Project Abstract is mandatory and cannot be blank');
   });
 
   it('allows supervisor or admin to deactivate/complete a project into ARCHIVED status', async () => {

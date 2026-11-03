@@ -15,6 +15,7 @@ import {
 import { getFacultyTopicDetailAction } from '@/app/actions/faculty-topics';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
 import { ATTRIBUTE_METADATA, SDG_METADATA } from '@/lib/attributes-metadata';
+import { deriveMappedPoCodes } from '@/lib/engine';
 
 interface AttributeItem {
   id: number;
@@ -34,7 +35,9 @@ interface SdgItem {
 export default function ProposeTopicClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const adoptCode = searchParams.get('adopt');
+  const editCode = searchParams.get('edit') || searchParams.get('adopt');
+  const [topicSource, setTopicSource] = useState<string | null>(null);
+  const [isTitleLocked, setIsTitleLocked] = useState(false);
 
   // Metadata & state
   const [loading, setLoading] = useState(true);
@@ -118,6 +121,14 @@ export default function ProposeTopicClient() {
     breakdown: { wp1Met: false, wpOfSixMet: false, eaMet: false, hasSdgTarget: false },
   });
 
+  // Derived Program Outcomes (POs) from current attributes
+  const liveMappedPos = deriveMappedPoCodes(
+    Object.entries(attrValues).map(([attrCode, val]) => ({
+      level: val.level,
+      attribute: { code: attrCode },
+    }))
+  );
+
   // Load initial catalogue and check for adopt code
   useEffect(() => {
     async function init() {
@@ -147,12 +158,22 @@ export default function ProposeTopicClient() {
       }
       setAttrValues(initialMap);
 
-      if (adoptCode) {
-        // Fetch source topic to clone/adopt
-        const detailRes = await getFacultyTopicDetailAction(adoptCode);
+      if (editCode) {
+        // Fetch source topic to edit or customize
+        const detailRes = await getFacultyTopicDetailAction(editCode);
         if (detailRes.topic) {
           const t = detailRes.topic;
-          setTitle(`Adapted: ${t.title}`);
+          setCode(t.code);
+          setTitle(t.title);
+          setTopicSource(t.source);
+
+          // Rule: SIH projects have locked titles; UG Research projects have editable titles
+          if (t.source === 'SIH') {
+            setIsTitleLocked(true);
+          } else {
+            setIsTitleLocked(false);
+          }
+
           setCategory((t.category as any) || 'Hardware');
           setDomain(t.domain || '');
           setOrganization(t.organization || '');
@@ -179,8 +200,9 @@ export default function ProposeTopicClient() {
             };
           }
           setSelectedSdgs(adoptedSdgs);
+        } else {
+          setCode(res.nextCode || '');
         }
-        setCode(res.nextCode || '');
       } else {
         setCode(res.nextCode || '');
       }
@@ -189,7 +211,7 @@ export default function ProposeTopicClient() {
     }
 
     init();
-  }, [adoptCode]);
+  }, [editCode]);
 
   // Recalculate live Capstone Qualification
   useEffect(() => {
@@ -504,7 +526,7 @@ export default function ProposeTopicClient() {
       return;
     }
     if (!description.trim()) {
-      setError('Project Abstract is required.');
+      setError('Project Abstract is a mandatory field and cannot be blank. No project can be submitted or confirmed without an abstract.');
       return;
     }
     if (isOverWordLimit) {
@@ -543,6 +565,8 @@ export default function ProposeTopicClient() {
       status,
       attributes: formattedAttributes,
       sdgs: formattedSdgs,
+      isEditingExisting: Boolean(editCode),
+      reEvaluateAiOnConfirm: status === 'CONFIRMED',
     });
 
     setSubmitting(false);
@@ -569,7 +593,9 @@ export default function ProposeTopicClient() {
               </span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mt-2">
-              {adoptCode ? `Customize & Adopt Topic: ${adoptCode}` : 'Propose Capstone Project Topic'}
+              {editCode
+                ? `Edit & Customize Project: ${code || editCode}`
+                : 'Propose Capstone Project Topic'}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               Draft project scope, leverage supervisor-chosen AI models, and calibrate Washington Accord attributes.
@@ -608,17 +634,47 @@ export default function ProposeTopicClient() {
             </h2>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Project Title <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Project Title <span className="text-red-500">*</span>
+                </label>
+                {isTitleLocked ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    🔒 SIH Title Locked
+                  </span>
+                ) : topicSource === 'UG_RESEARCH' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                    📝 UG Research (Editable Title)
+                  </span>
+                ) : null}
+              </div>
               <input
                 type="text"
                 required
+                disabled={isTitleLocked}
+                readOnly={isTitleLocked}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Design of Quad-Band Sub-6 GHz MIMO Antenna for 5G V2X Telemetry"
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900 transition ${
+                  isTitleLocked
+                    ? 'bg-slate-100 border-slate-300 cursor-not-allowed text-slate-700 font-medium'
+                    : 'bg-white border-slate-300'
+                }`}
               />
+              {isTitleLocked ? (
+                <p className="text-xs text-amber-800 mt-1.5 flex items-center gap-1.5 font-medium bg-amber-50 p-2 rounded border border-amber-200">
+                  <span>🔒</span>
+                  <span>
+                    Smart India Hackathon (SIH) titles are locked to preserve official problem statement specifications. You can edit and refine the abstract below.
+                  </span>
+                </p>
+              ) : topicSource === 'UG_RESEARCH' ? (
+                <p className="text-xs text-emerald-800 mt-1 flex items-center gap-1 font-medium">
+                  <span>✓</span>
+                  <span>UG Research Project: Title and abstract are fully customizable by supervisor.</span>
+                </p>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -714,10 +770,10 @@ export default function ProposeTopicClient() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-2">
               <div>
                 <h2 className="font-bold text-slate-900 text-sm uppercase tracking-wider">
-                  2. Project Abstract (Max 500 Words)
+                  2. Project Abstract (Max 500 Words) <span className="text-red-500">* (Mandatory)</span>
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Strictly capped at 500 words for departmental standardization and NBA audit defense.
+                  Strictly mandatory and capped at 500 words for departmental standardization and NBA audit defense.
                 </p>
               </div>
 
@@ -803,6 +859,68 @@ export default function ProposeTopicClient() {
                 >
                   {wordCount} / 500 words {isOverWordLimit && '(Exceeds 500 limit!)'}
                 </span>
+              </div>
+            </div>
+
+            {/* Live Program Outcomes (POs) & Dynamic AI Re-tagging */}
+            <div className="p-3.5 bg-gradient-to-r from-blue-50/60 via-indigo-50/40 to-slate-50 border border-blue-200/80 rounded-xl space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                      Mapped Program Outcomes (POs):
+                    </span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      Derived from Abstract WK &amp; SDG Profile
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Updating the abstract dynamically changes attribute and PO mappings once confirmed, or re-tag directly:
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleEvaluateAiComplexity}
+                  disabled={aiEvaluating || !description.trim()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50 shrink-0"
+                >
+                  {aiEvaluating ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Re-tagging with AI...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Re-tag Attributes, SDGs &amp; POs with AI
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Tagged PO Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-blue-100">
+                {liveMappedPos.length > 0 ? (
+                  liveMappedPos.map((po) => (
+                    <span
+                      key={po}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-white text-blue-800 border border-blue-300 shadow-sm"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                      {po}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-400 italic">
+                    No POs mapped yet. Provide an abstract and click &quot;Re-tag Attributes, SDGs &amp; POs with AI&quot;.
+                  </span>
+                )}
               </div>
             </div>
           </div>

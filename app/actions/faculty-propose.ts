@@ -293,7 +293,7 @@ export async function suggestSupportedSdgsAction(input: SuggestSupportedSdgsPara
 }
 
 // ----------------------------------------------------
-// 6. Save Faculty Topic Proposal Action
+// 6. Save Faculty Topic Proposal Action (Creates or Updates Existing Topic)
 // ----------------------------------------------------
 const SaveProposalSchema = z.object({
   code: z.string().min(1),
@@ -301,7 +301,10 @@ const SaveProposalSchema = z.object({
   category: z.enum(['Custom', 'Hardware', 'Software', 'Both']),
   domain: z.string().optional(),
   organization: z.string().optional(),
-  description: z.string().min(10, 'Description must be at least 10 characters'),
+  description: z
+    .string()
+    .min(1, 'Project Abstract is mandatory and cannot be blank.')
+    .refine((s) => s.trim().length > 0, 'Project Abstract is mandatory and cannot be blank.'),
   tags: z.array(z.string()).default([]),
   status: z.enum(['DRAFT', 'CONFIRMED']).default('CONFIRMED'),
   attributes: z.array(
@@ -319,6 +322,8 @@ const SaveProposalSchema = z.object({
       reason: z.string().optional(),
     })
   ),
+  isEditingExisting: z.boolean().optional(),
+  reEvaluateAiOnConfirm: z.boolean().optional(),
 });
 
 export async function saveFacultyTopicProposalAction(formData: z.infer<typeof SaveProposalSchema>) {
@@ -346,7 +351,13 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
     status,
     attributes,
     sdgs,
+    reEvaluateAiOnConfirm,
   } = parsed.data;
+
+  // Strict Mandatory Abstract Check
+  if (!description || description.trim().length === 0) {
+    return { error: 'Project Abstract is mandatory and cannot be blank.' };
+  }
 
   // Enforce 500-word ceiling strictly
   const words = description.trim().split(/\s+/);
@@ -355,22 +366,177 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
   }
 
   try {
-    // Check if code already taken
-    const existing = await prisma.topic.findUnique({ where: { code } });
-    if (existing) {
-      return { error: `Topic with code ${code} already exists.` };
-    }
-
     // Lookup Attribute DB IDs for attributes
     const dbAttributes = await prisma.attribute.findMany();
     const attrCodeToId = new Map(dbAttributes.map((a) => [a.code, a.id]));
 
-    // Transaction to insert Topic, TopicAttribute, TopicSdg, DescriptionVersion, and AuditLog
+    // Check if topic with this code already exists
+    const existing = await prisma.topic.findUnique({
+      where: { code },
+      include: { attributes: true, sdgs: true },
+    });
+
+    if (existing) {
+      // 1. Authorization: Cannot edit if already claimed by another supervisor
+      if (existing.proposerId && existing.proposerId !== userId) {
+        return { error: 'This project has already been claimed and confirmed by another supervisor.' };
+      }
+
+      // 2. Source-Based Title Lock Check:
+      // If source is SIH, title CANNOT be edited.
+      let finalTitle = title.trim();
+      if (existing.source === TopicSource.SIH) {
+        if (finalTitle !== existing.title.trim()) {
+          return {
+            error:
+              'Modification rejected: Titles of SIH projects are locked and cannot be edited. You can edit and refine the abstract.',
+          };
+        }
+        finalTitle = existing.title;
+      }
+      // If source is UG_RESEARCH (or FACULTY), title can be edited freely.
+
+      // 3. Dynamic AI Re-Tagging of Attributes, SDGs, and POs based on the updated abstract
+      let finalAttributes = attributes;
+      let finalSdgs = sdgs;
+
+      if (reEvaluateAiOnConfirm || status === 'CONFIRMED') {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { preferredAiProvider: true },
+          });
+          const providers = await getActiveAiProviders();
+          const aiMapRes = await mapTopicAttributes(
+            providers,
+            {
+              title: finalTitle,
+              description: description.trim(),
+              category,
+              theme: domain,
+              tags,
+            },
+            user?.preferredAiProvider || undefined
+          );
+
+          if (aiMapRes.mapping?.attributes && aiMapRes.mapping.attributes.length > 0) {
+            finalAttributes = aiMapRes.mapping.attributes.map((a) => ({
+              code: a.code,
+              level: a.level,
+              reason: a.reason,
+              origin: (aiMapRes.origin as 'RULE' | 'AI' | 'FACULTY') || 'AI',
+            }));
+          }
+
+          if (aiMapRes.mapping?.sdgs && aiMapRes.mapping.sdgs.length > 0) {
+            finalSdgs = aiMapRes.mapping.sdgs.map((s) => ({
+              sdgId: s.sdg,
+              target: s.target || undefined,
+              reason: s.reason || undefined,
+            }));
+          }
+        } catch (aiErr) {
+          console.warn('AI dynamic re-tagging fallback to submitted attributes:', aiErr);
+        }
+      }
+
+      // 4. Update existing topic in transaction
+      const topic = await prisma.$transaction(async (tx) => {
+        const nextStatus = status === 'CONFIRMED' ? TopicStatus.CONFIRMED : existing.status;
+        const updated = await tx.topic.update({
+          where: { id: existing.id },
+          data: {
+            title: finalTitle,
+            category,
+            domain: domain || null,
+            organization: organization || null,
+            description: description.trim(),
+            tags,
+            status: nextStatus,
+            proposerId: userId,
+          },
+        });
+
+        // Delete existing attributes & SDGs
+        await tx.topicAttribute.deleteMany({ where: { topicId: existing.id } });
+        await tx.topicSdg.deleteMany({ where: { topicId: existing.id } });
+
+        // Insert newly mapped attributes
+        for (const attr of finalAttributes) {
+          const attributeId = attrCodeToId.get(attr.code);
+          if (attributeId) {
+            await tx.topicAttribute.create({
+              data: {
+                topicId: existing.id,
+                attributeId,
+                level: attr.level,
+                reason: attr.reason || `Evaluated via ${attr.origin}`,
+                origin: attr.origin as Origin,
+              },
+            });
+          }
+        }
+
+        // Insert newly mapped SDGs
+        for (const s of finalSdgs) {
+          await tx.topicSdg.create({
+            data: {
+              topicId: existing.id,
+              sdgId: s.sdgId,
+              target: s.target || null,
+              reason: s.reason || null,
+            },
+          });
+        }
+
+        // Record Description Version
+        await tx.descriptionVersion.create({
+          data: {
+            topicId: existing.id,
+            description: description.trim(),
+            wordCount: words.length,
+            createdById: userId,
+          },
+        });
+
+        // Audit Log
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'EDIT_TOPIC_PROPOSAL',
+            entity: 'Topic',
+            entityId: existing.id,
+            payload: {
+              code,
+              title: finalTitle,
+              source: existing.source,
+              category,
+              status: nextStatus,
+              wordCount: words.length,
+              attributesCount: finalAttributes.length,
+              sdgsCount: finalSdgs.length,
+            },
+          },
+        });
+
+        return updated;
+      });
+
+      revalidatePath('/faculty/topics');
+      revalidatePath('/faculty/my-topics');
+      revalidatePath('/admin/topics');
+      revalidatePath('/admin/confirmed');
+      return { success: true, topicId: topic.id, code: topic.code, updated: true };
+    }
+
+    // ------------------------------------------------------------------
+    // Case 2: Proposing a New Topic
+    // ------------------------------------------------------------------
     const topic = await prisma.$transaction(async (tx) => {
       const created = await tx.topic.create({
         data: {
           code,
-          title,
+          title: title.trim(),
           source: TopicSource.FACULTY,
           category,
           domain: domain || null,
@@ -429,7 +595,7 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
           entityId: created.id,
           payload: {
             code,
-            title,
+            title: title.trim(),
             category,
             status,
             wordCount: words.length,
