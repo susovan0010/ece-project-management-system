@@ -34,9 +34,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-white border border-slate-200/80 shadow-xl rounded-2xl p-8 backdrop-blur-md">
         {/* Department Crest & Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white font-bold text-xl shadow-lg shadow-blue-500/30 mb-3">
-            ECE
-          </div>
+          <img
+            src="/app-icon.png"
+            alt="ECE Logo"
+            className="inline-block w-16 h-16 rounded-2xl object-contain bg-white shadow-lg shadow-blue-500/20 mb-3 p-1.5 border border-slate-200"
+          />
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             Project Management System
           </h1>

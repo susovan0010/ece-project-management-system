@@ -68,14 +68,16 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
     <aside className="no-print print:hidden w-64 bg-slate-900 text-slate-100 flex flex-col min-h-screen border-r border-slate-800">
       {/* Brand Header */}
       <div className="p-5 border-b border-slate-800 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-500/20">
-          ECE
-        </div>
+        <img
+          src="/app-icon.png"
+          alt="ECE Logo"
+          className="w-10 h-10 rounded-xl object-contain bg-white p-1 shadow-md shadow-blue-500/20 border border-slate-700 shrink-0"
+        />
         <div>
           <h2 className="font-bold text-sm tracking-tight text-white leading-tight">
-            HITK Capstone
+            HITK ECE
           </h2>
-          <p className="text-[11px] text-slate-400 font-medium">B.Tech Management</p>
+          <p className="text-[11px] text-slate-400 font-medium">Project Management</p>
         </div>
       </div>
 

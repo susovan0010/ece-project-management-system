@@ -296,7 +296,7 @@ export async function sendSupervisorReminderAction(input: {
         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
           <div style="background-color: #1e3a8a; color: white; padding: 18px 24px;">
             <h2 style="margin: 0; font-size: 18px;">Department of Electronics and Communication Engineering</h2>
-            <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata</p>
+            <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
           </div>
           <div style="padding: 24px;">
             <p>Dear <strong>${supervisor.name}</strong>,</p>
@@ -406,7 +406,7 @@ export async function sendBulkRemindersAction(semester: number) {
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
             <div style="background-color: #1e3a8a; color: white; padding: 18px 24px;">
               <h2 style="margin: 0; font-size: 18px;">Department of Electronics and Communication Engineering</h2>
-              <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata</p>
+              <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
             </div>
             <div style="padding: 24px;">
               <p>Dear <strong>${info.name}</strong>,</p>

@@ -2,9 +2,13 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ECE Capstone Project Management System | HITK',
+  title: 'ECE Project Management System | HITK',
   description:
     'Department of Electronics and Communication Engineering, Heritage Institute of Technology Kolkata. NBA accreditation and Washington Accord outcome-based project evaluation platform.',
+  icons: {
+    icon: '/app-icon.png',
+    apple: '/app-icon.png',
+  },
 };
 
 export default function RootLayout({

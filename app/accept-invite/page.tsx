@@ -55,9 +55,11 @@ function AcceptInviteContent() {
     <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100">
       <div className="w-full max-w-md bg-white border border-slate-200/80 shadow-xl rounded-2xl p-8 backdrop-blur-md">
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 text-white font-bold text-lg shadow-md mb-2">
-            HITK
-          </div>
+          <img
+            src="/app-icon.png"
+            alt="HITK ECE Logo"
+            className="inline-block w-14 h-14 rounded-xl object-contain bg-white shadow-md mb-2 p-1 border border-slate-200"
+          />
           <h1 className="text-xl font-bold text-slate-900">
             Accept Faculty Invitation
           </h1>

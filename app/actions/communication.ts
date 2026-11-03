@@ -354,7 +354,7 @@ export async function sendGroupCommunicationAction(input: {
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 650px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
         <div style="background-color: #1e3a8a; color: white; padding: 20px 24px;">
           <h2 style="margin: 0; font-size: 19px; font-weight: 700;">Department of Electronics and Communication Engineering</h2>
-          <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Capstone Project Committee</p>
+          <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
         </div>
 
         <div style="padding: 24px;">
@@ -375,7 +375,7 @@ ${input.messageBody}
           <div style="margin-top: 28px; padding-top: 14px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b;">
             <p style="margin: 0;">Sent by: <strong>${config.senderName}</strong></p>
             <p style="margin: 3px 0 0;">Official Department Email: <a href="mailto:${config.senderEmail}" style="color: #2563eb; text-decoration: none;">${config.senderEmail}</a></p>
-            <p style="margin: 10px 0 0; font-size: 11px; color: #94a3b8;">This is an official communication dispatched from the HITK ECE Capstone Project Management System.</p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #94a3b8;">This is an official communication dispatched from the HITK ECE Project Management System.</p>
           </div>
         </div>
       </div>
