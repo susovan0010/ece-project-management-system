@@ -296,7 +296,7 @@ export async function sendSupervisorReminderAction(input: {
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #46494C; max-width: 600px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 10px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(76, 92, 104, 0.08);">
           <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); color: white; padding: 20px 24px; border-bottom: 3px solid #146E85;">
             <h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.3px;">Department of Electronics and Communication Engineering</h2>
-            <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+            <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • Project Committee</p>
           </div>
           <div style="padding: 26px;">
             <p style="margin-top: 0; color: #46494C;">Dear <strong>${supervisor.name}</strong>,</p>
@@ -406,7 +406,7 @@ export async function sendBulkRemindersAction(semester: number) {
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #46494C; max-width: 600px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 10px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(76, 92, 104, 0.08);">
             <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); color: white; padding: 20px 24px; border-bottom: 3px solid #146E85;">
               <h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.3px;">Department of Electronics and Communication Engineering</h2>
-              <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+              <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • Project Committee</p>
             </div>
             <div style="padding: 26px;">
               <p style="margin-top: 0; color: #46494C;">Dear <strong>${info.name}</strong>,</p>

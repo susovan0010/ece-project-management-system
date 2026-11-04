@@ -111,7 +111,7 @@ export async function createInviteAction(prevState: unknown, formData: FormData)
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 12px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
     <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); padding: 24px; text-align: center; color: #ffffff; border-bottom: 3px solid #146E85;">
       <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Department of Electronics and Communication Engineering</h2>
-      <p style="margin: 6px 0 0 0; font-size: 13px; color: #DCDCDD;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #DCDCDD;">Heritage Institute of Technology, Kolkata • Project Committee</p>
     </div>
     
     <div style="padding: 32px 28px; color: #46494C; line-height: 1.6;">
@@ -261,7 +261,7 @@ export async function requestPasswordResetAction(prevState: unknown, formData: F
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 12px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
     <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); padding: 24px; text-align: center; color: #ffffff; border-bottom: 3px solid #146E85;">
       <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Department of Electronics and Communication Engineering</h2>
-      <p style="margin: 6px 0 0 0; font-size: 13px; color: #DCDCDD;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #DCDCDD;">Heritage Institute of Technology, Kolkata • Project Committee</p>
     </div>
     
     <div style="padding: 32px 28px; color: #46494C; line-height: 1.6;">
