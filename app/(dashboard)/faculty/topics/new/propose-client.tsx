@@ -179,6 +179,7 @@ export default function ProposeTopicClient() {
           setOrganization(t.organization || '');
           setDescription(t.description || '');
           setTags(t.tags || []);
+          setAutoRewriteEnabled(false);
 
           // Populate mapped attributes
           const adoptedAttrs = { ...initialMap };
@@ -522,11 +523,11 @@ export default function ProposeTopicClient() {
   // Save proposal
   async function handleSave(status: 'DRAFT' | 'CONFIRMED') {
     if (!title.trim()) {
-      setError('Topic Title is required.');
+      setError('Project Title is mandatory and cannot be blank.');
       return;
     }
     if (!description.trim()) {
-      setError('Project Abstract is a mandatory field and cannot be blank. No project can be submitted or confirmed without an abstract.');
+      setError('Project Abstract is a mandatory field and cannot be blank. Both Title and Abstract are mandatory.');
       return;
     }
     if (isOverWordLimit) {
@@ -636,7 +637,7 @@ export default function ProposeTopicClient() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-slate-700">
-                  Project Title <span className="text-red-500">*</span>
+                  Project Title <span className="text-red-500">* (Mandatory)</span>
                 </label>
                 {isTitleLocked ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
@@ -666,15 +667,19 @@ export default function ProposeTopicClient() {
                 <p className="text-xs text-amber-800 mt-1.5 flex items-center gap-1.5 font-medium bg-amber-50 p-2 rounded border border-amber-200">
                   <span>🔒</span>
                   <span>
-                    Smart India Hackathon (SIH) titles are locked to preserve official problem statement specifications. You can edit and refine the abstract below.
+                    Smart India Hackathon (SIH) titles are locked to preserve official problem statement specifications. You can edit and refine the abstract below (mandatory).
                   </span>
                 </p>
               ) : topicSource === 'UG_RESEARCH' ? (
                 <p className="text-xs text-emerald-800 mt-1 flex items-center gap-1 font-medium">
                   <span>✓</span>
-                  <span>UG Research Project: Title and abstract are fully customizable by supervisor.</span>
+                  <span>UG Research Project: Previous title and abstract prefilled. Title and abstract are fully customizable by supervisor.</span>
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-xs text-slate-500 mt-1 font-medium">
+                  Both Title and Abstract are mandatory fields for project proposals.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

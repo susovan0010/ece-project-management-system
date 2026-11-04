@@ -342,4 +342,44 @@ describe('Faculty Proposal: Project Editing, SIH Title Lock & Mandatory Abstract
     expect(res.code).toBe('UGR-017');
     expect(res.updated).toBe(true);
   });
+
+  it('rejects proposed topics with blank or missing title (mandatory field)', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    const res = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-099',
+      title: '   ',
+      category: 'Software',
+      description: 'A valid abstract describing the algorithmic pipeline and ML methodology.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Project Title is mandatory');
+  });
+
+  it('rejects proposed topics with blank or whitespace-only abstract (mandatory field)', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
+    } as any);
+
+    const res = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-099',
+      title: 'Valid Proposed Topic Title',
+      category: 'Hardware',
+      description: '   ',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error).toContain('Project Abstract is mandatory');
+  });
 });

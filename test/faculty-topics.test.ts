@@ -103,15 +103,50 @@ describe('Faculty Topics: Query & Filtering Execution', () => {
     });
   });
 
-  it('returns not found error when topic id does not exist', async () => {
+  it('returns not found error when topic id or code does not exist', async () => {
     vi.mocked(auth).mockResolvedValue({
       user: { id: 'faculty-user-1', role: 'FACULTY' },
     } as any);
 
+    vi.spyOn(prisma.topic, 'findFirst').mockResolvedValue(null);
     vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue(null);
 
     const res = await getFacultyTopicDetailAction('non-existent-id');
     expect(res.error).toBe('Topic not found.');
+  });
+
+  it('retrieves topic detail by code or by id for customizing/editing', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-user-1', role: 'FACULTY' },
+    } as any);
+
+    const mockDetail = {
+      id: 'ugr-cuid-1',
+      code: 'UGR-017',
+      title: 'UG Research Drone Telemetry',
+      source: 'UG_RESEARCH',
+      category: 'Hardware',
+      description: 'Existing prefilled abstract description.',
+      sdgs: [],
+      attributes: [],
+      versions: [],
+      declarations: [],
+      proposer: null,
+    };
+
+    const findFirstSpy = vi.spyOn(prisma.topic, 'findFirst').mockResolvedValue(mockDetail as any);
+
+    const res = await getFacultyTopicDetailAction('UGR-017');
+    expect(res.error).toBeUndefined();
+    expect(res.topic?.title).toBe('UG Research Drone Telemetry');
+    expect(res.topic?.description).toBe('Existing prefilled abstract description.');
+    expect(findFirstSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [{ id: 'UGR-017' }, { code: 'UGR-017' }],
+        },
+      })
+    );
   });
 
   it('rejects unauthenticated requests to get my confirmed topics', async () => {

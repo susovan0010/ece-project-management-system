@@ -297,7 +297,11 @@ export async function suggestSupportedSdgsAction(input: SuggestSupportedSdgsPara
 // ----------------------------------------------------
 const SaveProposalSchema = z.object({
   code: z.string().min(1),
-  title: z.string().min(3, 'Title must be at least 3 characters'),
+  title: z
+    .string()
+    .min(1, 'Project Title is mandatory and cannot be blank.')
+    .refine((s) => s.trim().length > 0, 'Project Title is mandatory and cannot be blank.')
+    .refine((s) => s.trim().length >= 3, 'Project Title is mandatory and must be at least 3 characters.'),
   category: z.enum(['Custom', 'Hardware', 'Software', 'Both']),
   domain: z.string().optional(),
   organization: z.string().optional(),
@@ -353,6 +357,11 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
     sdgs,
     reEvaluateAiOnConfirm,
   } = parsed.data;
+
+  // Strict Mandatory Title Check
+  if (!title || title.trim().length === 0) {
+    return { error: 'Project Title is mandatory and cannot be blank.' };
+  }
 
   // Strict Mandatory Abstract Check
   if (!description || description.trim().length === 0) {

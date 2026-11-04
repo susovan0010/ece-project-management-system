@@ -163,15 +163,17 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
   }
 }
 
-export async function getFacultyTopicDetailAction(topicId: string) {
+export async function getFacultyTopicDetailAction(topicIdOrCode: string) {
   const session = await auth();
   if (!session?.user?.id) {
     return { error: 'Unauthorized.' };
   }
 
   try {
-    const topic = await prisma.topic.findUnique({
-      where: { id: topicId },
+    const topic = await prisma.topic.findFirst({
+      where: {
+        OR: [{ id: topicIdOrCode }, { code: topicIdOrCode }],
+      },
       include: {
         sdgs: {
           include: {

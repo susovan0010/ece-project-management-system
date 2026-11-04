@@ -456,7 +456,17 @@ export default function FacultyTopicsSearchPage() {
 
                   {/* Title */}
                   <h3 className="font-bold text-slate-900 text-sm line-clamp-2 leading-snug">
-                    {t.title}
+                    <Link
+                      href={`/faculty/topics/new?edit=${t.code}`}
+                      className="hover:text-blue-600 transition"
+                      title={
+                        t.source === 'SIH'
+                          ? 'SIH Project (Title Locked) - Click to inspect & provide abstract'
+                          : 'UG Research Project - Click to customize title and abstract'
+                      }
+                    >
+                      {t.title}
+                    </Link>
                   </h3>
 
                   {/* Project Theme Badge */}
