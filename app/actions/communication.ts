@@ -61,6 +61,7 @@ export interface CommunicationHistoryItem {
   recipients: { name: string; email: string; role: string }[];
   status: 'SENT' | 'SIMULATED' | 'FAILED';
   warning?: string;
+  attachments?: { filename: string; size?: number }[];
 }
 
 // ----------------------------------------------------
@@ -212,6 +213,13 @@ export async function updateRecipientEmailAction(
   }
 }
 
+export interface CommunicationAttachment {
+  filename: string;
+  content: string; // base64
+  contentType?: string;
+  size?: number;
+}
+
 // ----------------------------------------------------
 // 4. Send Message to Selected Groups / Students / Faculty / Google Group
 // ----------------------------------------------------
@@ -225,6 +233,7 @@ export async function sendGroupCommunicationAction(input: {
   customRecipients?: { name: string; email: string; role: string }[];
   subject: string;
   messageBody: string;
+  attachments?: CommunicationAttachment[];
 }) {
   const session = await auth();
   if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
@@ -390,6 +399,7 @@ ${input.messageBody}
       fromEmail: config.senderEmail,
       fromName: config.senderName,
       replyTo: config.replyTo || config.senderEmail,
+      attachments: input.attachments,
     });
 
     const status: 'SENT' | 'SIMULATED' | 'FAILED' = !emailRes.success
@@ -412,6 +422,7 @@ ${input.messageBody}
       recipients: allRecipients,
       status,
       warning: emailRes.error || (emailRes.simulated ? 'Simulation Mode' : undefined),
+      attachments: input.attachments?.map((a) => ({ filename: a.filename, size: a.size })),
     };
 
     try {

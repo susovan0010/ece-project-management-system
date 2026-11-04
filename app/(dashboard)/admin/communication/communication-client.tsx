@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getCommunicationConfigAction,
   updateCommunicationConfigAction,
@@ -75,6 +75,17 @@ export default function CommunicationClient() {
   const [subject, setSubject] = useState('');
   const [messageBody, setMessageBody] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // Attachment State
+  const [attachments, setAttachments] = useState<
+    Array<{
+      filename: string;
+      content: string; // base64
+      contentType: string;
+      size: number;
+    }>
+  >([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // History State
   const [history, setHistory] = useState<CommunicationHistoryItem[]>([]);
@@ -325,6 +336,58 @@ export default function CommunicationClient() {
     }
   }
 
+  // Attachment Handlers
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const maxTotalBytes = 15 * 1024 * 1024; // 15MB total limit
+    let currentTotal = attachments.reduce((acc, a) => acc + a.size, 0);
+
+    const filesToRead: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (currentTotal + file.size > maxTotalBytes) {
+        setError(`Cannot attach "${file.name}": Total attachment size exceeds 15MB limit.`);
+        continue;
+      }
+      currentTotal += file.size;
+      filesToRead.push(file);
+    }
+
+    filesToRead.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const raw = reader.result as string;
+        const base64 = raw.includes(',') ? raw.split(',')[1] : raw;
+        setAttachments((prev) => [
+          ...prev,
+          {
+            filename: file.name,
+            content: base64,
+            contentType: file.type || 'application/octet-stream',
+            size: file.size,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
+  function handleRemoveAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   // Handle Dispatch Message
   async function handleSendMessage() {
     if (!subject.trim()) {
@@ -360,6 +423,7 @@ export default function CommunicationClient() {
       customRecipients,
       subject,
       messageBody,
+      attachments,
     });
 
     setIsSending(false);
@@ -371,6 +435,7 @@ export default function CommunicationClient() {
       setSubject('');
       setMessageBody('');
       setCustomRecipients([]);
+      setAttachments([]);
       // Reload history
       const hist = await getCommunicationHistoryAction();
       setHistory(hist);
@@ -983,6 +1048,66 @@ export default function CommunicationClient() {
               />
             </div>
 
+            {/* File Attachments Provision */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C5C3C6] bg-slate-50 hover:bg-[#1985A1]/10 text-xs font-semibold text-[#46494C] hover:text-[#1985A1] transition shadow-sm"
+                  >
+                    <svg className="w-4 h-4 text-[#1985A1]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                    <span>Attach Files</span>
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    PDF, Word, Excel, ZIP, images (up to 15MB total)
+                  </span>
+                </div>
+
+                {attachments.length > 0 && (
+                  <span className="text-xs font-semibold text-[#1985A1]">
+                    {attachments.length} file(s) attached ({formatBytes(attachments.reduce((sum, a) => sum + a.size, 0))})
+                  </span>
+                )}
+              </div>
+
+              {/* Attached Files List */}
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {attachments.map((att, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-[#eef8fa] border border-[#1985A1]/30 text-xs text-[#46494C]"
+                    >
+                      <svg className="w-3.5 h-3.5 text-[#1985A1] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="font-medium truncate max-w-[200px]" title={att.filename}>{att.filename}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">({formatBytes(att.size)})</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(idx)}
+                        className="text-slate-400 hover:text-red-600 transition ml-1 font-bold text-xs"
+                        title="Remove attachment"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Dispatch Banner & Action Button */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
@@ -1008,6 +1133,11 @@ export default function CommunicationClient() {
                   {customRecipients.length > 0 && (
                     <span className="font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                       {customRecipients.length} Custom
+                    </span>
+                  )}
+                  {attachments.length > 0 && (
+                    <span className="font-semibold text-[#1985A1] bg-[#eef8fa] px-1.5 py-0.5 rounded border border-[#1985A1]/30">
+                      📎 {attachments.length} attachment(s)
                     </span>
                   )}
                 </div>
@@ -1631,10 +1761,29 @@ export default function CommunicationClient() {
                         {dateStr}
                       </td>
                       <td className="px-5 py-3.5">
-                        <div className="font-bold text-slate-900">{item.subject}</div>
+                        <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                          <span>{item.subject}</span>
+                          {item.attachments && item.attachments.length > 0 && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#eef8fa] text-[#1985A1] border border-[#1985A1]/30">
+                              📎 {item.attachments.length}
+                            </span>
+                          )}
+                        </div>
                         {isExpanded && (
                           <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 whitespace-pre-wrap font-sans text-xs">
                             {item.messageBody}
+                            {item.attachments && item.attachments.length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-slate-200">
+                                <div className="text-[11px] font-bold text-slate-600 mb-1">Attached Files ({item.attachments.length}):</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {item.attachments.map((att, aIdx) => (
+                                    <span key={aIdx} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-white border border-[#C5C3C6] text-[#46494C]">
+                                      📄 {att.filename} {att.size ? `(${formatBytes(att.size)})` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             <div className="mt-3 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
                               <strong>Destination Inboxes ({item.recipients.length}):</strong>{' '}
                               {item.recipients.map((r) => r.email).join(', ')}

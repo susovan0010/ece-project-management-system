@@ -231,4 +231,53 @@ describe('Communication Hub: Message Dispatch & History', () => {
     expect(res.recipients).toContain('ananya.chattopadhyay@heritageit.edu');
     expect(upsertSpy).toHaveBeenCalled();
   });
+
+  it('delivers messages with attachments and saves attachment metadata in history', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null as any);
+
+    const upsertSpy = vi.spyOn(prisma.setting, 'upsert').mockResolvedValue({} as any);
+
+    const mockAttachments = [
+      {
+        filename: 'Rubric_Guidelines.pdf',
+        content: Buffer.from('PDF_CONTENT').toString('base64'),
+        contentType: 'application/pdf',
+        size: 1024,
+      },
+      {
+        filename: 'Evaluation_Schedule.xlsx',
+        content: Buffer.from('XLSX_CONTENT').toString('base64'),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        size: 2048,
+      },
+    ];
+
+    const res = await sendGroupCommunicationAction({
+      sendToFacultyGoogleGroup: true,
+      subject: 'Notice with Attached Guidelines',
+      messageBody: 'Please find the attached guidelines.',
+      attachments: mockAttachments,
+    });
+
+    expect(res.success).toBe(true);
+    expect(upsertSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'communication_history' },
+        create: expect.objectContaining({
+          value: expect.arrayContaining([
+            expect.objectContaining({
+              attachments: [
+                { filename: 'Rubric_Guidelines.pdf', size: 1024 },
+                { filename: 'Evaluation_Schedule.xlsx', size: 2048 },
+              ],
+            }),
+          ]),
+        }),
+      })
+    );
+  });
 });

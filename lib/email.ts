@@ -11,6 +11,13 @@ export interface CommunicationConfig {
   replyTo?: string;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: string | Buffer;
+  contentType?: string;
+  encoding?: string;
+}
+
 export interface SendEmailOptions {
   to: string | string[];
   subject: string;
@@ -19,6 +26,7 @@ export interface SendEmailOptions {
   fromEmail?: string;
   fromName?: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 }
 
 export interface SendEmailResult {
@@ -127,6 +135,12 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
         },
       });
 
+      const mailAttachments = options.attachments?.map((att) => ({
+        filename: att.filename,
+        content: typeof att.content === 'string' ? Buffer.from(att.content, 'base64') : att.content,
+        contentType: att.contentType,
+      }));
+
       const info = await transporter.sendMail({
         from: formattedFrom,
         to: cleanRecipients,
@@ -134,6 +148,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
         subject: options.subject,
         html: options.html,
         text: options.text || options.subject,
+        attachments: mailAttachments && mailAttachments.length > 0 ? mailAttachments : undefined,
       });
 
       console.log(`[Google Workspace SMTP] Delivered email from ${formattedFrom} to ${cleanRecipients.join(', ')} (Message ID: ${info.messageId})`);
@@ -162,6 +177,11 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
 
   if (!isSampleResendKey && apiKey) {
     try {
+      const resendAttachments = options.attachments?.map((att) => ({
+        filename: att.filename,
+        content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+      }));
+
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -175,6 +195,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
           subject: options.subject,
           html: options.html,
           text: options.text || options.subject,
+          attachments: resendAttachments && resendAttachments.length > 0 ? resendAttachments : undefined,
         }),
       });
 
