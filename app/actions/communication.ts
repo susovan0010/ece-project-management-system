@@ -349,33 +349,33 @@ export async function sendGroupCommunicationAction(input: {
 
     const recipientEmails = allRecipients.map((r) => r.email);
 
-    // 5. Construct professional HTML email body
+    // 5. Construct professional HTML email body with Industrial Blue corporate theme
     const formattedHtml = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 650px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
-        <div style="background-color: #1e3a8a; color: white; padding: 20px 24px;">
-          <h2 style="margin: 0; font-size: 19px; font-weight: 700;">Department of Electronics and Communication Engineering</h2>
-          <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #46494C; max-width: 650px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 10px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(76, 92, 104, 0.08);">
+        <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); color: white; padding: 22px 26px; border-bottom: 3px solid #146E85;">
+          <h2 style="margin: 0; font-size: 19px; font-weight: 700; letter-spacing: 0.3px;">Department of Electronics and Communication Engineering</h2>
+          <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
         </div>
 
-        <div style="padding: 24px;">
-          <div style="margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9;">
-            <span style="font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; color: #2563eb; background-color: #eff6ff; padding: 3px 8px; border-radius: 4px;">Official Announcement</span>
-            <h3 style="margin: 10px 0 0; font-size: 17px; color: #0f172a;">${input.subject}</h3>
+        <div style="padding: 26px;">
+          <div style="margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #DCDCDD;">
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1985A1; background-color: #e5f1f5; border: 1px solid #cce3eb; padding: 4px 10px; border-radius: 4px;">Official Announcement</span>
+            <h3 style="margin: 12px 0 0; font-size: 18px; color: #46494C; font-weight: 700;">${input.subject}</h3>
           </div>
 
-          <div style="font-size: 14px; color: #334155; white-space: pre-wrap; margin-bottom: 24px; line-height: 1.7;">
+          <div style="font-size: 14px; color: #46494C; white-space: pre-wrap; margin-bottom: 24px; line-height: 1.7;">
 ${input.messageBody}
           </div>
 
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin-top: 20px; font-size: 12px; color: #64748b;">
-            <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">Target Audience:</div>
+          <div style="background-color: #f7f9fa; border: 1px solid #DCDCDD; border-left: 4px solid #1985A1; border-radius: 6px; padding: 14px; margin-top: 20px; font-size: 12px; color: #4C5C68;">
+            <div style="font-weight: 700; color: #46494C; margin-bottom: 4px;">Target Audience:</div>
             <div>${audienceLabels.join(' • ') || 'General Department Notice'}</div>
           </div>
 
-          <div style="margin-top: 28px; padding-top: 14px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b;">
-            <p style="margin: 0;">Sent by: <strong>${config.senderName}</strong></p>
-            <p style="margin: 3px 0 0;">Official Department Email: <a href="mailto:${config.senderEmail}" style="color: #2563eb; text-decoration: none;">${config.senderEmail}</a></p>
-            <p style="margin: 10px 0 0; font-size: 11px; color: #94a3b8;">This is an official communication dispatched from the HITK ECE Project Management System.</p>
+          <div style="margin-top: 28px; padding-top: 14px; border-top: 1px solid #DCDCDD; font-size: 12px; color: #4C5C68;">
+            <p style="margin: 0;">Sent by: <strong style="color: #46494C;">${config.senderName}</strong></p>
+            <p style="margin: 4px 0 0;">Official Department Email: <a href="mailto:${config.senderEmail}" style="color: #1985A1; text-decoration: none; font-weight: 600;">${config.senderEmail}</a></p>
+            <p style="margin: 10px 0 0; font-size: 11px; color: #8e959b;">This is an official communication dispatched from the HITK ECE Project Management System.</p>
           </div>
         </div>
       </div>

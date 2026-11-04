@@ -17,6 +17,28 @@ module.exports = {
     },
     extend: {
       colors: {
+        corporate: {
+          mist: '#DCDCDD',
+          silver: '#C5C3C6',
+          charcoal: '#46494C',
+          steel: '#4C5C68',
+          blue: '#1985A1',
+          blueHover: '#146E85',
+          blueDark: '#0E4E5F',
+        },
+        blue: {
+          50: '#f0f7f9',
+          100: '#d9ecf2',
+          200: '#b8dbe6',
+          300: '#8ec5d5',
+          400: '#4da5bf',
+          500: '#1985A1',
+          600: '#1985A1',
+          700: '#146E85',
+          800: '#105668',
+          900: '#0C414E',
+          950: '#082B34',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

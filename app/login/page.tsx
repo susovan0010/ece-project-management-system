@@ -30,19 +30,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100">
-      <div className="w-full max-w-md bg-white border border-slate-200/80 shadow-xl rounded-2xl p-8 backdrop-blur-md">
+    <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-[#DCDCDD] via-[#f4f7f9] to-[#d4e4ea]">
+      <div className="w-full max-w-md bg-white border border-[#C5C3C6] shadow-xl rounded-2xl p-8 backdrop-blur-md">
         {/* Department Crest & Header */}
         <div className="text-center mb-8">
           <img
             src="/app-icon.png"
             alt="ECE Logo"
-            className="inline-block w-16 h-16 rounded-2xl object-contain bg-white shadow-lg shadow-blue-500/20 mb-3 p-1.5 border border-slate-200"
+            className="inline-block w-16 h-16 rounded-2xl object-contain bg-white shadow-lg shadow-[#1985A1]/20 mb-3 p-1.5 border border-[#C5C3C6]"
           />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-[#46494C]">
             Project Management System
           </h1>
-          <p className="text-sm text-slate-500 mt-1 font-medium">
+          <p className="text-sm text-[#4C5C68] mt-1 font-medium">
             Heritage Institute of Technology, Kolkata
           </p>
         </div>
@@ -60,7 +60,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Role Option Buttons (Default: Supervisor) */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-2">
               Sign In Role
             </label>
             <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Sign In Role">
@@ -68,8 +68,8 @@ export default function LoginPage() {
                 onClick={() => setLoginRole('FACULTY')}
                 className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
                   loginRole === 'FACULTY'
-                    ? 'bg-blue-50 border-blue-600 text-blue-900 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    ? 'bg-[#eef8fa] border-[#1985A1] text-[#1985A1] ring-2 ring-[#1985A1]/20'
+                    : 'bg-slate-50 border-[#C5C3C6] text-[#4C5C68] hover:bg-slate-100'
                 }`}
               >
                 <input
@@ -78,11 +78,11 @@ export default function LoginPage() {
                   value="FACULTY"
                   checked={loginRole === 'FACULTY'}
                   onChange={() => setLoginRole('FACULTY')}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300"
+                  className="h-4 w-4 text-[#1985A1] focus:ring-[#1985A1] border-[#C5C3C6]"
                 />
                 <div>
-                  <div>Supervisor</div>
-                  <div className="text-[10px] font-normal text-slate-500">Faculty Workspace</div>
+                  <div className="text-[#46494C]">Supervisor</div>
+                  <div className="text-[10px] font-normal text-[#4C5C68]">Faculty Workspace</div>
                 </div>
               </label>
 
@@ -91,7 +91,7 @@ export default function LoginPage() {
                 className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
                   loginRole === 'ADMIN'
                     ? 'bg-amber-50 border-amber-600 text-amber-900 ring-2 ring-amber-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    : 'bg-slate-50 border-[#C5C3C6] text-[#4C5C68] hover:bg-slate-100'
                 }`}
               >
                 <input
@@ -100,11 +100,11 @@ export default function LoginPage() {
                   value="ADMIN"
                   checked={loginRole === 'ADMIN'}
                   onChange={() => setLoginRole('ADMIN')}
-                  className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-slate-300"
+                  className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-[#C5C3C6]"
                 />
                 <div>
-                  <div>Admin</div>
-                  <div className="text-[10px] font-normal text-slate-500">Project Committee</div>
+                  <div className="text-[#46494C]">Admin</div>
+                  <div className="text-[10px] font-normal text-[#4C5C68]">Project Committee</div>
                 </div>
               </label>
             </div>
@@ -113,7 +113,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5"
+              className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-1.5"
             >
               Institute or Registered Email
             </label>
@@ -124,7 +124,7 @@ export default function LoginPage() {
               required
               autoComplete="email"
               placeholder="faculty@heritageit.edu"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              className="w-full px-4 py-2.5 bg-slate-50 border border-[#C5C3C6] rounded-lg text-[#46494C] text-sm focus:outline-none focus:ring-2 focus:ring-[#1985A1] focus:bg-white transition"
             />
           </div>
 
@@ -132,13 +132,13 @@ export default function LoginPage() {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor="password"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-700"
+                className="block text-xs font-semibold uppercase tracking-wider text-[#46494C]"
               >
                 Password
               </label>
               <Link
                 href="/forgot-password"
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium transition"
+                className="text-xs text-[#1985A1] hover:text-[#146E85] font-medium transition"
               >
                 Forgot password?
               </Link>
@@ -150,14 +150,14 @@ export default function LoginPage() {
               required
               autoComplete="current-password"
               placeholder="••••••••"
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              className="w-full px-4 py-2.5 bg-slate-50 border border-[#C5C3C6] rounded-lg text-[#46494C] text-sm focus:outline-none focus:ring-2 focus:ring-[#1985A1] focus:bg-white transition"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-lg shadow-md shadow-blue-600/25 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3 px-4 bg-[#1985A1] hover:bg-[#146E85] active:scale-[0.99] text-white font-semibold text-sm rounded-lg shadow-md shadow-[#1985A1]/25 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
@@ -175,7 +175,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-100 text-center text-xs text-slate-500">
+        <div className="mt-8 pt-6 border-t border-[#C5C3C6]/60 text-center text-xs text-[#4C5C68]">
           <p>
             Invite-only portal. Department supervisors receive invitation links from the Project Committee.
           </p>

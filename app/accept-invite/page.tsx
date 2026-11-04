@@ -52,19 +52,19 @@ function AcceptInviteContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100">
-      <div className="w-full max-w-md bg-white border border-slate-200/80 shadow-xl rounded-2xl p-8 backdrop-blur-md">
+    <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-[#DCDCDD] via-[#f4f7f9] to-[#d4e4ea]">
+      <div className="w-full max-w-md bg-white border border-[#C5C3C6] shadow-xl rounded-2xl p-8 backdrop-blur-md">
         <div className="text-center mb-6">
           <img
             src="/app-icon.png"
             alt="HITK ECE Logo"
-            className="inline-block w-14 h-14 rounded-xl object-contain bg-white shadow-md mb-2 p-1 border border-slate-200"
+            className="inline-block w-14 h-14 rounded-xl object-contain bg-white shadow-md mb-2 p-1 border border-[#C5C3C6]"
           />
-          <h1 className="text-xl font-bold text-slate-900">
+          <h1 className="text-xl font-bold text-[#46494C]">
             Accept Faculty Invitation
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Complete your supervisor registration for ECE Capstone Projects
+          <p className="text-xs text-[#4C5C68] mt-1">
+            Complete your supervisor registration for ECE Project Committee
           </p>
         </div>
 
@@ -81,13 +81,13 @@ function AcceptInviteContent() {
         )}
 
         {!token ? (
-          <div className="text-center py-6 text-sm text-slate-600">
+          <div className="text-center py-6 text-sm text-[#46494C]">
             <p className="text-red-600 font-semibold mb-2">Invalid Invite Link</p>
             <p className="text-xs">
               No token was detected. Please verify the invitation link provided by the Project Committee.
             </p>
             <div className="mt-4">
-              <Link href="/login" className="text-xs text-blue-600 underline">
+              <Link href="/login" className="text-xs text-[#1985A1] underline">
                 Return to Sign In
               </Link>
             </div>
@@ -97,7 +97,7 @@ function AcceptInviteContent() {
             <div>
               <label
                 htmlFor="name"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1"
+                className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-1"
               >
                 Full Name (with Title)
               </label>
@@ -108,14 +108,14 @@ function AcceptInviteContent() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Dr. Subhasish Banerjee"
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full px-3.5 py-2 bg-slate-50 border border-[#C5C3C6] rounded-lg text-[#46494C] text-sm focus:outline-none focus:ring-2 focus:ring-[#1985A1]"
               />
             </div>
 
             <div>
               <label
                 htmlFor="password"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1"
+                className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-1"
               >
                 Create Password
               </label>
@@ -127,14 +127,14 @@ function AcceptInviteContent() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Minimum 6 characters"
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full px-3.5 py-2 bg-slate-50 border border-[#C5C3C6] rounded-lg text-[#46494C] text-sm focus:outline-none focus:ring-2 focus:ring-[#1985A1]"
               />
             </div>
 
             <div>
               <label
                 htmlFor="confirmPassword"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1"
+                className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-1"
               >
                 Confirm Password
               </label>
@@ -146,14 +146,14 @@ function AcceptInviteContent() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repeat password"
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full px-3.5 py-2 bg-slate-50 border border-[#C5C3C6] rounded-lg text-[#46494C] text-sm focus:outline-none focus:ring-2 focus:ring-[#1985A1]"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading || !!success}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow transition disabled:opacity-60"
+              className="w-full py-2.5 px-4 bg-[#1985A1] hover:bg-[#146E85] text-white font-semibold text-sm rounded-lg shadow transition disabled:opacity-60"
             >
               {loading ? 'Activating Account...' : 'Set Password & Activate'}
             </button>

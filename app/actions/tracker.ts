@@ -293,23 +293,23 @@ export async function sendSupervisorReminderAction(input: {
       to: supervisor.email,
       subject: `[ECE HITK] Urgent: Pending Capstone Marks Submission (Semester ${input.semester})`,
       html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-          <div style="background-color: #1e3a8a; color: white; padding: 18px 24px;">
-            <h2 style="margin: 0; font-size: 18px;">Department of Electronics and Communication Engineering</h2>
-            <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #46494C; max-width: 600px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 10px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(76, 92, 104, 0.08);">
+          <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); color: white; padding: 20px 24px; border-bottom: 3px solid #146E85;">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.3px;">Department of Electronics and Communication Engineering</h2>
+            <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
           </div>
-          <div style="padding: 24px;">
-            <p>Dear <strong>${supervisor.name}</strong>,</p>
-            <p>This is an official notification from the ECE Project Committee. You currently have <strong>${input.groupsCount} allocated group(s)</strong> with pending marks evaluation for <strong>Semester ${input.semester}</strong>.</p>
-            <p>Please log in to your supervisor portal to record and submit the evaluation rubrics for your assigned groups:</p>
-            <div style="margin: 22px 0; text-align: center;">
-              <a href="https://ece-project-management-system.vercel.app/faculty/marks" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+          <div style="padding: 26px;">
+            <p style="margin-top: 0; color: #46494C;">Dear <strong>${supervisor.name}</strong>,</p>
+            <p style="color: #46494C;">This is an official notification from the ECE Project Committee. You currently have <strong>${input.groupsCount} allocated group(s)</strong> with pending marks evaluation for <strong>Semester ${input.semester}</strong>.</p>
+            <p style="color: #46494C;">Please log in to your supervisor portal to record and submit the evaluation rubrics for your assigned groups:</p>
+            <div style="margin: 26px 0; text-align: center;">
+              <a href="https://ece-project-management-system.vercel.app/faculty/marks" style="background-color: #1985A1; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 8px -1px rgba(25, 133, 161, 0.3);">
                 Access Faculty Marks Portal →
               </a>
             </div>
-            <p style="font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+            <p style="font-size: 12px; color: #4C5C68; margin-top: 24px; border-top: 1px solid #DCDCDD; padding-top: 14px;">
               ECE Project Committee Administration<br/>
-              Sender: susovan.mandal@heritageit.edu
+              Sender: <a href="mailto:susovan.mandal@heritageit.edu" style="color: #1985A1; text-decoration: none; font-weight: 600;">susovan.mandal@heritageit.edu</a>
             </p>
           </div>
         </div>
@@ -403,23 +403,23 @@ export async function sendBulkRemindersAction(semester: number) {
         to: info.email,
         subject: `[ECE HITK] Reminder: Pending Capstone Marks for Semester ${semester}`,
         html: `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            <div style="background-color: #1e3a8a; color: white; padding: 18px 24px;">
-              <h2 style="margin: 0; font-size: 18px;">Department of Electronics and Communication Engineering</h2>
-              <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #46494C; max-width: 600px; margin: 0 auto; border: 1px solid #C5C3C6; border-radius: 10px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(76, 92, 104, 0.08);">
+            <div style="background: linear-gradient(135deg, #4C5C68 0%, #1985A1 100%); color: white; padding: 20px 24px; border-bottom: 3px solid #146E85;">
+              <h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.3px;">Department of Electronics and Communication Engineering</h2>
+              <p style="margin: 5px 0 0; font-size: 13px; color: #DCDCDD; font-weight: 500;">Heritage Institute of Technology, Kolkata • B.Tech Project Committee</p>
             </div>
-            <div style="padding: 24px;">
-              <p>Dear <strong>${info.name}</strong>,</p>
-              <p>This is a bulk reminder from the ECE Project Committee. You have <strong>${info.count} assigned project group(s)</strong> with pending marks evaluation for <strong>Semester ${semester}</strong>.</p>
-              <p>Kindly complete the pending marks entries for your allotted students in the portal:</p>
-              <div style="margin: 22px 0; text-align: center;">
-                <a href="https://ece-project-management-system.vercel.app/faculty/marks" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+            <div style="padding: 26px;">
+              <p style="margin-top: 0; color: #46494C;">Dear <strong>${info.name}</strong>,</p>
+              <p style="color: #46494C;">This is a bulk reminder from the ECE Project Committee. You have <strong>${info.count} assigned project group(s)</strong> with pending marks evaluation for <strong>Semester ${semester}</strong>.</p>
+              <p style="color: #46494C;">Kindly complete the pending marks entries for your allotted students in the portal:</p>
+              <div style="margin: 26px 0; text-align: center;">
+                <a href="https://ece-project-management-system.vercel.app/faculty/marks" style="background-color: #1985A1; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 8px -1px rgba(25, 133, 161, 0.3);">
                   Open Faculty Marks Portal →
                 </a>
               </div>
-              <p style="font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+              <p style="font-size: 12px; color: #4C5C68; margin-top: 24px; border-top: 1px solid #DCDCDD; padding-top: 14px;">
                 ECE Project Committee Administration<br/>
-                Sender: susovan.mandal@heritageit.edu
+                Sender: <a href="mailto:susovan.mandal@heritageit.edu" style="color: #1985A1; text-decoration: none; font-weight: 600;">susovan.mandal@heritageit.edu</a>
               </p>
             </div>
           </div>
