@@ -12,6 +12,13 @@ import {
   CommunicationHistoryItem,
   FacultyDirectoryItem,
 } from '@/app/actions/communication';
+import {
+  getInboxEmailsAction,
+  getEmailDetailAction,
+  quickReplyAction,
+  InboxMessageSummary,
+  InboxMessageDetail,
+} from '@/app/actions/inbox';
 
 const FACULTY_GOOGLE_GROUP_EMAIL = 'hit_ece_faculties@googlegroups.com';
 
@@ -19,6 +26,21 @@ export default function CommunicationClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'COMPOSE' | 'INBOX' | 'HISTORY'>('COMPOSE');
+
+  // Inbox State
+  const [inboxMessages, setInboxMessages] = useState<InboxMessageSummary[]>([]);
+  const [inboxTotal, setInboxTotal] = useState<number>(0);
+  const [inboxLoading, setInboxLoading] = useState(false);
+  const [inboxSearch, setInboxSearch] = useState('');
+  const [selectedEmailUid, setSelectedEmailUid] = useState<number | null>(null);
+  const [selectedEmailDetail, setSelectedEmailDetail] = useState<InboxMessageDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [showQuickReply, setShowQuickReply] = useState(false);
+  const [quickReplyText, setQuickReplyText] = useState('');
+  const [isSendingQuickReply, setIsSendingQuickReply] = useState(false);
 
   // Sender Config State
   const [senderEmail, setSenderEmail] = useState('susovan.mandal@heritageit.edu');
@@ -94,6 +116,70 @@ export default function CommunicationClient() {
   useEffect(() => {
     loadData(selectedBatch);
   }, [selectedBatch]);
+
+  // Load Inbox Emails on Tab Switch or Search
+  async function loadInbox(search = inboxSearch) {
+    setInboxLoading(true);
+    const res = await getInboxEmailsAction(1, 30, search);
+    if (res.error) {
+      setError(res.error);
+    } else if (res.messages) {
+      setInboxMessages(res.messages);
+      setInboxTotal(res.totalCount || res.messages.length);
+      // Auto-select first email if none selected
+      if (res.messages.length > 0 && !selectedEmailUid) {
+        handleSelectEmail(res.messages[0].uid);
+      }
+    }
+    setInboxLoading(false);
+  }
+
+  useEffect(() => {
+    if (activeTab === 'INBOX' && inboxMessages.length === 0) {
+      loadInbox();
+    }
+  }, [activeTab]);
+
+  async function handleSelectEmail(uid: number) {
+    setSelectedEmailUid(uid);
+    setDetailLoading(true);
+    setShowQuickReply(false);
+    setQuickReplyText('');
+    const res = await getEmailDetailAction(uid);
+    if (res.error) {
+      setError(res.error);
+    } else if (res.message) {
+      setSelectedEmailDetail(res.message);
+    }
+    setDetailLoading(false);
+  }
+
+  async function handleSendReply() {
+    if (!selectedEmailDetail) return;
+    if (!quickReplyText.trim()) {
+      setError('Reply message cannot be empty.');
+      return;
+    }
+    setIsSendingQuickReply(true);
+    setError(null);
+    const res = await quickReplyAction({
+      toEmail: selectedEmailDetail.from.address,
+      toName: selectedEmailDetail.from.name,
+      subject: selectedEmailDetail.subject,
+      replyText: quickReplyText.trim(),
+      originalSnippet: selectedEmailDetail.snippet,
+    });
+    setIsSendingQuickReply(false);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(`Reply successfully dispatched to ${selectedEmailDetail.from.address}!`);
+      setShowQuickReply(false);
+      setQuickReplyText('');
+      const hist = await getCommunicationHistoryAction();
+      setHistory(hist);
+    }
+  }
 
   // Handle Save Sender Config
   async function handleSaveConfig(e: React.FormEvent) {
@@ -455,7 +541,70 @@ export default function CommunicationClient() {
         </div>
       )}
 
+      {/* Primary Tab Navigation */}
+      <div className="flex border-b border-slate-200 gap-1 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab('COMPOSE')}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            activeTab === 'COMPOSE'
+              ? 'border-[#1985A1] text-[#1985A1]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <span>Compose Announcement</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('INBOX');
+            if (inboxMessages.length === 0) loadInbox();
+          }}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            activeTab === 'INBOX'
+              ? 'border-[#1985A1] text-[#1985A1]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+          </svg>
+          <span>Inbox / Received Emails</span>
+          {inboxMessages.some((m) => !m.seen) && (
+            <span className="w-2 h-2 rounded-full bg-[#1985A1]"></span>
+          )}
+          {inboxTotal > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#e5f1f5] text-[#1985A1] font-semibold border border-[#cce3eb]">
+              {inboxTotal}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('HISTORY')}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            activeTab === 'HISTORY'
+              ? 'border-[#1985A1] text-[#1985A1]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Dispatch History &amp; Logs</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-semibold border border-slate-200">
+            {history.length}
+          </span>
+        </button>
+      </div>
+
       {/* Main Grid: Targets Selection & Composer */}
+      {activeTab === 'COMPOSE' && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Target Channels (5 Cols) */}
         <div className="lg:col-span-5 space-y-5">
@@ -1114,8 +1263,327 @@ export default function CommunicationClient() {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Dispatched Communications History Table */}
+      {/* Tab Content: INBOX */}
+      {activeTab === 'INBOX' && (
+        <div className="space-y-4">
+          {/* Inbox Header Bar */}
+          <div className="bg-white border border-[#C5C3C6] rounded-xl p-4 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#eef8fa] border border-[#1985A1]/30 flex items-center justify-center text-[#1985A1]">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-bold text-sm text-[#46494C]">Google Workspace Incoming Mailbox</h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    IMAP Active
+                  </span>
+                </div>
+                <p className="text-xs text-[#4C5C68]">
+                  Connected Account: <span className="font-mono font-semibold text-[#1985A1]">{senderEmail}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-stretch sm:self-auto">
+              <div className="relative flex-1 sm:w-64">
+                <input
+                  type="text"
+                  value={inboxSearch}
+                  onChange={(e) => setInboxSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') loadInbox(inboxSearch);
+                  }}
+                  placeholder="Filter by sender or subject..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs border border-[#C5C3C6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1985A1] text-[#46494C]"
+                />
+                <svg
+                  className="w-4 h-4 text-slate-400 absolute left-2.5 top-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => loadInbox(inboxSearch)}
+                disabled={inboxLoading}
+                className="px-3 py-1.5 bg-[#1985A1] hover:bg-[#146E85] text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
+              >
+                {inboxLoading ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Refresh</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Inbox Split View: Messages List + Reader */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[580px]">
+            {/* Left Column: Email Message Cards (5 cols) */}
+            <div className="lg:col-span-5 bg-white border border-[#C5C3C6] rounded-2xl shadow-sm flex flex-col overflow-hidden max-h-[700px]">
+              <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between items-center text-xs font-semibold text-[#46494C]">
+                <span>Recent Received Messages</span>
+                <span className="text-[11px] text-slate-500 font-normal">
+                  {inboxMessages.length} of {inboxTotal}
+                </span>
+              </div>
+
+              <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                {inboxLoading && inboxMessages.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                    <svg className="animate-spin w-5 h-5 text-[#1985A1] mx-auto" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <div>Connecting to Google Workspace IMAP...</div>
+                  </div>
+                ) : inboxMessages.length === 0 ? (
+                  <div className="p-10 text-center text-slate-400 text-xs">
+                    No emails found in this mailbox.
+                  </div>
+                ) : (
+                  inboxMessages.map((msg) => {
+                    const isSelected = selectedEmailUid === msg.uid;
+                    const dateFormatted = new Date(msg.date).toLocaleDateString('en-IN', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+
+                    return (
+                      <div
+                        key={msg.uid}
+                        onClick={() => handleSelectEmail(msg.uid)}
+                        className={`p-3.5 cursor-pointer transition text-left relative ${
+                          isSelected
+                            ? 'bg-[#eef8fa] border-l-4 border-[#1985A1]'
+                            : !msg.seen
+                            ? 'bg-blue-50/30 hover:bg-slate-50 font-medium'
+                            : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 truncate">
+                            {!msg.seen && (
+                              <span
+                                className="w-2 h-2 rounded-full bg-[#1985A1] shrink-0"
+                                title="Unread"
+                              />
+                            )}
+                            <span className="text-xs font-bold text-[#46494C] truncate">
+                              {msg.from.name || msg.from.address}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
+                            {dateFormatted}
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] font-mono text-[#4C5C68] truncate mb-1">
+                          {msg.from.address}
+                        </div>
+
+                        <div className="text-xs text-[#46494C] font-semibold truncate">
+                          {msg.subject || '(No Subject)'}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <p className="text-[11px] text-slate-500 line-clamp-1">
+                            {msg.snippet || msg.subject}
+                          </p>
+                          {msg.hasAttachments && (
+                            <span className="text-slate-400 shrink-0" title="Has Attachment">
+                              📎
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Full Email Reader (7 cols) */}
+            <div className="lg:col-span-7 bg-white border border-[#C5C3C6] rounded-2xl shadow-sm p-6 flex flex-col justify-between max-h-[700px] overflow-y-auto">
+              {detailLoading ? (
+                <div className="p-16 text-center text-xs text-slate-400 space-y-3">
+                  <svg className="animate-spin w-6 h-6 text-[#1985A1] mx-auto" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                  </svg>
+                  <div>Fetching complete email body & attachments from server...</div>
+                </div>
+              ) : selectedEmailDetail ? (
+                <div className="space-y-4">
+                  {/* Email Header */}
+                  <div className="border-b border-slate-100 pb-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-3">
+                      <h2 className="text-lg font-bold text-[#46494C] leading-snug">
+                        {selectedEmailDetail.subject}
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowQuickReply(!showQuickReply);
+                          setQuickReplyText('');
+                        }}
+                        className="px-3 py-1.5 bg-[#1985A1] hover:bg-[#146E85] text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5 shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                        </svg>
+                        <span>{showQuickReply ? 'Hide Reply' : 'Reply to Sender'}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between text-xs text-[#4C5C68] gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-[#1985A1] text-white font-bold flex items-center justify-center text-xs uppercase">
+                          {selectedEmailDetail.from.name ? selectedEmailDetail.from.name[0] : 'S'}
+                        </div>
+                        <div>
+                          <div className="font-bold text-[#46494C]">
+                            {selectedEmailDetail.from.name || 'Unknown'}
+                          </div>
+                          <div className="font-mono text-[11px] text-slate-500">
+                            &lt;{selectedEmailDetail.from.address}&gt;
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        {new Date(selectedEmailDetail.date).toLocaleString('en-IN', {
+                          dateStyle: 'full',
+                          timeStyle: 'medium',
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attachments (if present) */}
+                  {selectedEmailDetail.attachments && selectedEmailDetail.attachments.length > 0 && (
+                    <div className="p-3 bg-slate-50 border border-[#C5C3C6]/60 rounded-xl">
+                      <div className="text-[11px] font-bold text-[#46494C] uppercase tracking-wider mb-2">
+                        Attachments ({selectedEmailDetail.attachments.length})
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedEmailDetail.attachments.map((att: { filename: string; contentType: string; size: number }, idx: number) => (
+                          <div
+                            key={idx}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-[#C5C3C6] text-xs font-medium text-[#46494C] flex items-center gap-1.5"
+                          >
+                            <span>📎</span>
+                            <span className="truncate max-w-[200px]">{att.filename}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              ({Math.round(att.size / 1024)} KB)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email Body Container */}
+                  <div className="p-4 bg-slate-50/50 rounded-xl border border-[#C5C3C6]/60 overflow-y-auto max-h-[380px] leading-relaxed text-sm text-[#46494C]">
+                    {selectedEmailDetail.html ? (
+                      <div
+                        className="email-content-view prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: selectedEmailDetail.html }}
+                      />
+                    ) : (
+                      <pre className="whitespace-pre-wrap font-sans text-sm">
+                        {selectedEmailDetail.text}
+                      </pre>
+                    )}
+                  </div>
+
+                  {/* Inline Quick Reply Drawer */}
+                  {showQuickReply && (
+                    <div className="p-4 bg-[#f4f7f9] border-2 border-[#1985A1] rounded-xl space-y-3 animate-in fade-in-50">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="font-bold text-[#46494C]">
+                          Replying to:{' '}
+                          <span className="font-mono text-[#1985A1]">
+                            {selectedEmailDetail.from.address}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500">
+                          Subject: Re: {selectedEmailDetail.subject}
+                        </span>
+                      </div>
+
+                      <textarea
+                        rows={4}
+                        value={quickReplyText}
+                        onChange={(e) => setQuickReplyText(e.target.value)}
+                        placeholder="Type your official response to supervisor/student here..."
+                        className="w-full p-3 text-xs bg-white border border-[#C5C3C6] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1985A1] text-[#46494C]"
+                      />
+
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowQuickReply(false);
+                            setQuickReplyText('');
+                          }}
+                          className="px-3 py-1.5 border border-slate-300 text-xs font-semibold rounded-lg hover:bg-slate-100 text-slate-700"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSendReply}
+                          disabled={isSendingQuickReply || !quickReplyText.trim()}
+                          className="px-4 py-1.5 bg-[#1985A1] hover:bg-[#146E85] text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {isSendingQuickReply ? 'Dispatching Reply...' : 'Send Official Reply'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-3 text-2xl">
+                    ✉️
+                  </div>
+                  <h3 className="font-bold text-sm text-[#46494C]">No Email Selected</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mt-1">
+                    Select any incoming message from the left list to read its complete content, inspect attachments, and send an official committee reply.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content: HISTORY */}
+      {activeTab === 'HISTORY' && (
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
           <div>
@@ -1219,6 +1687,7 @@ export default function CommunicationClient() {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
