@@ -309,7 +309,7 @@ export async function sendSupervisorReminderAction(input: {
             </div>
             <p style="font-size: 12px; color: #4C5C68; margin-top: 24px; border-top: 1px solid #DCDCDD; padding-top: 14px;">
               ECE Project Committee Administration<br/>
-              Sender: <a href="mailto:susovan.mandal@heritageit.edu" style="color: #1985A1; text-decoration: none; font-weight: 600;">susovan.mandal@heritageit.edu</a>
+              Sender: <a href="mailto:ece.project.committee@heritageit.edu" style="color: #1985A1; text-decoration: none; font-weight: 600;">ece.project.committee@heritageit.edu</a>
             </p>
           </div>
         </div>
@@ -419,7 +419,7 @@ export async function sendBulkRemindersAction(semester: number) {
               </div>
               <p style="font-size: 12px; color: #4C5C68; margin-top: 24px; border-top: 1px solid #DCDCDD; padding-top: 14px;">
                 ECE Project Committee Administration<br/>
-                Sender: <a href="mailto:susovan.mandal@heritageit.edu" style="color: #1985A1; text-decoration: none; font-weight: 600;">susovan.mandal@heritageit.edu</a>
+                Sender: <a href="mailto:ece.project.committee@heritageit.edu" style="color: #1985A1; text-decoration: none; font-weight: 600;">ece.project.committee@heritageit.edu</a>
               </p>
             </div>
           </div>

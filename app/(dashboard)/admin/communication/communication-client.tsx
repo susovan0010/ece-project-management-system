@@ -46,9 +46,9 @@ export default function CommunicationClient() {
   const [isSendingQuickReply, setIsSendingQuickReply] = useState(false);
 
   // Sender Config State
-  const [senderEmail, setSenderEmail] = useState('susovan.mandal@heritageit.edu');
-  const [senderName, setSenderName] = useState('Dr. Susovan Mandal (ECE Project Committee)');
-  const [replyTo, setReplyTo] = useState('susovan.mandal@heritageit.edu');
+  const [senderEmail, setSenderEmail] = useState('ece.project.committee@heritageit.edu');
+  const [senderName, setSenderName] = useState('ECE Project Committee');
+  const [replyTo, setReplyTo] = useState('ece.project.committee@heritageit.edu');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [showConfigEdit, setShowConfigEdit] = useState(false);
 
@@ -358,7 +358,7 @@ export default function CommunicationClient() {
     if (type === 'faculty') {
       setSubject('Notice: Project Committee Meeting & Evaluation Schedule for Faculty Supervisors');
       setMessageBody(
-        `Dear Colleagues & Supervisors,\n\nThis is an official notice regarding the upcoming Capstone Project evaluation cycle for B.Tech ECE.\n\nAll faculty supervisors are requested to review project topic allocations and ensure continuous assessment rubrics are up to date on the departmental portal.\n\nPlease feel free to reach out to the Project Committee for any queries.\n\nWarm regards,\nDr. Susovan Mandal\nProject Committee, Department of ECE\nHeritage Institute of Technology`
+        `Dear Colleagues & Supervisors,\n\nThis is an official notice regarding the upcoming Capstone Project evaluation cycle for B.Tech ECE.\n\nAll faculty supervisors are requested to review project topic allocations and ensure continuous assessment rubrics are up to date on the departmental portal.\n\nPlease feel free to reach out to the Project Committee for any queries.\n\nWarm regards,\nECE Project Committee\nDepartment of ECE\nHeritage Institute of Technology`
       );
     } else if (type === 'viva') {
       setSubject('Notice: Capstone Project Viva Voce & Evaluation Schedule');
@@ -582,7 +582,7 @@ export default function CommunicationClient() {
               </p>
             </div>
             <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-semibold border border-blue-200">
-              Default: susovan.mandal@heritageit.edu
+              Default: ece.project.committee@heritageit.edu
             </span>
           </div>
 
@@ -597,7 +597,7 @@ export default function CommunicationClient() {
                 value={senderEmail}
                 onChange={(e) => setSenderEmail(e.target.value)}
                 className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="susovan.mandal@heritageit.edu"
+                placeholder="ece.project.committee@heritageit.edu"
               />
             </div>
 
@@ -611,7 +611,7 @@ export default function CommunicationClient() {
                 value={senderName}
                 onChange={(e) => setSenderName(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="Dr. Susovan Mandal (ECE Project Committee)"
+                placeholder="ECE Project Committee"
               />
             </div>
 
@@ -624,7 +624,7 @@ export default function CommunicationClient() {
                 value={replyTo}
                 onChange={(e) => setReplyTo(e.target.value)}
                 className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="susovan.mandal@heritageit.edu"
+                placeholder="ece.project.committee@heritageit.edu"
               />
             </div>
 

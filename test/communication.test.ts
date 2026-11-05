@@ -39,12 +39,12 @@ describe('Communication Hub: Sender Configuration & Defaults', () => {
     vi.restoreAllMocks();
   });
 
-  it('falls back to Dr. Susovan Mandal departmental email by default', async () => {
+  it('falls back to official ECE Project Committee email by default', async () => {
     vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null as any);
 
     const config = await getCommunicationConfig();
-    expect(config.senderEmail).toBe('susovan.mandal@heritageit.edu');
-    expect(config.senderName).toContain('Susovan Mandal');
+    expect(config.senderEmail).toBe('ece.project.committee@heritageit.edu');
+    expect(config.senderName).toContain('ECE Project Committee');
   });
 
   it('rejects unauthenticated requests to update communication config', async () => {
@@ -66,9 +66,9 @@ describe('Communication Hub: Sender Configuration & Defaults', () => {
     const upsertSpy = vi.spyOn(prisma.setting, 'upsert').mockResolvedValue({} as any);
 
     const res = await updateCommunicationConfigAction({
-      senderEmail: 'susovan.mandal@heritageit.edu',
-      senderName: 'Dr. Susovan Mandal',
-      replyTo: 'susovan.mandal@heritageit.edu',
+      senderEmail: 'ece.project.committee@heritageit.edu',
+      senderName: 'ECE Project Committee',
+      replyTo: 'ece.project.committee@heritageit.edu',
     });
 
     expect(res.success).toBe(true);

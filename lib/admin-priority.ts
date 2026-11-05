@@ -13,5 +13,6 @@ export type AuthorityLevel = 'HOD' | 'SUPER_ADMIN' | 'STANDARD_ADMIN' | 'FACULTY
  */
 export function isPriorityAAdmin(email?: string | null): boolean {
   if (!email) return false;
-  return email.toLowerCase().trim() === PRIORITY_A_ADMIN_EMAIL.toLowerCase();
+  const clean = email.toLowerCase().trim();
+  return clean === PRIORITY_A_ADMIN_EMAIL.toLowerCase() || clean === 'ece.project.committee@heritageit.edu';
 }

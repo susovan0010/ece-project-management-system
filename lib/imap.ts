@@ -99,7 +99,7 @@ export async function fetchRecentInboxEmails(
           name: 'Dr. Debasish Mandal',
           address: 'debasish@hitk.edu',
         },
-        to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
+        to: [{ name: 'Project Committee', address: 'ece.project.committee@heritageit.edu' }],
         date: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
         seen: false,
         snippet:
@@ -114,7 +114,7 @@ export async function fetchRecentInboxEmails(
           name: 'Dr. Ananya Chattopadhyay',
           address: 'ananya.chattopadhyay@heritageit.edu',
         },
-        to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
+        to: [{ name: 'Project Committee', address: 'ece.project.committee@heritageit.edu' }],
         date: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
         seen: true,
         snippet:
@@ -269,7 +269,7 @@ export async function fetchInboxEmailDetail(uid: number): Promise<FetchDetailRes
           uid === 101
             ? { name: 'Dr. Debasish Mandal', address: 'debasish@hitk.edu' }
             : { name: 'Dr. Ananya Chattopadhyay', address: 'ananya.chattopadhyay@heritageit.edu' },
-        to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
+        to: [{ name: 'Project Committee', address: 'ece.project.committee@heritageit.edu' }],
         date: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
         seen: true,
         messageId: `<simulated-msg-${uid}@heritageit.edu>`,

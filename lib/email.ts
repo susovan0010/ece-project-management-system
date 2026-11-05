@@ -1,8 +1,8 @@
 import { prisma } from './prisma';
 import nodemailer from 'nodemailer';
 
-export const DEFAULT_SENDER_EMAIL = 'susovan.mandal@heritageit.edu';
-export const DEFAULT_SENDER_NAME = 'Dr. Susovan Mandal (ECE Project Committee)';
+export const DEFAULT_SENDER_EMAIL = 'ece.project.committee@heritageit.edu';
+export const DEFAULT_SENDER_NAME = 'ECE Project Committee';
 export const FACULTY_GOOGLE_GROUP_EMAIL = 'hit_ece_faculties@googlegroups.com';
 
 export interface CommunicationConfig {
@@ -40,7 +40,7 @@ export interface SendEmailResult {
 
 /**
  * Retrieves the persisted sender configuration from the Setting table,
- * falling back to Dr. Susovan Mandal's departmental email address.
+ * falling back to official committee email address.
  */
 export async function getCommunicationConfig(): Promise<CommunicationConfig> {
   try {
@@ -50,10 +50,20 @@ export async function getCommunicationConfig(): Promise<CommunicationConfig> {
 
     if (setting && setting.value && typeof setting.value === 'object') {
       const val = setting.value as Record<string, any>;
+      const rawEmail = val.senderEmail?.trim();
+      const isPersonal = rawEmail === 'susovan.mandal@heritageit.edu';
+      const cleanSender = (rawEmail && !isPersonal)
+        ? rawEmail
+        : process.env.MAIL_FROM || DEFAULT_SENDER_EMAIL;
+
       return {
-        senderEmail: val.senderEmail?.trim() || process.env.MAIL_FROM || DEFAULT_SENDER_EMAIL,
-        senderName: val.senderName?.trim() || DEFAULT_SENDER_NAME,
-        replyTo: val.replyTo?.trim() || val.senderEmail?.trim() || process.env.MAIL_FROM || DEFAULT_SENDER_EMAIL,
+        senderEmail: cleanSender,
+        senderName: (val.senderName?.trim() && !val.senderName.includes('Dr. Susovan Mandal'))
+          ? val.senderName.trim()
+          : process.env.MAIL_NAME || DEFAULT_SENDER_NAME,
+        replyTo: (val.replyTo?.trim() && val.replyTo.trim() !== 'susovan.mandal@heritageit.edu')
+          ? val.replyTo.trim()
+          : cleanSender,
       };
     }
   } catch (err) {
