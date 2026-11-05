@@ -90,42 +90,47 @@ export async function fetchRecentInboxEmails(
   const client = getImapClient();
 
   if (!client) {
+    const allSimulated: InboxMessageSummary[] = [
+      {
+        uid: 101,
+        seq: 1,
+        subject: 'Query regarding Capstone Project Allotment for Group 14',
+        from: {
+          name: 'Dr. Debasish Mandal',
+          address: 'debasish@hitk.edu',
+        },
+        to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
+        date: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+        seen: false,
+        snippet:
+          'Dear Committee, Our group has reviewed the SDR hardware requirement and would like to request an updated milestone review date...',
+        hasAttachments: false,
+      },
+      {
+        uid: 102,
+        seq: 2,
+        subject: 'Submission of Draft Rubrics for Semester 7',
+        from: {
+          name: 'Dr. Ananya Chattopadhyay',
+          address: 'ananya.chattopadhyay@heritageit.edu',
+        },
+        to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
+        date: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+        seen: true,
+        snippet:
+          'Respected Dr. Mandal, The rubric marks for our assigned students have been cross-checked against the evaluation criteria...',
+        hasAttachments: true,
+      },
+    ];
+
+    const skip = (page - 1) * limit;
+    const pageMessages = allSimulated.slice(skip, skip + limit);
+
     return {
       success: true,
       simulated: true,
-      totalCount: 2,
-      messages: [
-        {
-          uid: 101,
-          seq: 1,
-          subject: 'Query regarding Capstone Project Allotment for Group 14',
-          from: {
-            name: 'Dr. Debasish Mandal',
-            address: 'debasish@hitk.edu',
-          },
-          to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
-          date: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
-          seen: false,
-          snippet:
-            'Dear Committee, Our group has reviewed the SDR hardware requirement and would like to request an updated milestone review date...',
-          hasAttachments: false,
-        },
-        {
-          uid: 102,
-          seq: 2,
-          subject: 'Submission of Draft Rubrics for Semester 7',
-          from: {
-            name: 'Dr. Ananya Chattopadhyay',
-            address: 'ananya.chattopadhyay@heritageit.edu',
-          },
-          to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
-          date: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-          seen: true,
-          snippet:
-            'Respected Dr. Mandal, The rubric marks for our assigned students have been cross-checked against the evaluation criteria...',
-          hasAttachments: true,
-        },
-      ],
+      totalCount: allSimulated.length,
+      messages: pageMessages,
     };
   }
 
@@ -147,7 +152,15 @@ export async function fetchRecentInboxEmails(
 
       // Compute sequence window: newest messages have the highest sequence numbers
       const skip = (page - 1) * limit;
-      const endSeq = Math.max(1, totalMessages - skip);
+      if (skip >= totalMessages) {
+        return {
+          success: true,
+          messages: [],
+          totalCount: totalMessages,
+        };
+      }
+
+      const endSeq = totalMessages - skip;
       const startSeq = Math.max(1, endSeq - limit + 1);
 
       const messages: InboxMessageSummary[] = [];

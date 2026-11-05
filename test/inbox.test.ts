@@ -73,6 +73,34 @@ describe('Admin Inbox: Role Isolation & Access Control', () => {
     expect(res.messages![0]).toHaveProperty('from');
   });
 
+  it('supports paging to fetch older emails across multiple pages', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+    } as any);
+
+    const fetchSpy = vi.spyOn(imapModule, 'fetchRecentInboxEmails').mockResolvedValue({
+      success: true,
+      totalCount: 60,
+      messages: [
+        {
+          uid: 201,
+          seq: 31,
+          subject: 'Older Email from Previous Review Cycle',
+          from: { name: 'Dr. Debasish Mandal', address: 'debasish@hitk.edu' },
+          to: [{ name: 'Project Committee', address: 'susovan.mandal@heritageit.edu' }],
+          date: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+          seen: true,
+        },
+      ],
+    });
+
+    const resPage2 = await getInboxEmailsAction(2, 30);
+    expect(resPage2.success).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledWith(2, 30, undefined);
+    expect(resPage2.messages?.length).toBe(1);
+    expect(resPage2.messages?.[0].uid).toBe(201);
+  });
+
   it('rejects FACULTY users from reading email detail', async () => {
     vi.mocked(auth).mockResolvedValue({
       user: { id: 'faculty-user-1', role: 'FACULTY', email: 'faculty@heritageit.edu' },
