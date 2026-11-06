@@ -24,6 +24,7 @@ export default async function DashboardLayout({
       email: true,
       role: true,
       mustChangePassword: true,
+      domainExpertise: true,
     },
   });
 
@@ -75,6 +76,7 @@ export default async function DashboardLayout({
               userName={userName}
               userEmail={userEmail}
               mustChangePassword={mustChangePassword}
+              userDomains={dbUser?.domainExpertise || []}
             />
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold ${

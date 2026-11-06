@@ -524,13 +524,35 @@ export default function AdminFacultyPage() {
 
                   return (
                     <tr key={adm.id} className="hover:bg-slate-50/70 transition">
-                      <td className="px-6 py-3.5 font-bold text-slate-900">
-                        {adm.name}
-                        {isSelf && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
-                            You
-                          </span>
-                        )}
+                      <td className="px-6 py-3.5">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          {adm.name}
+                          {isSelf && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">
+                              You
+                            </span>
+                          )}
+                        </div>
+                        {adm.domainExpertise && adm.domainExpertise.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1 max-w-xs">
+                            {adm.domainExpertise.slice(0, 3).map((d) => (
+                              <span
+                                key={d}
+                                className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-[#1985A1]/10 text-[#1985A1] border border-[#1985A1]/20"
+                              >
+                                {d}
+                              </span>
+                            ))}
+                            {adm.domainExpertise.length > 3 && (
+                              <span
+                                title={adm.domainExpertise.slice(3).join(', ')}
+                                className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600"
+                              >
+                                +{adm.domainExpertise.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-6 py-3.5 font-mono text-slate-600">{adm.email}</td>
                       <td className="px-6 py-3.5 text-center">
@@ -656,7 +678,31 @@ export default function AdminFacultyPage() {
               ) : (
                 supervisors.map((sup) => (
                   <tr key={sup.id} className="hover:bg-slate-50/70 transition">
-                    <td className="px-6 py-3.5 font-bold text-slate-900">{sup.name}</td>
+                    <td className="px-6 py-3.5">
+                      <div className="font-bold text-slate-900">{sup.name}</div>
+                      {sup.domainExpertise && sup.domainExpertise.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1 max-w-xs">
+                          {sup.domainExpertise.slice(0, 3).map((d) => (
+                            <span
+                              key={d}
+                              className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-[#1985A1]/10 text-[#1985A1] border border-[#1985A1]/20"
+                            >
+                              {d}
+                            </span>
+                          ))}
+                          {sup.domainExpertise.length > 3 && (
+                            <span
+                              title={sup.domainExpertise.slice(3).join(', ')}
+                              className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600"
+                            >
+                              +{sup.domainExpertise.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-amber-600 font-medium italic">Pending specialization</span>
+                      )}
+                    </td>
                     <td className="px-6 py-3.5 font-mono text-slate-600">{sup.email}</td>
                     <td className="px-6 py-3.5 text-center font-mono font-bold text-slate-800">
                       {sup.proposedTopicsCount}

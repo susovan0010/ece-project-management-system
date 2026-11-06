@@ -232,6 +232,33 @@ describe('Communication Hub: Message Dispatch & History', () => {
     expect(upsertSpy).toHaveBeenCalled();
   });
 
+  it('delivers messages to Project Committee Admins alongside Faculty Supervisors', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue(null as any);
+
+    vi.spyOn(prisma.user, 'findMany').mockResolvedValue([
+      { id: 'admin-1', name: 'Dr. Susovan Mandal', email: 'susovan.mandal@heritageit.edu', role: 'ADMIN' },
+      { id: 'fac-1', name: 'Dr. Debasish Saha', email: 'debasish@hitk.edu', role: 'FACULTY' },
+    ] as any);
+
+    const upsertSpy = vi.spyOn(prisma.setting, 'upsert').mockResolvedValue({} as any);
+
+    const res = await sendGroupCommunicationAction({
+      selectedFacultyUserIds: ['admin-1', 'fac-1'],
+      subject: 'Joint Committee and Faculty Discussion',
+      messageBody: 'Coordination notice regarding upcoming assessments.',
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.count).toBe(2);
+    expect(res.recipients).toContain('susovan.mandal@heritageit.edu');
+    expect(res.recipients).toContain('debasish@hitk.edu');
+    expect(upsertSpy).toHaveBeenCalled();
+  });
+
   it('delivers messages with attachments and saves attachment metadata in history', async () => {
     vi.mocked(auth).mockResolvedValue({
       user: { id: 'admin-1', role: 'ADMIN' },

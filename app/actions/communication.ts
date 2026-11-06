@@ -46,6 +46,7 @@ export interface FacultyDirectoryItem {
   id: string;
   name: string;
   email: string;
+  role?: string;
 }
 
 export interface CommunicationHistoryItem {
@@ -156,8 +157,8 @@ export async function getCommunicationRosterAction(batchId?: string) {
     }));
 
     const facultyList: FacultyDirectoryItem[] = await prisma.user.findMany({
-      where: { role: 'FACULTY', active: true },
-      select: { id: true, name: true, email: true },
+      where: { role: { in: ['FACULTY', 'ADMIN'] }, active: true },
+      select: { id: true, name: true, email: true, role: true },
       orderBy: { name: 'asc' },
     });
 
@@ -263,24 +264,24 @@ export async function sendGroupCommunicationAction(input: {
       audienceLabels.push(`Faculty Google Group (${FACULTY_GOOGLE_GROUP_EMAIL})`);
     }
 
-    // 2. Target Individual Faculty Supervisors via their login IDs
+    // 2. Target Individual Faculty Supervisors & Admins via their login IDs
     if (input.selectedFacultyUserIds && input.selectedFacultyUserIds.length > 0) {
-      const facultyUsers = await prisma.user.findMany({
-        where: { id: { in: input.selectedFacultyUserIds }, role: 'FACULTY' },
-        select: { id: true, name: true, email: true },
+      const targetUsers = await prisma.user.findMany({
+        where: { id: { in: input.selectedFacultyUserIds }, role: { in: ['FACULTY', 'ADMIN'] } },
+        select: { id: true, name: true, email: true, role: true },
       });
 
-      facultyUsers.forEach((f) => {
-        const em = f.email?.trim().toLowerCase();
+      targetUsers.forEach((u) => {
+        const em = u.email?.trim().toLowerCase();
         if (em && em.includes('@')) {
           recipientMap.set(em, {
-            name: f.name,
+            name: u.name,
             email: em,
-            role: 'Faculty Supervisor (Login ID)',
+            role: u.role === 'ADMIN' ? 'Project Committee Admin' : 'Faculty Supervisor (Login ID)',
           });
         }
       });
-      audienceLabels.push(`${facultyUsers.length} Individual Faculty Supervisors`);
+      audienceLabels.push(`${targetUsers.length} Faculty Supervisors & Admins`);
     }
 
     // 3. Target Project Groups (Students & Guides) if selected

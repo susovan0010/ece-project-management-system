@@ -14,6 +14,7 @@ import {
 import { isPriorityAAdmin, PRIORITY_A_ADMIN_EMAIL } from '@/lib/admin-priority';
 import { getBaseUrl } from '@/lib/url';
 import { sendEmail } from '@/lib/email';
+import { isValidDomain } from '@/lib/constants/domains';
 
 // ----------------------------------------------------
 // 1. Credentials Sign-In Action
@@ -393,6 +394,24 @@ export async function completeFirstLoginAction(prevState: unknown, formData: For
   const requestedName = (formData.get('name') as string | null)?.trim();
   const requestedEmail = (formData.get('email') as string | null)?.trim().toLowerCase();
 
+  // Parse domain expertise (if submitted)
+  const rawDomains = formData.getAll('domains');
+  let domains: string[] = [];
+  if (rawDomains.length === 1 && typeof rawDomains[0] === 'string' && rawDomains[0].startsWith('[')) {
+    try {
+      domains = JSON.parse(rawDomains[0]);
+    } catch {
+      domains = [];
+    }
+  } else {
+    domains = rawDomains.map((d) => String(d)).filter(Boolean);
+  }
+
+  const validDomains = domains.filter((d) => isValidDomain(d));
+  if (domains.length > 0 && validDomains.length === 0) {
+    return { error: 'Please select valid domain(s) of expertise from the list.' };
+  }
+
   if (!currentPassword) {
     return { error: 'Please enter your current password.' };
   }
@@ -425,12 +444,17 @@ export async function completeFirstLoginAction(prevState: unknown, formData: For
       return { error: 'Forbidden: Faculty members cannot change their user name.' };
     }
 
+    const facultyUpdateData: any = {
+      passwordHash: newPasswordHash,
+      mustChangePassword: false,
+    };
+    if (validDomains.length > 0) {
+      facultyUpdateData.domainExpertise = validDomains;
+    }
+
     await prisma.user.update({
       where: { id: userId },
-      data: {
-        passwordHash: newPasswordHash,
-        mustChangePassword: false,
-      },
+      data: facultyUpdateData,
     });
 
     await prisma.auditLog.create({
@@ -439,7 +463,11 @@ export async function completeFirstLoginAction(prevState: unknown, formData: For
         action: 'FIRST_LOGIN_PASSWORD_CHANGED',
         entity: 'User',
         entityId: userId,
-        payload: { role: 'FACULTY' },
+        payload: {
+          role: 'FACULTY',
+          domainCount: validDomains.length,
+          domains: validDomains,
+        },
       },
     });
 
@@ -469,14 +497,19 @@ export async function completeFirstLoginAction(prevState: unknown, formData: For
     }
   }
 
+  const adminUpdateData: any = {
+    name: updatedName,
+    email: updatedEmail,
+    passwordHash: newPasswordHash,
+    mustChangePassword: false,
+  };
+  if (validDomains.length > 0) {
+    adminUpdateData.domainExpertise = validDomains;
+  }
+
   await prisma.user.update({
     where: { id: userId },
-    data: {
-      name: updatedName,
-      email: updatedEmail,
-      passwordHash: newPasswordHash,
-      mustChangePassword: false,
-    },
+    data: adminUpdateData,
   });
 
   await prisma.auditLog.create({
@@ -498,6 +531,62 @@ export async function completeFirstLoginAction(prevState: unknown, formData: For
   return {
     success: true,
     message: 'Admin user name and password updated successfully.',
+  };
+}
+
+// ----------------------------------------------------
+// 5B. Update User Domain Expertise Action
+// Allows faculty, admins, and HOD to record or update their areas of specialization.
+// ----------------------------------------------------
+
+export async function updateUserDomainsAction(domains: string[]) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized: You must be signed in.' };
+  }
+
+  const userId = session.user.id;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    return { error: 'User account not found.' };
+  }
+
+  if (!Array.isArray(domains) || domains.length === 0) {
+    return { error: 'Please select at least one domain of expertise.' };
+  }
+
+  const validDomains = domains.filter((d) => isValidDomain(d));
+  if (validDomains.length === 0) {
+    return { error: 'Please select at least one valid domain of expertise from the list.' };
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      domainExpertise: validDomains,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId,
+      action: 'USER_DOMAIN_EXPERTISE_UPDATED',
+      entity: 'User',
+      entityId: userId,
+      payload: {
+        role: user.role,
+        domainCount: validDomains.length,
+        domains: validDomains,
+      },
+    },
+  });
+
+  revalidatePath('/', 'layout');
+  revalidatePath('/admin/faculty');
+  return {
+    success: true,
+    message: 'Domain expertise recorded successfully!',
+    domains: validDomains,
   };
 }
 

@@ -30,6 +30,7 @@ import {
   completeFirstLoginAction,
   createFacultyAccountAction,
   requestPasswordResetAction,
+  updateUserDomainsAction,
 } from '../app/actions/auth';
 import { prisma } from '../lib/prisma';
 import { auth, signIn } from '@/auth';
@@ -305,5 +306,103 @@ describe('First-Time Login Credential Update (Admin vs Faculty)', () => {
         }),
       })
     );
+  });
+
+  it('saves domain expertise during first-time password reset', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY' },
+    } as any);
+
+    const initialHash = await bcrypt.hash('InitialPass@2026', 10);
+
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'faculty-1',
+      name: 'Dr. Debasish Saha',
+      email: 'faculty.debasish@heritageit.edu',
+      passwordHash: initialHash,
+      role: 'FACULTY',
+      mustChangePassword: true,
+      domainExpertise: [],
+    } as any);
+
+    const updateSpy = vi.spyOn(prisma.user, 'update').mockResolvedValue({} as any);
+    vi.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as any);
+
+    const formData = new FormData();
+    formData.append('currentPassword', 'InitialPass@2026');
+    formData.append('newPassword', 'NewSecretPass@2027');
+    formData.append('confirmPassword', 'NewSecretPass@2027');
+    formData.append('domains', '5G Communication');
+    formData.append('domains', 'Antenna');
+    formData.append('domains', 'AI and ML');
+
+    const res = await completeFirstLoginAction(null, formData);
+    expect(res.error).toBeUndefined();
+    expect(res.success).toBe(true);
+
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'faculty-1' },
+        data: expect.objectContaining({
+          mustChangePassword: false,
+          domainExpertise: ['5G Communication', 'Antenna', 'AI and ML'],
+        }),
+      })
+    );
+  });
+
+  it('allows members who changed password already to specify domain expertise on next login', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-2', role: 'FACULTY' },
+    } as any);
+
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'faculty-2',
+      name: 'Prof. Ananya Chattopadhyay',
+      email: 'ananya@heritageit.edu',
+      role: 'FACULTY',
+      mustChangePassword: false,
+      domainExpertise: [],
+    } as any);
+
+    const updateSpy = vi.spyOn(prisma.user, 'update').mockResolvedValue({} as any);
+    vi.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as any);
+
+    const res = await updateUserDomainsAction([
+      'Analog VLSI',
+      'Digital VLSI',
+      'Embedded System',
+    ]);
+
+    expect(res.error).toBeUndefined();
+    expect(res.success).toBe(true);
+    expect(res.domains).toEqual(['Analog VLSI', 'Digital VLSI', 'Embedded System']);
+
+    expect(updateSpy).toHaveBeenCalledWith({
+      where: { id: 'faculty-2' },
+      data: {
+        domainExpertise: ['Analog VLSI', 'Digital VLSI', 'Embedded System'],
+      },
+    });
+  });
+
+  it('rejects empty or invalid domain expertise submissions', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'admin-1',
+      name: 'Admin Member',
+      email: 'admin@heritageit.edu',
+      role: 'ADMIN',
+      mustChangePassword: false,
+    } as any);
+
+    const emptyRes = await updateUserDomainsAction([]);
+    expect(emptyRes.error).toContain('Please select at least one domain');
+
+    const invalidRes = await updateUserDomainsAction(['Invalid Nonexistent Domain']);
+    expect(invalidRes.error).toContain('valid domain');
   });
 });

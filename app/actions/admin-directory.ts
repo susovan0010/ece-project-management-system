@@ -13,6 +13,7 @@ export interface AdminUserItem {
   email: string;
   active: boolean;
   mustChangePassword: boolean;
+  domainExpertise: string[];
   priority: 'HOD' | 'A' | 'B';
   createdAt: string;
 }
@@ -23,6 +24,7 @@ export interface SupervisorUserItem {
   email: string;
   active: boolean;
   mustChangePassword: boolean;
+  domainExpertise: string[];
   proposedTopicsCount: number;
   groups: Array<{
     id: string;
@@ -78,6 +80,7 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
           email: true,
           active: true,
           mustChangePassword: true,
+          domainExpertise: true,
           createdAt: true,
         },
       }),
@@ -145,6 +148,7 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
         email: a.email,
         active: a.active,
         mustChangePassword: a.mustChangePassword,
+        domainExpertise: a.domainExpertise || [],
         priority,
         createdAt: a.createdAt.toISOString(),
       };
@@ -165,6 +169,7 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
       email: s.email,
       active: s.active,
       mustChangePassword: s.mustChangePassword,
+      domainExpertise: s.domainExpertise || [],
       proposedTopicsCount: s._count?.topics ?? 0,
       groups: (s.groups || []).map((g) => ({
         id: g.id,

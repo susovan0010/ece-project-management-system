@@ -65,6 +65,7 @@ model User {
   role         Role
   active       Boolean     @default(true)
   mustChangePassword Boolean @default(true)
+  domainExpertise String[] @default([])
   preferredAiProvider String? // "Google Gemini" | "Groq" | "ChatGPT"
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
