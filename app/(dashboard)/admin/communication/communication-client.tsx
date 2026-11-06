@@ -19,6 +19,15 @@ import {
   InboxMessageSummary,
   InboxMessageDetail,
 } from '@/app/actions/inbox';
+import {
+  getScheduledCommunicationsAction,
+  createScheduledCommunicationAction,
+  updateScheduleStatusAction,
+  deleteScheduledCommunicationAction,
+  triggerScheduledEmailImmediateAction,
+  processDueScheduledCommunicationsAction,
+  ScheduledCommunicationJob,
+} from '@/app/actions/communication-schedule';
 
 const FACULTY_GOOGLE_GROUP_EMAIL = 'hit_ece_faculties@googlegroups.com';
 
@@ -28,7 +37,33 @@ export default function CommunicationClient() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'COMPOSE' | 'INBOX' | 'HISTORY'>('COMPOSE');
+  const [activeTab, setActiveTab] = useState<'COMPOSE' | 'INBOX' | 'SCHEDULED' | 'HISTORY'>('COMPOSE');
+
+  // Scheduled Email State
+  const [scheduledJobs, setScheduledJobs] = useState<ScheduledCommunicationJob[]>([]);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
+  const [isProcessingDue, setIsProcessingDue] = useState(false);
+  const [actionScheduleId, setActionScheduleId] = useState<string | null>(null);
+  const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null);
+
+  // Delivery Mode and Schedule Configuration
+  const [deliveryMode, setDeliveryMode] = useState<'NOW' | 'SCHEDULE'>('NOW');
+  const [scheduleStartDate, setScheduleStartDate] = useState<string>(() => {
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+  });
+  const [scheduleEndDate, setScheduleEndDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d.toISOString().split('T')[0];
+  });
+  const [scheduleFrequency, setScheduleFrequency] = useState<number>(1);
+  const [scheduleTimeMode, setScheduleTimeMode] = useState<'SPECIFIC' | 'RANDOM_WINDOW'>('SPECIFIC');
+  const [scheduleSpecificTimes, setScheduleSpecificTimes] = useState<string[]>(['10:00']);
+  const [scheduleRandomWindow, setScheduleRandomWindow] = useState<{ startTime: string; endTime: string }>({
+    startTime: '09:00',
+    endTime: '18:00',
+  });
 
   // Inbox State
   const [inboxMessages, setInboxMessages] = useState<InboxMessageSummary[]>([]);
@@ -99,10 +134,11 @@ export default function CommunicationClient() {
     setLoading(true);
     setError(null);
 
-    const [cfgRes, rosterRes, histRes] = await Promise.all([
+    const [cfgRes, rosterRes, histRes, schedRes] = await Promise.all([
       getCommunicationConfigAction(),
       getCommunicationRosterAction(batch),
       getCommunicationHistoryAction(),
+      getScheduledCommunicationsAction(),
     ]);
 
     if (cfgRes.config) {
@@ -124,7 +160,111 @@ export default function CommunicationClient() {
       setHistory(histRes);
     }
 
+    if (schedRes.jobs) {
+      setScheduledJobs(schedRes.jobs);
+    }
+
     setLoading(false);
+  }
+
+  // Load Scheduled Emails
+  async function loadSchedules() {
+    setScheduledLoading(true);
+    const res = await getScheduledCommunicationsAction();
+    if (res.error) {
+      setError(res.error);
+    } else if (res.jobs) {
+      setScheduledJobs(res.jobs);
+    }
+    setScheduledLoading(false);
+  }
+
+  function handleFrequencyChange(newFreq: number) {
+    const clamped = Math.max(1, Math.min(3, newFreq));
+    setScheduleFrequency(clamped);
+    setScheduleSpecificTimes((prev) => {
+      const defaults = ['10:00', '14:00', '18:00'];
+      const updated = [...prev];
+      while (updated.length < clamped) {
+        updated.push(defaults[updated.length] || '12:00');
+      }
+      return updated.slice(0, clamped);
+    });
+  }
+
+  function handleSpecificTimeChange(index: number, value: string) {
+    setScheduleSpecificTimes((prev) => {
+      const copy = [...prev];
+      copy[index] = value;
+      return copy;
+    });
+  }
+
+  async function handleToggleScheduleStatus(jobId: string, currentStatus: string) {
+    setActionScheduleId(jobId);
+    setError(null);
+    const nextStatus = currentStatus === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+    const res = await updateScheduleStatusAction(jobId, nextStatus);
+    setActionScheduleId(null);
+    if (!res.success) {
+      setError(res.error || 'Failed to update schedule status.');
+    } else {
+      setSuccessMsg(`Schedule marked as ${nextStatus}.`);
+      loadSchedules();
+    }
+  }
+
+  async function handleDeleteSchedule(jobId: string) {
+    if (!confirm('Are you sure you want to cancel and delete this scheduled communication?')) return;
+    setActionScheduleId(jobId);
+    setError(null);
+    const res = await deleteScheduledCommunicationAction(jobId);
+    setActionScheduleId(null);
+    if (!res.success) {
+      setError(res.error || 'Failed to delete schedule.');
+    } else {
+      setSuccessMsg('Scheduled communication removed.');
+      loadSchedules();
+    }
+  }
+
+  async function handleTestRunImmediate(jobId: string) {
+    setActionScheduleId(jobId);
+    setError(null);
+    const res = await triggerScheduledEmailImmediateAction(jobId);
+    setActionScheduleId(null);
+    if (!res.success) {
+      setError(res.error || 'Immediate dispatch failed.');
+    } else {
+      setSuccessMsg(res.message || 'Immediate test email successfully sent.');
+      loadSchedules();
+      const hist = await getCommunicationHistoryAction();
+      setHistory(hist);
+    }
+  }
+
+  async function handleProcessDueNow() {
+    setIsProcessingDue(true);
+    setError(null);
+    const res = await processDueScheduledCommunicationsAction();
+    setIsProcessingDue(false);
+    if (!res.success) {
+      setError(res.error || 'Failed to process due communications.');
+    } else {
+      setSuccessMsg(res.message || `Processed due schedules. Dispatched ${res.dispatchedCount} email(s).`);
+      loadSchedules();
+      const hist = await getCommunicationHistoryAction();
+      setHistory(hist);
+    }
+  }
+
+  function getEstimatedOccurrencesCount(start: string, end: string, freq: number): number {
+    if (!start || !end) return 0;
+    const d1 = new Date(start);
+    const d2 = new Date(end);
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d1 > d2) return 0;
+    const days = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return days * Math.max(1, Math.min(3, freq));
   }
 
   useEffect(() => {
@@ -430,61 +570,6 @@ export default function CommunicationClient() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  // Handle Dispatch Message
-  async function handleSendMessage() {
-    if (!subject.trim()) {
-      setError('Please enter a subject line for your message.');
-      return;
-    }
-    if (!messageBody.trim()) {
-      setError('Please write message content before sending.');
-      return;
-    }
-
-    const hasAnyTarget =
-      sendToFacultyGoogleGroup ||
-      selectedFacultyIds.length > 0 ||
-      selectedGroupIds.length > 0 ||
-      customRecipients.length > 0;
-
-    if (!hasAnyTarget) {
-      setError('Please select at least one recipient (Faculty Google Group, Faculty Supervisors, Project Groups, or Custom Recipients).');
-      return;
-    }
-
-    setIsSending(true);
-    setError(null);
-
-    const res = await sendGroupCommunicationAction({
-      batchId: selectedBatch,
-      selectedGroupIds,
-      includeStudents,
-      includeFaculty,
-      sendToFacultyGoogleGroup,
-      selectedFacultyUserIds: selectedFacultyIds,
-      customRecipients,
-      subject,
-      messageBody,
-      attachments,
-    });
-
-    setIsSending(false);
-
-    if (res.error) {
-      setError(res.error);
-    } else {
-      setSuccessMsg(res.message || 'Communication dispatched successfully.');
-      setSubject('');
-      setMessageBody('');
-      setCustomRecipients([]);
-      setAttachments([]);
-      // Reload history
-      const hist = await getCommunicationHistoryAction();
-      setHistory(hist);
-      setTimeout(() => setSuccessMsg(null), 5000);
-    }
-  }
-
   // Compute Active Recipients List
   const selectedGroupsList = groups.filter((g) => selectedGroupIds.includes(g.id));
   const activeStudentRecipients: { groupNum: number; student: any }[] = [];
@@ -517,6 +602,167 @@ export default function CommunicationClient() {
     const q = facultySearch.toLowerCase();
     return f.name.toLowerCase().includes(q) || f.email.toLowerCase().includes(q);
   });
+
+  // Handle Dispatch Message (Immediate or Scheduled)
+  async function handleSendMessage() {
+    if (!subject.trim()) {
+      setError('Please enter a subject line for your message.');
+      return;
+    }
+    if (!messageBody.trim()) {
+      setError('Please write message content before sending.');
+      return;
+    }
+
+    const hasAnyTarget =
+      sendToFacultyGoogleGroup ||
+      selectedFacultyIds.length > 0 ||
+      selectedGroupIds.length > 0 ||
+      customRecipients.length > 0;
+
+    if (!hasAnyTarget) {
+      setError('Please select at least one recipient (Faculty Google Group, Faculty Supervisors, Project Groups, or Custom Recipients).');
+      return;
+    }
+
+    setIsSending(true);
+    setError(null);
+
+    // If Delivery Mode is SCHEDULE
+    if (deliveryMode === 'SCHEDULE') {
+      const recipientList: { name: string; email: string; role: string }[] = [];
+      const seen = new Set<string>();
+
+      if (sendToFacultyGoogleGroup) {
+        recipientList.push({
+          name: 'ECE Faculty Google Group',
+          email: FACULTY_GOOGLE_GROUP_EMAIL,
+          role: 'Faculty Google Group',
+        });
+        seen.add(FACULTY_GOOGLE_GROUP_EMAIL.toLowerCase());
+      }
+
+      activeIndividualFaculty.forEach((f) => {
+        const em = f.email?.trim().toLowerCase();
+        if (em && !seen.has(em)) {
+          seen.add(em);
+          recipientList.push({
+            name: f.name,
+            email: em,
+            role: f.role === 'ADMIN' ? 'Committee Admin' : 'Faculty Supervisor',
+          });
+        }
+      });
+
+      activeStudentRecipients.forEach((s) => {
+        const em = s.student.email?.trim().toLowerCase();
+        if (em && !seen.has(em)) {
+          seen.add(em);
+          recipientList.push({
+            name: s.student.name,
+            email: em,
+            role: `Student (Group ${s.groupNum})`,
+          });
+        }
+      });
+
+      activeSupervisorRecipients.forEach((s) => {
+        const em = s.supervisor.email?.trim().toLowerCase();
+        if (em && !seen.has(em)) {
+          seen.add(em);
+          recipientList.push({
+            name: s.supervisor.name,
+            email: em,
+            role: `Supervisor (Group ${s.groupNum})`,
+          });
+        }
+      });
+
+      customRecipients.forEach((c) => {
+        const em = c.email?.trim().toLowerCase();
+        if (em && !seen.has(em)) {
+          seen.add(em);
+          recipientList.push({
+            name: c.name,
+            email: em,
+            role: 'Ad-hoc Recipient',
+          });
+        }
+      });
+
+      const audienceSummary = `${recipientList.length} recipient(s) [${[
+        sendToFacultyGoogleGroup ? 'Google Group' : '',
+        activeIndividualFaculty.length > 0 ? `${activeIndividualFaculty.length} Faculty/Admin` : '',
+        activeStudentRecipients.length > 0 ? `${activeStudentRecipients.length} Students` : '',
+        customRecipients.length > 0 ? `${customRecipients.length} Custom` : '',
+      ]
+        .filter(Boolean)
+        .join(', ')}]`;
+
+      const schedRes = await createScheduledCommunicationAction({
+        subject: subject.trim(),
+        messageBody: messageBody.trim(),
+        attachments,
+        audienceSummary,
+        recipients: recipientList,
+        startDate: scheduleStartDate,
+        endDate: scheduleEndDate,
+        frequencyPerDay: scheduleFrequency,
+        timeMode: scheduleTimeMode,
+        specificTimes: scheduleTimeMode === 'SPECIFIC' ? scheduleSpecificTimes : undefined,
+        randomWindow: scheduleTimeMode === 'RANDOM_WINDOW' ? scheduleRandomWindow : undefined,
+      });
+
+      setIsSending(false);
+
+      if (!schedRes.success) {
+        setError(schedRes.error || 'Failed to schedule communication.');
+      } else {
+        setSuccessMsg(
+          `Official email successfully scheduled! Total ${schedRes.job?.totalOccurrencesCount || 0} automated run(s) planned between ${scheduleStartDate} and ${scheduleEndDate}.`
+        );
+        setSubject('');
+        setMessageBody('');
+        setCustomRecipients([]);
+        setAttachments([]);
+        setDeliveryMode('NOW');
+        loadSchedules();
+        setActiveTab('SCHEDULED');
+        setTimeout(() => setSuccessMsg(null), 6000);
+      }
+      return;
+    }
+
+    // Default Immediate Dispatch
+    const res = await sendGroupCommunicationAction({
+      batchId: selectedBatch,
+      selectedGroupIds,
+      includeStudents,
+      includeFaculty,
+      sendToFacultyGoogleGroup,
+      selectedFacultyUserIds: selectedFacultyIds,
+      customRecipients,
+      subject,
+      messageBody,
+      attachments,
+    });
+
+    setIsSending(false);
+
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(res.message || 'Communication dispatched successfully.');
+      setSubject('');
+      setMessageBody('');
+      setCustomRecipients([]);
+      setAttachments([]);
+      // Reload history
+      const hist = await getCommunicationHistoryAction();
+      setHistory(hist);
+      setTimeout(() => setSuccessMsg(null), 5000);
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -689,6 +935,27 @@ export default function CommunicationClient() {
               {inboxTotal}
             </span>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('SCHEDULED');
+            loadSchedules();
+          }}
+          className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition whitespace-nowrap ${
+            activeTab === 'SCHEDULED'
+              ? 'border-[#1985A1] text-[#1985A1]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Scheduled Emails</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#eef8fa] text-[#1985A1] font-semibold border border-[#cce3eb]">
+            {scheduledJobs.length}
+          </span>
         </button>
 
         <button
@@ -1161,6 +1428,244 @@ export default function CommunicationClient() {
               )}
             </div>
 
+            {/* Delivery Schedule & Mode Selector */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-[#1985A1]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Delivery Option &amp; Automated Scheduler
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Send now or schedule recurring dispatches across date boundaries (up to 3 times/day).
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMode('NOW')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                      deliveryMode === 'NOW'
+                        ? 'bg-[#1985A1] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>⚡ Send Immediately</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMode('SCHEDULE')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                      deliveryMode === 'SCHEDULE'
+                        ? 'bg-[#1985A1] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>⏱️ Schedule Email</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Schedule Configuration Card (Active when deliveryMode === 'SCHEDULE') */}
+              {deliveryMode === 'SCHEDULE' && (
+                <div className="bg-white border-2 border-[#1985A1]/30 rounded-xl p-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Boundary: Start Date */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Start Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={scheduleStartDate}
+                        onChange={(e) => setScheduleStartDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1985A1] bg-slate-50"
+                      />
+                      <span className="text-[10px] text-slate-400">First day emails will begin dispatching.</span>
+                    </div>
+
+                    {/* Boundary: End Date */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        End Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={scheduleEndDate}
+                        onChange={(e) => setScheduleEndDate(e.target.value)}
+                        className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1985A1] bg-slate-50"
+                      />
+                      <span className="text-[10px] text-slate-400">Final day of the scheduled boundary period.</span>
+                    </div>
+                  </div>
+
+                  {/* Frequency per day: 1, 2, or 3 times (Max 3) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Daily Frequency (How many times per day, max 3 times) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[1, 2, 3].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleFrequencyChange(num)}
+                          className={`py-2 px-3 rounded-lg text-xs font-bold border transition flex flex-col items-center justify-center ${
+                            scheduleFrequency === num
+                              ? 'bg-[#eef8fa] border-[#1985A1] text-[#1985A1] ring-1 ring-[#1985A1]'
+                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{num} {num === 1 ? 'Time / Day' : 'Times / Day'}</span>
+                          <span className="text-[10px] font-normal text-slate-400">
+                            {num === 1 ? 'Once daily' : num === 2 ? 'Twice daily' : 'Max 3 dispatches'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Timing Mode: Specific Times vs Random Window */}
+                  <div className="space-y-3 pt-2 border-t border-slate-100">
+                    <label className="block text-xs font-bold text-slate-700">
+                      When (Time) Will The Email Be Sent?
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setScheduleTimeMode('SPECIFIC')}
+                        className={`p-3 rounded-xl border text-left transition ${
+                          scheduleTimeMode === 'SPECIFIC'
+                            ? 'bg-[#eef8fa] border-[#1985A1] ring-1 ring-[#1985A1]'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="text-xs font-bold text-[#46494C] flex items-center gap-1.5">
+                          <span>⏰ Specific Times</span>
+                          {scheduleTimeMode === 'SPECIFIC' && (
+                            <span className="text-[10px] bg-[#1985A1] text-white px-1.5 py-0.2 rounded font-semibold">Active</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Pick exact times from the time interface.
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setScheduleTimeMode('RANDOM_WINDOW')}
+                        className={`p-3 rounded-xl border text-left transition ${
+                          scheduleTimeMode === 'RANDOM_WINDOW'
+                            ? 'bg-[#eef8fa] border-[#1985A1] ring-1 ring-[#1985A1]'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="text-xs font-bold text-[#46494C] flex items-center gap-1.5">
+                          <span>🎲 Random Within Window</span>
+                          {scheduleTimeMode === 'RANDOM_WINDOW' && (
+                            <span className="text-[10px] bg-[#1985A1] text-white px-1.5 py-0.2 rounded font-semibold">Active</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Randomly anytime between start &amp; end time.
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Mode Specific Times Controls */}
+                    {scheduleTimeMode === 'SPECIFIC' && (
+                      <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                        <div className="text-xs font-semibold text-slate-700">
+                          Select Specific Time(s) from Interface ({scheduleFrequency} slot{scheduleFrequency > 1 ? 's' : ''}):
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {Array.from({ length: scheduleFrequency }).map((_, idx) => (
+                            <div key={idx}>
+                              <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                                Time #{idx + 1}
+                              </label>
+                              <input
+                                type="time"
+                                required
+                                value={scheduleSpecificTimes[idx] || '10:00'}
+                                onChange={(e) => handleSpecificTimeChange(idx, e.target.value)}
+                                className="w-full px-3 py-1.5 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1985A1] bg-white"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mode Random Window Controls */}
+                    {scheduleTimeMode === 'RANDOM_WINDOW' && (
+                      <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                        <div className="text-xs font-semibold text-slate-700">
+                          Set Daily Random Window (Start &amp; End Time):
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                              Window Start Time
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={scheduleRandomWindow.startTime}
+                              onChange={(e) =>
+                                setScheduleRandomWindow((prev) => ({ ...prev, startTime: e.target.value }))
+                              }
+                              className="w-full px-3 py-1.5 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1985A1] bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                              Window End Time
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={scheduleRandomWindow.endTime}
+                              onChange={(e) =>
+                                setScheduleRandomWindow((prev) => ({ ...prev, endTime: e.target.value }))
+                              }
+                              className="w-full px-3 py-1.5 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1985A1] bg-white"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Between {scheduleStartDate || 'Start'} and {scheduleEndDate || 'End'}, {scheduleFrequency} randomized time(s) will be picked strictly between {scheduleRandomWindow.startTime} and {scheduleRandomWindow.endTime}.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Live Schedule Summary Banner */}
+                    <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">📅</span>
+                        <div>
+                          <div className="font-bold">
+                            Total Planned Dispatches: {getEstimatedOccurrencesCount(scheduleStartDate, scheduleEndDate, scheduleFrequency)} run(s)
+                          </div>
+                          <div className="text-[11px] text-blue-700">
+                            Boundary: <span className="font-mono">{scheduleStartDate}</span> to <span className="font-mono">{scheduleEndDate}</span> • {scheduleFrequency} time(s)/day
+                            {scheduleTimeMode === 'SPECIFIC'
+                              ? ` at ${scheduleSpecificTimes.slice(0, scheduleFrequency).join(', ')}`
+                              : ` (Randomized between ${scheduleRandomWindow.startTime} - ${scheduleRandomWindow.endTime})`}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-blue-200 text-blue-900 rounded">
+                        Active Schedule Mode
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Dispatch Banner & Action Button */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
@@ -1200,7 +1705,7 @@ export default function CommunicationClient() {
                 type="button"
                 disabled={isSending || totalCalculatedRecipients === 0}
                 onClick={handleSendMessage}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-md transition disabled:opacity-50 inline-flex items-center gap-2 self-stretch sm:self-auto justify-center"
+                className="px-6 py-2.5 bg-[#1985A1] hover:bg-[#146E85] text-white rounded-xl text-xs font-semibold shadow-md transition disabled:opacity-50 inline-flex items-center gap-2 self-stretch sm:self-auto justify-center"
               >
                 {isSending ? (
                   <>
@@ -1208,7 +1713,14 @@ export default function CommunicationClient() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    Dispatching via Google Workspace...
+                    {deliveryMode === 'SCHEDULE' ? 'Creating Schedule Plan...' : 'Dispatching via Google Workspace...'}
+                  </>
+                ) : deliveryMode === 'SCHEDULE' ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Schedule Email ({getEstimatedOccurrencesCount(scheduleStartDate, scheduleEndDate, scheduleFrequency)} runs for {totalCalculatedRecipients} inboxes)
                   </>
                 ) : (
                   <>
@@ -1808,6 +2320,304 @@ export default function CommunicationClient() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab Content: SCHEDULED */}
+      {activeTab === 'SCHEDULED' && (
+        <div className="space-y-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#eef8fa] text-[#1985A1] border border-[#cce3eb]">
+                  Automated Dispatch Hub
+                </span>
+                <span className="text-xs font-semibold text-slate-400">
+                  {scheduledJobs.length} Scheduled Campaign(s)
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-slate-900 mt-1">
+                Scheduled &amp; Recurring Email Campaigns
+              </h2>
+              <p className="text-xs text-slate-500">
+                Automated email dispatches configured within date boundaries and daily frequency limits (max 3 times/day).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={loadSchedules}
+                disabled={scheduledLoading}
+                className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                {scheduledLoading ? 'Refreshing...' : '↻ Refresh'}
+              </button>
+              <button
+                type="button"
+                onClick={handleProcessDueNow}
+                disabled={isProcessingDue}
+                className="px-4 py-2 bg-[#1985A1] hover:bg-[#146E85] text-white rounded-xl text-xs font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isProcessingDue ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Processing Runs...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Process Due Runs Now
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeliveryMode('SCHEDULE');
+                  setActiveTab('COMPOSE');
+                }}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1.5"
+              >
+                <span>+ Schedule New Email</span>
+              </button>
+            </div>
+          </div>
+
+          {/* List of Scheduled Jobs */}
+          {scheduledJobs.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+              <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mx-auto mb-3 text-2xl">
+                ⏱️
+              </div>
+              <h3 className="font-bold text-slate-800 text-base">No Scheduled Emails Configured</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
+                You have not scheduled any automated communications yet. Switch to &quot;Compose Announcement&quot;, select your recipients, choose &quot;Schedule Email&quot;, and set the date boundary &amp; frequency.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeliveryMode('SCHEDULE');
+                  setActiveTab('COMPOSE');
+                }}
+                className="px-5 py-2.5 bg-[#1985A1] hover:bg-[#146E85] text-white rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                Schedule Your First Email
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {scheduledJobs.map((job) => {
+                const isExpanded = expandedScheduleId === job.id;
+                const progressPct =
+                  job.totalOccurrencesCount > 0
+                    ? Math.round((job.sentOccurrencesCount / job.totalOccurrencesCount) * 100)
+                    : 0;
+
+                const statusColor =
+                  job.status === 'ACTIVE'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    : job.status === 'PAUSED'
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : job.status === 'COMPLETED'
+                    ? 'bg-blue-50 text-blue-800 border-blue-300'
+                    : 'bg-rose-50 text-rose-800 border-rose-300';
+
+                return (
+                  <div
+                    key={job.id}
+                    className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:border-[#1985A1]/40 transition space-y-4"
+                  >
+                    {/* Top Row: Status, Date Boundary, Frequency & Action Buttons */}
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${statusColor}`}>
+                          ● {job.status}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+                          📅 {job.startDate} → {job.endDate}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#eef8fa] text-[#1985A1] border border-[#cce3eb]">
+                          {job.frequencyPerDay} {job.frequencyPerDay === 1 ? 'time/day' : 'times/day'}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                          {job.timeMode === 'SPECIFIC'
+                            ? `Specific: ${job.specificTimes.join(', ')}`
+                            : `Window: ${job.randomWindow.startTime} - ${job.randomWindow.endTime}`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Pause / Resume Button */}
+                        {(job.status === 'ACTIVE' || job.status === 'PAUSED') && (
+                          <button
+                            type="button"
+                            disabled={actionScheduleId === job.id}
+                            onClick={() => handleToggleScheduleStatus(job.id, job.status)}
+                            className="px-3 py-1 text-xs font-semibold rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 transition"
+                          >
+                            {job.status === 'ACTIVE' ? '⏸ Pause' : '▶ Resume'}
+                          </button>
+                        )}
+
+                        {/* Test Run Now Button */}
+                        <button
+                          type="button"
+                          disabled={actionScheduleId === job.id}
+                          onClick={() => handleTestRunImmediate(job.id)}
+                          className="px-3 py-1 text-xs font-semibold rounded-lg border border-[#1985A1] text-[#1985A1] hover:bg-[#eef8fa] transition"
+                          title="Immediately send one test occurrence to verify delivery"
+                        >
+                          ⚡ Test Run Now
+                        </button>
+
+                        {/* Delete / Cancel Button */}
+                        <button
+                          type="button"
+                          disabled={actionScheduleId === job.id}
+                          onClick={() => handleDeleteSchedule(job.id)}
+                          className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition"
+                        >
+                          ✕ Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Middle: Subject, Audience, Progress, Next Run */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                      <div className="md:col-span-7">
+                        <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                          <span>{job.subject}</span>
+                          {job.attachments && job.attachments.length > 0 && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#eef8fa] text-[#1985A1] border border-[#1985A1]/30">
+                              📎 {job.attachments.length}
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{job.messageBody}</p>
+                        <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-2">
+                          <span>Audience: <strong className="text-slate-700">{job.audienceSummary}</strong></span>
+                          <span>•</span>
+                          <span>Created by {job.createdByName}</span>
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-5 bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                        {/* Progress Bar */}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-700">Dispatch Progress</span>
+                          <span className="font-bold text-[#1985A1]">
+                            {job.sentOccurrencesCount} / {job.totalOccurrencesCount} sent ({progressPct}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-[#1985A1] h-full transition-all duration-300"
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+
+                        {/* Next Run Info */}
+                        <div className="flex items-center justify-between text-[11px] pt-1">
+                          <span className="text-slate-500">Next Scheduled Run:</span>
+                          <span className="font-mono font-bold text-slate-800">
+                            {job.nextRunAt
+                              ? new Date(job.nextRunAt).toLocaleString('en-IN', {
+                                  dateStyle: 'medium',
+                                  timeStyle: 'short',
+                                })
+                              : job.status === 'COMPLETED'
+                              ? 'All Runs Completed'
+                              : 'None Pending'}
+                          </span>
+                        </div>
+                        {job.lastSentAt && (
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Last Dispatched:</span>
+                            <span className="font-mono">
+                              {new Date(job.lastSentAt).toLocaleString('en-IN', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Occurrences Accordion Toggle */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedScheduleId(isExpanded ? null : job.id)}
+                        className="text-xs font-semibold text-[#1985A1] hover:underline flex items-center gap-1"
+                      >
+                        <span>{isExpanded ? 'Hide Run Timeline' : 'View Run Timeline'}</span>
+                        <span>({job.occurrences.length} occurrences planned)</span>
+                      </button>
+                      <span className="text-[11px] text-slate-400 font-mono">Job ID: {job.id}</span>
+                    </div>
+
+                    {/* Expanded Occurrences List */}
+                    {isExpanded && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <div className="text-xs font-bold text-slate-800">
+                          Complete Planned Schedule Occurrences ({job.occurrences.length})
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                          {job.occurrences.map((occ, occIdx) => {
+                            const occDateStr = new Date(occ.scheduledAt).toLocaleString('en-IN', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            });
+                            return (
+                              <div
+                                key={occ.id}
+                                className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 text-xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[11px] text-slate-400">#{occIdx + 1}</span>
+                                  <span className="font-mono font-semibold text-slate-800">{occDateStr}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      occ.status === 'SENT'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : occ.status === 'FAILED'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {occ.status}
+                                  </span>
+                                  {occ.sentAt && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      Dispatched {new Date(occ.sentAt).toLocaleTimeString('en-IN', { timeStyle: 'short' })}
+                                    </span>
+                                  )}
+                                  {occ.error && (
+                                    <span className="text-[10px] text-red-500 font-mono" title={occ.error}>
+                                      ⚠️ Failed
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
