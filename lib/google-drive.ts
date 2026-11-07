@@ -85,8 +85,16 @@ function doPost(e) {
     var blob = Utilities.newBlob(decoded, data.mimeType || "application/octet-stream", data.fileName || "attachment");
     var file = targetFolder.createFile(blob);
 
-    // 4. Set Sharing: Anyone with link can view
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // 4. Set Sharing (Protected against Google Workspace domain security restrictions)
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (shareErr) {
+      try {
+        file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (domainErr) {
+        // If domain admin disallows link sharing, file remains stored in committee drive
+      }
+    }
 
     var fileId = file.getId();
     var viewUrl = file.getUrl();
