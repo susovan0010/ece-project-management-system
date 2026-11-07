@@ -123,6 +123,23 @@ function doGet(e) {
 `;
 
 /**
+ * Standard appsscript.json manifest configuration with explicit Drive scope
+ */
+export const GOOGLE_APPSSCRIPT_MANIFEST = `{
+  "timeZone": "Asia/Kolkata",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "webapp": {
+    "executeAs": "USER_DEPLOYING",
+    "access": "ANYONE"
+  },
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/drive"
+  ]
+}`;
+
+/**
  * Robust HTTPS client to handle Google Apps Script 302 redirects & TLS certificate validation
  */
 export function postJsonToAppsScript(
@@ -294,7 +311,7 @@ export async function uploadFileToGoogleDrive(params: {
     if (!result.success) {
       if (typeof result.error === 'string' && result.error.includes('Access denied: DriveApp')) {
         throw new Error(
-          'Google Drive Permission Required: In script.google.com, select "authorizeDrive" from the function dropdown at the top, click Run (▶️), and grant permission to access Google Drive. Then choose "New version" under Deploy -> Manage deployments and click Deploy.'
+          'Google Drive Access Denied: In script.google.com, open Deploy -> Manage deployments -> Edit. Ensure "Execute as" is set to "Me (ece.project.committee@heritageit.edu)" (NOT "User accessing web app") and "Who has access" is "Anyone". Also ensure Drive scope is in appsscript.json, select "New version", and click Deploy.'
         );
       }
       throw new Error(result.error || 'Failed to upload file to Google Drive.');

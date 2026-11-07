@@ -39,6 +39,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
     targetEmail: string;
     maskedWebhookUrl: string | null;
     scriptTemplate: string;
+    manifestTemplate: string;
   } | null>(null);
   const [driveWebhookInput, setDriveWebhookInput] = useState('');
   const [isSavingDrive, setIsSavingDrive] = useState(false);
@@ -46,6 +47,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
   const [driveMessage, setDriveMessage] = useState<string | null>(null);
   const [driveError, setDriveError] = useState<string | null>(null);
   const [copiedScript, setCopiedScript] = useState(false);
+  const [copiedManifest, setCopiedManifest] = useState(false);
 
   async function loadDriveStatus() {
     setDriveError(null);
@@ -57,6 +59,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
         targetEmail: res.targetEmail,
         maskedWebhookUrl: res.maskedWebhookUrl,
         scriptTemplate: res.scriptTemplate,
+        manifestTemplate: res.manifestTemplate,
       });
     }
   }
@@ -583,19 +586,35 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
             <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/50 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-blue-950">How to deploy Google Apps Script in 2 minutes:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (driveConfig?.scriptTemplate) {
-                      navigator.clipboard.writeText(driveConfig.scriptTemplate);
-                      setCopiedScript(true);
-                      setTimeout(() => setCopiedScript(false), 3000);
-                    }
-                  }}
-                  className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs transition inline-flex items-center gap-1"
-                >
-                  <span>{copiedScript ? '✓ Copied!' : '📋 Copy Ready Script'}</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (driveConfig?.manifestTemplate) {
+                        navigator.clipboard.writeText(driveConfig.manifestTemplate);
+                        setCopiedManifest(true);
+                        setTimeout(() => setCopiedManifest(false), 3000);
+                      }
+                    }}
+                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-800 text-white text-[10px] font-bold shadow-xs transition"
+                    title="Copy appsscript.json manifest with Drive OAuth scopes"
+                  >
+                    <span>{copiedManifest ? '✓ Copied Manifest!' : '📋 Copy appsscript.json'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (driveConfig?.scriptTemplate) {
+                        navigator.clipboard.writeText(driveConfig.scriptTemplate);
+                        setCopiedScript(true);
+                        setTimeout(() => setCopiedScript(false), 3000);
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs transition inline-flex items-center gap-1"
+                  >
+                    <span>{copiedScript ? '✓ Copied!' : '📋 Copy Ready Script'}</span>
+                  </button>
+                </div>
               </div>
               <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
                 <li>Log in to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">script.google.com</a> using <strong>ece.project.committee@heritageit.edu</strong>.</li>

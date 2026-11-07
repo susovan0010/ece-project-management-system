@@ -137,7 +137,7 @@ describe('Google Drive Attachment Hosting (ece.project.committee@heritageit.edu)
 
     expect(result.success).toBe(true);
     expect(result.hostedOn).toBe('LOCAL_FALLBACK');
-    expect(result.error).toContain('Google Drive Permission Required');
+    expect(result.error).toContain('Google Drive Access Denied');
   });
 
   it('handles network failure with resilient fallback without crashing user flow', async () => {

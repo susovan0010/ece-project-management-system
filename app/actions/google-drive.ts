@@ -7,6 +7,7 @@ import {
   getGoogleDriveConfig,
   OFFICIAL_DRIVE_ACCOUNT,
   GOOGLE_APPS_SCRIPT_TEMPLATE,
+  GOOGLE_APPSSCRIPT_MANIFEST,
   uploadFileToGoogleDrive,
 } from '@/lib/google-drive';
 
@@ -19,6 +20,7 @@ export async function getGoogleDriveStatusAction(): Promise<{
   targetEmail: string;
   maskedWebhookUrl: string | null;
   scriptTemplate: string;
+  manifestTemplate: string;
   error?: string;
 }> {
   const session = await auth();
@@ -29,6 +31,7 @@ export async function getGoogleDriveStatusAction(): Promise<{
       targetEmail: OFFICIAL_DRIVE_ACCOUNT,
       maskedWebhookUrl: null,
       scriptTemplate: GOOGLE_APPS_SCRIPT_TEMPLATE,
+      manifestTemplate: GOOGLE_APPSSCRIPT_MANIFEST,
       error: 'Unauthorized.',
     };
   }
@@ -47,6 +50,7 @@ export async function getGoogleDriveStatusAction(): Promise<{
     targetEmail: OFFICIAL_DRIVE_ACCOUNT,
     maskedWebhookUrl: masked,
     scriptTemplate: GOOGLE_APPS_SCRIPT_TEMPLATE,
+    manifestTemplate: GOOGLE_APPSSCRIPT_MANIFEST,
   };
 }
 
