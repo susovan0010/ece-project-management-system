@@ -20,7 +20,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           .object({
             email: z.string().email(),
             password: z.string().min(6),
-            loginRole: z.enum(['FACULTY', 'ADMIN']).optional().default('FACULTY'),
+            loginRole: z.enum(['FACULTY', 'ADMIN', 'STUDENT']).optional().default('FACULTY'),
           })
           .safeParse(credentials);
 
@@ -43,13 +43,26 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
+        // Student accounts can only sign in as STUDENT.
+        if (loginRole === 'STUDENT' && user.role !== 'STUDENT') {
+          return null;
+        }
+        if (user.role === 'STUDENT' && loginRole !== 'STUDENT') {
+          return null;
+        }
+
         // Only accounts with DB role ADMIN can sign in as ADMIN.
         // Both FACULTY and ADMIN accounts can sign in as FACULTY (Supervisor).
         if (loginRole === 'ADMIN' && user.role !== 'ADMIN') {
           return null;
         }
 
-        const effectiveRole = loginRole === 'ADMIN' ? 'ADMIN' : 'FACULTY';
+        const effectiveRole =
+          loginRole === 'STUDENT'
+            ? 'STUDENT'
+            : loginRole === 'ADMIN'
+            ? 'ADMIN'
+            : 'FACULTY';
 
         return {
           id: user.id,

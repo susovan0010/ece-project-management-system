@@ -210,6 +210,7 @@ describe('Scheduled Communication Server Actions & Cron Endpoint', () => {
       frequencyPerDay: 1,
       timeMode: 'SPECIFIC',
       specificTimes: ['10:00'],
+      randomWindow: { startTime: '09:00', endTime: '18:00' },
       occurrences: [
         {
           id: 'occ-1',

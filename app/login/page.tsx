@@ -7,7 +7,7 @@ import { loginAction } from '@/app/actions/auth';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [loginRole, setLoginRole] = useState<'FACULTY' | 'ADMIN'>('FACULTY');
+  const [loginRole, setLoginRole] = useState<'FACULTY' | 'ADMIN' | 'STUDENT'>('FACULTY');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -63,10 +63,31 @@ export default function LoginPage() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-2">
               Sign In Role
             </label>
-            <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Sign In Role">
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Sign In Role">
+              <label
+                onClick={() => setLoginRole('STUDENT')}
+                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition text-center ${
+                  loginRole === 'STUDENT'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 border-[#C5C3C6] text-[#4C5C68] hover:bg-slate-100'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="loginRole"
+                  value="STUDENT"
+                  checked={loginRole === 'STUDENT'}
+                  onChange={() => setLoginRole('STUDENT')}
+                  className="sr-only"
+                />
+                <span className="text-base mb-0.5">🎓</span>
+                <div className="text-[#46494C]">Student</div>
+                <div className="text-[9px] font-normal text-[#4C5C68]">Project Portal</div>
+              </label>
+
               <label
                 onClick={() => setLoginRole('FACULTY')}
-                className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition text-center ${
                   loginRole === 'FACULTY'
                     ? 'bg-[#eef8fa] border-[#1985A1] text-[#1985A1] ring-2 ring-[#1985A1]/20'
                     : 'bg-slate-50 border-[#C5C3C6] text-[#4C5C68] hover:bg-slate-100'
@@ -78,17 +99,16 @@ export default function LoginPage() {
                   value="FACULTY"
                   checked={loginRole === 'FACULTY'}
                   onChange={() => setLoginRole('FACULTY')}
-                  className="h-4 w-4 text-[#1985A1] focus:ring-[#1985A1] border-[#C5C3C6]"
+                  className="sr-only"
                 />
-                <div>
-                  <div className="text-[#46494C]">Supervisor</div>
-                  <div className="text-[10px] font-normal text-[#4C5C68]">Faculty Workspace</div>
-                </div>
+                <span className="text-base mb-0.5">👨‍🏫</span>
+                <div className="text-[#46494C]">Supervisor</div>
+                <div className="text-[9px] font-normal text-[#4C5C68]">Faculty Hub</div>
               </label>
 
               <label
                 onClick={() => setLoginRole('ADMIN')}
-                className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition text-center ${
                   loginRole === 'ADMIN'
                     ? 'bg-amber-50 border-amber-600 text-amber-900 ring-2 ring-amber-500/20'
                     : 'bg-slate-50 border-[#C5C3C6] text-[#4C5C68] hover:bg-slate-100'
@@ -100,12 +120,11 @@ export default function LoginPage() {
                   value="ADMIN"
                   checked={loginRole === 'ADMIN'}
                   onChange={() => setLoginRole('ADMIN')}
-                  className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-[#C5C3C6]"
+                  className="sr-only"
                 />
-                <div>
-                  <div className="text-[#46494C]">Admin</div>
-                  <div className="text-[10px] font-normal text-[#4C5C68]">Project Committee</div>
-                </div>
+                <span className="text-base mb-0.5">🛡️</span>
+                <div className="text-[#46494C]">Admin</div>
+                <div className="text-[9px] font-normal text-[#4C5C68]">Committee</div>
               </label>
             </div>
           </div>
@@ -115,7 +134,9 @@ export default function LoginPage() {
               htmlFor="email"
               className="block text-xs font-semibold uppercase tracking-wider text-[#46494C] mb-1.5"
             >
-              Institute or Registered Email
+              {loginRole === 'STUDENT'
+                ? 'Student Registered Email'
+                : 'Institute or Registered Email'}
             </label>
             <input
               id="email"
@@ -123,7 +144,11 @@ export default function LoginPage() {
               type="email"
               required
               autoComplete="email"
-              placeholder="faculty@heritageit.edu"
+              placeholder={
+                loginRole === 'STUDENT'
+                  ? 'student.demo@heritageit.edu'
+                  : 'faculty@heritageit.edu'
+              }
               className="w-full px-4 py-2.5 bg-slate-50 border border-[#C5C3C6] rounded-lg text-[#46494C] text-sm focus:outline-none focus:ring-2 focus:ring-[#1985A1] focus:bg-white transition"
             />
           </div>
@@ -169,6 +194,8 @@ export default function LoginPage() {
               </>
             ) : loginRole === 'ADMIN' ? (
               'Sign In as Admin'
+            ) : loginRole === 'STUDENT' ? (
+              'Sign In as Student'
             ) : (
               'Sign In as Supervisor'
             )}

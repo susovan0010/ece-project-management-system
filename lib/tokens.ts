@@ -5,7 +5,11 @@ import { prisma } from './prisma';
  * Generates an invite token for a faculty member.
  * Default validity: 72 hours.
  */
-export async function createInviteToken(email: string, role: 'FACULTY' | 'ADMIN' = 'FACULTY', hoursValid = 72) {
+export async function createInviteToken(
+  email: string,
+  role: 'FACULTY' | 'ADMIN' | 'STUDENT' = 'FACULTY',
+  hoursValid = 72
+) {
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + hoursValid * 60 * 60 * 1000);
 

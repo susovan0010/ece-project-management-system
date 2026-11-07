@@ -23,14 +23,15 @@ import { isValidDomain } from '@/lib/constants/domains';
 const SignInSchema = z.object({
   email: z.string().email('Please enter a valid institute or registered email.'),
   password: z.string().min(6, 'Password must be at least 6 characters.'),
-  loginRole: z.enum(['FACULTY', 'ADMIN']).default('FACULTY'),
+  loginRole: z.enum(['FACULTY', 'ADMIN', 'STUDENT']).default('FACULTY'),
 });
 
 export async function loginAction(prevState: unknown, formData: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
   const rawRole = (formData.get('loginRole') as string) || 'FACULTY';
-  const loginRole = rawRole === 'ADMIN' ? 'ADMIN' : 'FACULTY';
+  const loginRole =
+    rawRole === 'ADMIN' ? 'ADMIN' : rawRole === 'STUDENT' ? 'STUDENT' : 'FACULTY';
 
   const parsed = SignInSchema.safeParse({ email, password, loginRole });
   if (!parsed.success) {
@@ -51,6 +52,20 @@ export async function loginAction(prevState: unknown, formData: FormData) {
       };
     }
 
+    if (user && parsed.data.loginRole === 'STUDENT' && user.role !== 'STUDENT') {
+      return {
+        error:
+          'Access denied: This account is not registered as a Student. Please select Supervisor or Admin to sign in.',
+      };
+    }
+
+    if (user && user.role === 'STUDENT' && parsed.data.loginRole !== 'STUDENT') {
+      return {
+        error:
+          'Access denied: Student accounts must sign in using the Student portal role.',
+      };
+    }
+
     // Authenticate through NextAuth with selected loginRole
     await signIn('credentials', {
       email: cleanEmail,
@@ -61,7 +76,12 @@ export async function loginAction(prevState: unknown, formData: FormData) {
 
     return {
       success: true,
-      redirectTo: parsed.data.loginRole === 'ADMIN' ? '/admin/dashboard' : '/faculty/topics',
+      redirectTo:
+        parsed.data.loginRole === 'ADMIN'
+          ? '/admin/dashboard'
+          : parsed.data.loginRole === 'STUDENT'
+          ? '/student/project-details'
+          : '/faculty/topics',
     };
   } catch (err) {
     return { error: 'Invalid email or password. Please verify credentials.' };
@@ -213,6 +233,14 @@ export async function acceptInviteAction(prevState: unknown, formData: FormData)
       active: true,
     },
   });
+
+  // If Student, link to Student model
+  if (invite.role === 'STUDENT') {
+    await prisma.student.updateMany({
+      where: { email: invite.email.toLowerCase() },
+      data: { userId: newUser.id },
+    });
+  }
 
   // Consume token
   await prisma.inviteToken.delete({ where: { id: invite.id } });

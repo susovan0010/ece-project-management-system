@@ -15,6 +15,13 @@ import {
   removeStudentAction,
   StudentGroupItem,
 } from '@/app/actions/admin-directory';
+import {
+  getStudentAllocationInviteStatsAction,
+  sendBulkStudentInvitationsAction,
+  sendSingleStudentInviteAction,
+  StudentInviteStats,
+  StudentAccountStatus,
+} from '@/app/actions/student-invite';
 
 export default function AdminAllocationPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -43,11 +50,19 @@ export default function AdminAllocationPage() {
   const [rosterSearch, setRosterSearch] = useState<string>('');
   const [rosterLoading, setRosterLoading] = useState<boolean>(true);
 
+  // Student Invite State
+  const [inviteStats, setInviteStats] = useState<StudentInviteStats | null>(null);
+  const [studentStatusMap, setStudentStatusMap] = useState<Record<string, StudentAccountStatus>>({});
+  const [showBulkInviteModal, setShowBulkInviteModal] = useState(false);
+  const [isSendingBulk, setIsSendingBulk] = useState(false);
+  const [singleInvitingId, setSingleInvitingId] = useState<string | null>(null);
+
   async function loadSummary(batch = selectedBatch) {
     setRosterLoading(true);
-    const [res, dirRes] = await Promise.all([
+    const [res, dirRes, statsRes] = await Promise.all([
       getAllocationSummaryAction(),
       getAdminDirectoryDataAction(batch),
+      getStudentAllocationInviteStatsAction(batch),
     ]);
     if (!res.error) {
       setSummary({
@@ -59,6 +74,10 @@ export default function AdminAllocationPage() {
     if (!dirRes.error) {
       setStudentRoster(dirRes.students || []);
       setBatchesList(dirRes.batches || []);
+    }
+    if (statsRes?.success && statsRes.stats) {
+      setInviteStats(statsRes.stats);
+      setStudentStatusMap(statsRes.statusMap || {});
     }
     setRosterLoading(false);
   }
@@ -80,6 +99,37 @@ export default function AdminAllocationPage() {
       await loadSummary(selectedBatch);
     }
     setRemovingStudentId(null);
+  }
+
+  async function handleSendSingleInvite(studentId: string, studentName: string) {
+    setSingleInvitingId(studentId);
+    setError(null);
+    setSuccessMsg(null);
+    const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+    const res = await sendSingleStudentInviteAction(studentId, origin);
+    setSingleInvitingId(null);
+    if (!res.success) {
+      setError(res.error || 'Failed to send invitation.');
+    } else {
+      setSuccessMsg(res.message || `Invitation successfully sent to ${studentName}.`);
+      await loadSummary(selectedBatch);
+    }
+  }
+
+  async function handleSendBulkInvites() {
+    setIsSendingBulk(true);
+    setError(null);
+    setSuccessMsg(null);
+    const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+    const res = await sendBulkStudentInvitationsAction(selectedBatch, origin);
+    setIsSendingBulk(false);
+    setShowBulkInviteModal(false);
+    if (!res.success) {
+      setError(res.error || 'Failed to dispatch bulk invitations.');
+    } else {
+      setSuccessMsg(res.message || 'Bulk student invitations dispatched successfully!');
+      await loadSummary(selectedBatch);
+    }
   }
 
   // ----------------------------------------------------
@@ -574,6 +624,152 @@ export default function AdminAllocationPage() {
         </div>
       )}
 
+      {/* Student Portal Login Invitations Banner */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-6 shadow-md border border-blue-800/60 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/30 text-blue-200 border border-blue-400/40">
+                Student Access Management
+              </span>
+              <span className="text-xs text-blue-300">
+                Official Sender: <span className="font-mono font-semibold text-white">ece.project.committee@heritageit.edu</span>
+              </span>
+            </div>
+            <h3 className="text-lg font-bold tracking-tight text-white">
+              Student Portal Login Invitations
+            </h3>
+            <p className="text-xs text-blue-200 max-w-2xl leading-relaxed">
+              When students and groups are allocated to their respective supervisors, dispatch official login invitations in bulk.
+              Upon logging in, students can review their assigned project topic, supervisor contact details, and group members via <span className="font-semibold text-white">Student \ Project Details</span>.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowBulkInviteModal(true)}
+              disabled={isSendingBulk || !inviteStats || (inviteStats.uninvitedCount === 0 && inviteStats.pendingInviteCount === 0)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span>
+                {isSendingBulk ? 'Dispatching...' : `Dispatch Bulk Invitations (${(inviteStats?.uninvitedCount ?? 0) + (inviteStats?.pendingInviteCount ?? 0)})`}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Invite Status Breakdown Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t border-blue-800/40 text-xs">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+            <span className="text-slate-400 block text-[11px]">Total Allocated</span>
+            <span className="text-lg font-bold text-white font-mono">{inviteStats?.totalAllocatedStudents ?? 0}</span>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+            <span className="text-slate-400 block text-[11px]">Valid Emails</span>
+            <span className="text-lg font-bold text-blue-300 font-mono">{inviteStats?.studentsWithValidEmail ?? 0}</span>
+          </div>
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+            <span className="text-emerald-300 block text-[11px]">Active Logged-in</span>
+            <span className="text-lg font-bold text-emerald-400 font-mono">{inviteStats?.activeAccountsCount ?? 0}</span>
+          </div>
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+            <span className="text-amber-300 block text-[11px]">Pending Invites</span>
+            <span className="text-lg font-bold text-amber-400 font-mono">{inviteStats?.pendingInviteCount ?? 0}</span>
+          </div>
+          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-3">
+            <span className="text-cyan-300 block text-[11px]">Ready to Invite</span>
+            <span className="text-lg font-bold text-cyan-300 font-mono">{inviteStats?.uninvitedCount ?? 0}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Bulk Invite Confirmation Modal */}
+      {showBulkInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  ✉️
+                </span>
+                <h3 className="font-bold text-slate-900 text-base">Confirm Bulk Student Invitations</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkInviteModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600">
+              <p>
+                You are about to dispatch official portal invitations for target batch:{' '}
+                <span className="font-bold font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                  {selectedBatch === 'ALL' ? 'All Batches' : `Batch ${selectedBatch}`}
+                </span>
+              </p>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 font-mono text-xs">
+                <div className="flex justify-between text-slate-700">
+                  <span>Target Students:</span>
+                  <span className="font-bold">{(inviteStats?.uninvitedCount ?? 0) + (inviteStats?.pendingInviteCount ?? 0)} students</span>
+                </div>
+                <div className="flex justify-between text-emerald-700">
+                  <span>Already Active (will be skipped):</span>
+                  <span className="font-bold">{inviteStats?.activeAccountsCount ?? 0}</span>
+                </div>
+                {inviteStats && (inviteStats.totalAllocatedStudents - inviteStats.studentsWithValidEmail) > 0 ? (
+                  <div className="flex justify-between text-amber-700">
+                    <span>Missing Email (will be skipped):</span>
+                    <span className="font-bold">{inviteStats.totalAllocatedStudents - inviteStats.studentsWithValidEmail}</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] leading-relaxed">
+                <span className="font-bold">Email Content:</span> Each student will receive a 7-day secure invite token from{' '}
+                <span className="font-mono font-semibold">ece.project.committee@heritageit.edu</span> with direct instructions to set their initial password and access their project allocation dashboard.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                disabled={isSendingBulk}
+                onClick={() => setShowBulkInviteModal(false)}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSendingBulk}
+                onClick={handleSendBulkInvites}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition disabled:opacity-50"
+              >
+                {isSendingBulk ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    <span>Sending Invitations...</span>
+                  </>
+                ) : (
+                  <span>Send All Invitations Now</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Enrolled Students & Corresponding Project Groups Roster Table */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -621,13 +817,14 @@ export default function AdminAllocationPage() {
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Project Topic</th>
                 <th className="px-4 py-3">Supervisor</th>
+                <th className="px-4 py-3">Account Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rosterLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={10} className="px-6 py-10 text-center text-slate-400">
                     Loading student-group roster...
                   </td>
                 </tr>
@@ -652,84 +849,126 @@ export default function AdminAllocationPage() {
                   if (filtered.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={9} className="px-6 py-10 text-center text-slate-400">
+                        <td colSpan={10} className="px-6 py-10 text-center text-slate-400">
                           No allocated students found matching the criteria.
                         </td>
                       </tr>
                     );
                   }
 
-                  return filtered.map((st, idx) => (
-                    <tr key={`${st.studentId}-${st.groupId || idx}`} className="hover:bg-slate-50/70 transition">
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        {st.groupNumber !== null ? (
-                          <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
-                            Group {st.groupNumber}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500">
-                            Unassigned
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                          {st.batchId || '-'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">{st.roll}</td>
-                      <td className="px-4 py-3.5 font-semibold text-slate-900 whitespace-nowrap">{st.name}</td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        {st.email ? (
-                          <a
-                            href={`mailto:${st.email}`}
-                            className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                          >
-                            {st.email}
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 italic">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 font-mono text-xs text-slate-600 whitespace-nowrap">
-                        {st.phone || <span className="text-slate-400 italic">-</span>}
-                      </td>
-                      <td className="px-4 py-3.5 max-w-xs">
-                        {st.topicCode ? (
-                          <div>
-                            <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                              {st.topicCode}
+                  return filtered.map((st, idx) => {
+                    const stStatus = studentStatusMap[st.studentId] || (st.email ? 'READY_TO_INVITE' : 'NO_EMAIL');
+                    const isSingleSending = singleInvitingId === st.studentId;
+
+                    return (
+                      <tr key={`${st.studentId}-${st.groupId || idx}`} className="hover:bg-slate-50/70 transition">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          {st.groupNumber !== null ? (
+                            <span className="px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
+                              Group {st.groupNumber}
                             </span>
-                            <p className="text-xs text-slate-700 mt-1 line-clamp-1" title={st.topicTitle || ''}>
-                              {st.topicTitle}
-                            </p>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500">
+                              Unassigned
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {st.batchId || '-'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">{st.roll}</td>
+                        <td className="px-4 py-3.5 font-semibold text-slate-900 whitespace-nowrap">{st.name}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          {st.email ? (
+                            <a
+                              href={`mailto:${st.email}`}
+                              className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              {st.email}
+                            </a>
+                          ) : (
+                            <span className="text-slate-400 italic">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-slate-600 whitespace-nowrap">
+                          {st.phone || <span className="text-slate-400 italic">-</span>}
+                        </td>
+                        <td className="px-4 py-3.5 max-w-xs">
+                          {st.topicCode ? (
+                            <div>
+                              <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                {st.topicCode}
+                              </span>
+                              <p className="text-xs text-slate-700 mt-1 line-clamp-1" title={st.topicTitle || ''}>
+                                {st.topicTitle}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Not allotted</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {st.supervisorName ? (
+                            <div>
+                              <div className="font-semibold text-slate-900 whitespace-nowrap">{st.supervisorName}</div>
+                              <div className="text-[10px] text-slate-400">{st.supervisorEmail}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          {stStatus === 'ACTIVE' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Active Account
+                            </span>
+                          )}
+                          {stStatus === 'INVITED' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              Invite Pending
+                            </span>
+                          )}
+                          {stStatus === 'READY_TO_INVITE' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              Ready to Invite
+                            </span>
+                          )}
+                          {stStatus === 'NO_EMAIL' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
+                              No Email
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            {st.email && stStatus !== 'ACTIVE' && (
+                              <button
+                                type="button"
+                                disabled={isSingleSending}
+                                onClick={() => handleSendSingleInvite(st.studentId, st.name)}
+                                className="px-2.5 py-1 rounded text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition disabled:opacity-50"
+                                title={stStatus === 'INVITED' ? 'Re-send invitation email' : 'Send invitation email'}
+                              >
+                                {isSingleSending ? 'Sending...' : stStatus === 'INVITED' ? 'Re-send Invite' : 'Send Invite'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={removingStudentId === st.studentId}
+                              onClick={() => handleRemoveStudent(st.studentId, st.name, st.roll)}
+                              className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
+                            >
+                              {removingStudentId === st.studentId ? 'Removing...' : 'Remove'}
+                            </button>
                           </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Not allotted</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {st.supervisorName ? (
-                          <div>
-                            <div className="font-semibold text-slate-900 whitespace-nowrap">{st.supervisorName}</div>
-                            <div className="text-[10px] text-slate-400">{st.supervisorEmail}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          disabled={removingStudentId === st.studentId}
-                          onClick={() => handleRemoveStudent(st.studentId, st.name, st.roll)}
-                          className="px-2.5 py-1 rounded text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition disabled:opacity-50"
-                        >
-                          {removingStudentId === st.studentId ? 'Removing...' : 'Remove'}
-                        </button>
-                      </td>
-                    </tr>
-                  ));
+                        </td>
+                      </tr>
+                    );
+                  });
                 })()
               )}
             </tbody>

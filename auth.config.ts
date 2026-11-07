@@ -28,6 +28,11 @@ export const authConfig: NextAuthConfig = {
 
       const userRole = (auth.user as { role?: string })?.role;
 
+      // Student route protection
+      if (pathname.startsWith('/student')) {
+        return userRole === 'STUDENT';
+      }
+
       // Admin route protection: strict server-side check
       if (pathname.startsWith('/admin')) {
         return userRole === 'ADMIN';

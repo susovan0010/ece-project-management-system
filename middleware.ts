@@ -35,17 +35,25 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Invariant 1: Faculty hitting an admin URL returns HTTP 403 Forbidden
+  // Invariant 1: Non-Admin hitting an admin URL returns HTTP 403 Forbidden
   if (pathname.startsWith('/admin') && userRole !== 'ADMIN') {
-    return new NextResponse('Forbidden: Faculty cannot access Admin Console (403)', {
+    return new NextResponse('Forbidden: Access restricted to Project Committee Admin (403)', {
       status: 403,
       headers: { 'Content-Type': 'text/plain' },
     });
   }
 
-  // Invariant 2: Admin cannot open the Propose screens (returns HTTP 403 Forbidden)
-  if (pathname === '/faculty/topics/new' && userRole === 'ADMIN') {
-    return new NextResponse('Forbidden: Admin cannot propose project topics (403)', {
+  // Invariant 2: Non-Faculty hitting a faculty URL returns HTTP 403 Forbidden
+  if (pathname.startsWith('/faculty') && userRole !== 'FACULTY') {
+    return new NextResponse('Forbidden: Access restricted to Faculty Supervisors (403)', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
+  // Invariant 3: Non-Student hitting a student URL returns HTTP 403 Forbidden
+  if (pathname.startsWith('/student') && userRole !== 'STUDENT') {
+    return new NextResponse('Forbidden: Access restricted to Enrolled Students (403)', {
       status: 403,
       headers: { 'Content-Type': 'text/plain' },
     });

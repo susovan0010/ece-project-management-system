@@ -6,7 +6,7 @@ import { logoutAction } from '@/app/actions/auth';
 import { AuthorityLevel } from '@/lib/admin-priority';
 
 interface SidebarProps {
-  role: 'ADMIN' | 'FACULTY';
+  role: 'ADMIN' | 'FACULTY' | 'STUDENT';
   authorityLevel?: AuthorityLevel;
   userName: string;
   userEmail: string;
@@ -64,7 +64,15 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
     { label: 'My Groups Attainment', href: '/faculty/attainment', icon: 'M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z' },
   ];
 
-  const links = role === 'ADMIN' ? adminLinks : facultyLinks;
+  const studentLinks = [
+    {
+      label: 'Student\\Project Details',
+      href: '/student/project-details',
+      icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+    },
+  ];
+
+  const links = role === 'ADMIN' ? adminLinks : role === 'STUDENT' ? studentLinks : facultyLinks;
 
   return (
     <aside className="no-print print:hidden w-64 bg-slate-900 text-slate-100 flex flex-col min-h-screen border-r border-slate-800">
@@ -90,7 +98,9 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
         </span>
         <span
           className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${
-            role === 'ADMIN' && authorityLevel === 'HOD'
+            role === 'STUDENT'
+              ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40'
+              : role === 'ADMIN' && authorityLevel === 'HOD'
               ? 'bg-purple-500/25 text-purple-300 border border-purple-500/40'
               : role === 'ADMIN' && authorityLevel === 'SUPER_ADMIN'
               ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
@@ -99,7 +109,9 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
               : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
           }`}
         >
-          {role === 'ADMIN' && authorityLevel === 'HOD'
+          {role === 'STUDENT'
+            ? 'STUDENT'
+            : role === 'ADMIN' && authorityLevel === 'HOD'
             ? 'HOD (SUPREME)'
             : role === 'ADMIN' && authorityLevel === 'SUPER_ADMIN'
             ? 'SUPER ADMIN (A)'
@@ -111,6 +123,11 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
 
       {/* Navigation Links */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {role === 'STUDENT' && (
+          <div className="px-3 pt-1 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Student Profile
+          </div>
+        )}
         {links.map((link) => {
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
           return (

@@ -16,6 +16,7 @@ generator client {
 enum Role {
   ADMIN
   FACULTY
+  STUDENT
 }
 
 enum TopicSource {
@@ -70,6 +71,7 @@ model User {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
+  student      Student?
   topics       Topic[]     @relation("proposer")
   groups       Group[]     @relation("supervisor")
   markEntries  MarkEntry[] @relation("enteredBy")
@@ -84,12 +86,15 @@ model Student {
   roll      String        @unique
   phone     String?
   email     String?
+  userId    String?       @unique
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt DateTime      @default(now())
 
   groups    GroupMember[]
   marks     MarkEntry[]
 
   @@index([roll])
+  @@index([email])
 }
 
 // ------------------------------------------

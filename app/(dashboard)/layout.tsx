@@ -28,9 +28,16 @@ export default async function DashboardLayout({
     },
   });
 
-  const sessionRole = (session.user as { role?: string })?.role as 'ADMIN' | 'FACULTY' | undefined;
-  const role = (sessionRole || dbUser?.role || 'FACULTY') as 'ADMIN' | 'FACULTY';
-  const accountRole = (dbUser?.role || role) as 'ADMIN' | 'FACULTY';
+  const sessionRole = (session.user as { role?: string })?.role as
+    | 'ADMIN'
+    | 'FACULTY'
+    | 'STUDENT'
+    | undefined;
+  const role = (sessionRole || dbUser?.role || 'FACULTY') as
+    | 'ADMIN'
+    | 'FACULTY'
+    | 'STUDENT';
+  const accountRole = (dbUser?.role || role) as 'ADMIN' | 'FACULTY' | 'STUDENT';
   const userName = dbUser?.name || session.user.name || 'Department Member';
   const userEmail = dbUser?.email || session.user.email || '';
   const mustChangePassword = dbUser?.mustChangePassword ?? false;
@@ -39,10 +46,11 @@ export default async function DashboardLayout({
   const authorityLevel = await resolveUserAuthority({
     id: session.user.id,
     email: userEmail,
-    role,
+    role: role === 'STUDENT' ? 'FACULTY' : role,
   });
 
   const isHodPendingRemoval =
+    role === 'ADMIN' &&
     Boolean(authority.hodRemovalRequested && authority.hodUserId === session.user.id);
 
   return (
@@ -64,28 +72,40 @@ export default async function DashboardLayout({
         <header className="no-print print:hidden h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10">
           <div>
             <h1 className="text-base font-semibold text-slate-800 tracking-tight">
-              {role === 'ADMIN' ? 'Project Committee Administration' : 'Supervisor Project Workspace'}
+              {role === 'ADMIN'
+                ? 'Project Committee Administration'
+                : role === 'STUDENT'
+                ? 'Student Project Portal'
+                : 'Supervisor Project Workspace'}
             </h1>
             <p className="text-xs text-slate-500">
               Department of Electronics and Communication Engineering • Heritage Institute of Technology
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <FirstLoginModal
-              role={accountRole}
-              userName={userName}
-              userEmail={userEmail}
-              mustChangePassword={mustChangePassword}
-              userDomains={dbUser?.domainExpertise || []}
-            />
+            {role !== 'STUDENT' && (
+              <FirstLoginModal
+                role={accountRole as 'ADMIN' | 'FACULTY'}
+                userName={userName}
+                userEmail={userEmail}
+                mustChangePassword={mustChangePassword}
+                userDomains={dbUser?.domainExpertise || []}
+              />
+            )}
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                 role === 'ADMIN'
                   ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                  : role === 'STUDENT'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                   : 'bg-blue-100 text-blue-800 border border-blue-300'
               }`}
             >
-              {role === 'ADMIN' ? 'Committee Member' : 'Faculty Supervisor'}
+              {role === 'ADMIN'
+                ? 'Committee Member'
+                : role === 'STUDENT'
+                ? 'Enrolled Student'
+                : 'Faculty Supervisor'}
             </span>
           </div>
         </header>
