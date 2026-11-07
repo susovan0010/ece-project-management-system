@@ -207,6 +207,11 @@ export async function uploadFileToGoogleDrive(params: {
     });
 
     if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error(
+          'Google Apps Script returned HTTP 403 (Permission Denied). In Google Apps Script, go to Deploy -> Manage deployments -> Edit (pencil icon), and change "Who has access" to "Anyone" (instead of restricted to Heritage Institute of Technology), then choose New Version and click Deploy.'
+        );
+      }
       throw new Error(`Google Drive webhook responded with HTTP ${response.status}`);
     }
 
