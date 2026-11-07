@@ -599,8 +599,9 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
               </div>
               <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
                 <li>Log in to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">script.google.com</a> using <strong>ece.project.committee@heritageit.edu</strong>.</li>
-                <li>Click <strong>New project</strong>, paste the copied script, and click <strong>Save</strong>.</li>
-                <li>Click <strong>Deploy → New deployment</strong>, choose <strong>Web app</strong>.</li>
+                <li>Click <strong>New project</strong>, replace with the copied script, and click <strong>Save (Ctrl+S)</strong>.</li>
+                <li><strong>IMPORTANT:</strong> In the function dropdown at the top, select <strong>authorizeDrive</strong> and click <strong>Run (▶️)</strong>. Review permissions and click <strong>Allow</strong>.</li>
+                <li>Click <strong>Deploy → New deployment</strong> (or Manage deployments → Edit), choose <strong>Web app</strong>.</li>
                 <li>Set Execute as: <strong>Me (ece.project.committee@heritageit.edu)</strong>, Who has access: <strong>Anyone</strong>.</li>
                 <li>Click <strong>Deploy</strong> and paste the resulting Web App URL into the box above.</li>
               </ol>

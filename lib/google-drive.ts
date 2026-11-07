@@ -1,3 +1,5 @@
+import https from 'https';
+import { URL } from 'url';
 import { prisma } from './prisma';
 
 export interface GoogleDriveConfig {
@@ -30,14 +32,22 @@ export const GOOGLE_APPS_SCRIPT_TEMPLATE = `/**
  * Instructions:
  * 1. Log into script.google.com with ece.project.committee@heritageit.edu
  * 2. Create a New Project named "ECE Project Committee Drive Webhook"
- * 3. Replace all contents with this script and Save.
- * 4. Click Deploy -> New deployment
- * 5. Select type: "Web app"
- * 6. Execute as: "Me (ece.project.committee@heritageit.edu)"
- * 7. Who has access: "Anyone" (allows server-to-server POST from the Next.js app)
- * 8. Click Deploy and copy the Web App URL (starts with https://script.google.com/macros/s/...)
- * 9. Paste the URL into the Admin Settings / Google Drive config.
+ * 3. Replace all contents with this script and Save (Ctrl+S).
+ * 4. FIRST: Select "authorizeDrive" from the function dropdown at the top, and click "Run" (▶️).
+ *    Google will ask to review permissions -> Select account -> Advanced -> Allow.
+ * 5. Click Deploy -> New deployment (or Manage Deployments -> Edit).
+ * 6. Select type: "Web app"
+ * 7. Execute as: "Me (ece.project.committee@heritageit.edu)"
+ * 8. Who has access: "Anyone"
+ * 9. Click Deploy and copy the Web App URL (starts with https://script.google.com/macros/s/...)
+ * 10. Paste the URL into the Admin Settings / Google Drive config.
  */
+
+// One-time authorization trigger for Google Drive
+function authorizeDrive() {
+  var root = DriveApp.getRootFolder();
+  Logger.log("DriveApp successfully authorized for: " + root.getName());
+}
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -66,7 +76,7 @@ function doPost(e) {
     }
 
     // 3. Decode Base64 and Create File in Google Drive
-    var base64Clean = data.base64;
+    var base64Clean = data.base64 || "";
     if (base64Clean.indexOf("base64,") !== -1) {
       base64Clean = base64Clean.split("base64,")[1];
     }
@@ -111,6 +121,71 @@ function doGet(e) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 `;
+
+/**
+ * Robust HTTPS client to handle Google Apps Script 302 redirects & TLS certificate validation
+ */
+export function postJsonToAppsScript(
+  urlStr: string,
+  data: any
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    function execute(currentUrl: string, method: string, payload: string | null, redirectCount = 0) {
+      if (redirectCount > 5) {
+        return reject(new Error('Too many redirects while communicating with Google Apps Script.'));
+      }
+
+      const parsed = new URL(currentUrl);
+      const agent = new https.Agent({
+        rejectUnauthorized:
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' || process.env.NODE_ENV !== 'production'
+            ? false
+            : true,
+      });
+
+      const options: https.RequestOptions = {
+        method,
+        agent,
+        headers: {},
+      };
+
+      if (payload) {
+        options.headers = {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        };
+      }
+
+      const req = https.request(parsed, options, (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode || 0)) {
+          const redirectLocation = res.headers.location;
+          if (!redirectLocation) {
+            return reject(new Error(`Received redirect ${res.statusCode} without Location header.`));
+          }
+          // After 302/303 redirect on POST, Google Apps Script redirects to a GET URL with user_content_key
+          execute(redirectLocation, 'GET', null, redirectCount + 1);
+          return;
+        }
+
+        let body = '';
+        res.on('data', (chunk) => (body += chunk));
+        res.on('end', () => {
+          resolve({ status: res.statusCode || 200, body });
+        });
+      });
+
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    }
+
+    execute(urlStr, 'POST', JSON.stringify(data));
+  });
+}
+
+export const googleDriveHttpClient = {
+  postJsonToAppsScript,
+};
 
 /**
  * Retrieve Google Drive configuration from Environment or Database Setting
@@ -190,33 +265,38 @@ export async function uploadFileToGoogleDrive(params: {
     batchId && groupNumber !== undefined ? `Batch_${batchId}_Group_${groupNumber}` : 'General_Discussions';
 
   try {
-    const response = await fetch(config.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        fileName,
-        mimeType: mimeType || 'application/octet-stream',
-        base64,
-        folderName: 'ECE_Capstone_Forum_Attachments',
-        subFolder,
-        uploader: uploaderEmail || OFFICIAL_DRIVE_ACCOUNT,
-      }),
-      redirect: 'follow',
+    const response = await googleDriveHttpClient.postJsonToAppsScript(config.webhookUrl, {
+      fileName,
+      mimeType: mimeType || 'application/octet-stream',
+      base64,
+      folderName: 'ECE_Capstone_Forum_Attachments',
+      subFolder,
+      uploader: uploaderEmail || OFFICIAL_DRIVE_ACCOUNT,
     });
 
-    if (!response.ok) {
-      if (response.status === 403) {
-        throw new Error(
-          'Google Apps Script returned HTTP 403 (Permission Denied). In Google Apps Script, go to Deploy -> Manage deployments -> Edit (pencil icon), and change "Who has access" to "Anyone" (instead of restricted to Heritage Institute of Technology), then choose New Version and click Deploy.'
-        );
-      }
+    if (response.status === 403) {
+      throw new Error(
+        'Google Apps Script returned HTTP 403 (Permission Denied). In Google Apps Script, go to Deploy -> Manage deployments -> Edit (pencil icon), and change "Who has access" to "Anyone", choose New Version, and click Deploy.'
+      );
+    }
+
+    if (response.status !== 200) {
       throw new Error(`Google Drive webhook responded with HTTP ${response.status}`);
     }
 
-    const result = await response.json();
+    let result: any = null;
+    try {
+      result = JSON.parse(response.body);
+    } catch {
+      throw new Error(`Unexpected non-JSON response from Google Apps Script: ${response.body.slice(0, 150)}`);
+    }
+
     if (!result.success) {
+      if (typeof result.error === 'string' && result.error.includes('Access denied: DriveApp')) {
+        throw new Error(
+          'Google Drive Permission Required: In script.google.com, select "authorizeDrive" from the function dropdown at the top, click Run (▶️), and grant permission to access Google Drive. Then choose "New version" under Deploy -> Manage deployments and click Deploy.'
+        );
+      }
       throw new Error(result.error || 'Failed to upload file to Google Drive.');
     }
 

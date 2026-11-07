@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  getGoogleDriveConfig,
-  uploadFileToGoogleDrive,
-  OFFICIAL_DRIVE_ACCOUNT,
-} from '@/lib/google-drive';
+import * as googleDriveModule from '@/lib/google-drive';
 
 // Mock dependencies
 let mockSetting: any = null;
@@ -43,7 +39,7 @@ describe('Google Drive Attachment Hosting (ece.project.committee@heritageit.edu)
   });
 
   it('correctly targets ece.project.committee@heritageit.edu account', async () => {
-    const config = await getGoogleDriveConfig();
+    const config = await googleDriveModule.getGoogleDriveConfig();
     expect(config.targetEmail).toBe('ece.project.committee@heritageit.edu');
     expect(config.isConfigured).toBe(false);
   });
@@ -54,14 +50,14 @@ describe('Google Drive Attachment Hosting (ece.project.committee@heritageit.edu)
       value: { webhookUrl: 'https://script.google.com/macros/s/test-script-123/exec' },
     };
 
-    const config = await getGoogleDriveConfig();
+    const config = await googleDriveModule.getGoogleDriveConfig();
     expect(config.isConfigured).toBe(true);
     expect(config.webhookUrl).toBe('https://script.google.com/macros/s/test-script-123/exec');
-    expect(config.targetEmail).toBe(OFFICIAL_DRIVE_ACCOUNT);
+    expect(config.targetEmail).toBe(googleDriveModule.OFFICIAL_DRIVE_ACCOUNT);
   });
 
   it('falls back gracefully to local data URL when unconfigured', async () => {
-    const result = await uploadFileToGoogleDrive({
+    const result = await googleDriveModule.uploadFileToGoogleDrive({
       fileName: 'circuit_diagram.pdf',
       size: 2048,
       mimeType: 'application/pdf',
@@ -80,9 +76,9 @@ describe('Google Drive Attachment Hosting (ece.project.committee@heritageit.edu)
   it('uploads to Google Drive when Webhook URL is configured', async () => {
     process.env.GOOGLE_DRIVE_WEBHOOK_URL = 'https://script.google.com/macros/s/test-deploy-xyz/exec';
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
+    const spy = vi.spyOn(googleDriveModule.googleDriveHttpClient, 'postJsonToAppsScript').mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({
         success: true,
         fileId: 'gdrive-file-abc-999',
         viewUrl: 'https://drive.google.com/file/d/gdrive-file-abc-999/view',
@@ -92,9 +88,8 @@ describe('Google Drive Attachment Hosting (ece.project.committee@heritageit.edu)
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       }),
     });
-    global.fetch = mockFetch;
 
-    const result = await uploadFileToGoogleDrive({
+    const result = await googleDriveModule.uploadFileToGoogleDrive({
       fileName: 'simulation_report.docx',
       size: 51200,
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -110,23 +105,49 @@ describe('Google Drive Attachment Hosting (ece.project.committee@heritageit.edu)
     expect(result.viewUrl).toBe('https://drive.google.com/file/d/gdrive-file-abc-999/view');
     expect(result.downloadUrl).toContain('export=download&id=gdrive-file-abc-999');
 
-    // Verify fetch payload
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [calledUrl, fetchOptions] = mockFetch.mock.calls[0];
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [calledUrl, payload] = spy.mock.calls[0];
     expect(calledUrl).toBe('https://script.google.com/macros/s/test-deploy-xyz/exec');
-    const body = JSON.parse(fetchOptions.body);
-    expect(body.folderName).toBe('ECE_Capstone_Forum_Attachments');
-    expect(body.subFolder).toBe('Batch_2023-2027_Group_1');
-    expect(body.uploader).toBe('susovan.mandal@heritageit.edu');
-    expect(body.fileName).toBe('simulation_report.docx');
+    expect(payload.folderName).toBe('ECE_Capstone_Forum_Attachments');
+    expect(payload.subFolder).toBe('Batch_2023-2027_Group_1');
+    expect(payload.uploader).toBe('susovan.mandal@heritageit.edu');
+    expect(payload.fileName).toBe('simulation_report.docx');
   });
 
-  it('handles Webhook failure with resilient fallback without crashing user flow', async () => {
+  it('handles DriveApp permission error with specific guidance', async () => {
+    process.env.GOOGLE_DRIVE_WEBHOOK_URL = 'https://script.google.com/macros/s/test-deploy-xyz/exec';
+
+    vi.spyOn(googleDriveModule.googleDriveHttpClient, 'postJsonToAppsScript').mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({
+        success: false,
+        error: 'Exception: Access denied: DriveApp.',
+      }),
+    });
+
+    const result = await googleDriveModule.uploadFileToGoogleDrive({
+      fileName: 'report.pdf',
+      size: 1024,
+      mimeType: 'application/pdf',
+      dataUrlOrBase64: 'data:application/pdf;base64,JVBER...',
+      batchId: '2023-2027',
+      groupNumber: 1,
+      uploaderEmail: 'susovan.mandal@heritageit.edu',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.hostedOn).toBe('LOCAL_FALLBACK');
+    expect(result.error).toContain('Google Drive Permission Required');
+  });
+
+  it('handles network failure with resilient fallback without crashing user flow', async () => {
     process.env.GOOGLE_DRIVE_WEBHOOK_URL = 'https://script.google.com/macros/s/broken-url/exec';
 
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network timeout connecting to script.google.com'));
+    vi.spyOn(googleDriveModule.googleDriveHttpClient, 'postJsonToAppsScript').mockRejectedValue(
+      new Error('Network timeout connecting to script.google.com')
+    );
 
-    const result = await uploadFileToGoogleDrive({
+    const result = await googleDriveModule.uploadFileToGoogleDrive({
       fileName: 'code.py',
       size: 1024,
       mimeType: 'text/x-python',
