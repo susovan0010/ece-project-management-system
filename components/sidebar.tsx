@@ -63,6 +63,7 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
     { label: 'Marks Entry (Rubrics)', href: '/faculty/marks', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
     { label: 'Printable Rubrics', href: '/faculty/rubrics', icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
     { label: 'My Groups Attainment', href: '/faculty/attainment', icon: 'M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z' },
+    { label: 'Faculty/Forum Discussion', href: '/faculty/forum', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
   ];
 
   const studentLinks = [
@@ -75,6 +76,11 @@ export function Sidebar({ role, authorityLevel = 'STANDARD_ADMIN', userName, use
       label: 'Evaluation Rubrics',
       href: '/student/rubrics',
       icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
+    },
+    {
+      label: 'Student/Forum Discussion',
+      href: '/student/forum',
+      icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
     },
   ];
 
