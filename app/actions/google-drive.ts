@@ -64,8 +64,8 @@ export async function saveGoogleDriveWebhookAction(webhookUrl: string): Promise<
 }> {
   const session = await auth();
   const userRole = (session?.user as { role?: string })?.role;
-  if (userRole !== 'ADMIN') {
-    return { success: false, error: 'Only Project Committee Admins can configure Google Drive integration.' };
+  if (userRole !== 'ADMIN' && userRole !== 'FACULTY') {
+    return { success: false, error: 'Only Project Committee Admins and Faculty can configure Google Drive integration.' };
   }
 
   const cleanUrl = webhookUrl.trim();
@@ -113,7 +113,7 @@ export async function testGoogleDriveConnectionAction(): Promise<{
 }> {
   const session = await auth();
   const userRole = (session?.user as { role?: string })?.role;
-  if (userRole !== 'ADMIN') {
+  if (userRole !== 'ADMIN' && userRole !== 'FACULTY') {
     return { success: false, error: 'Unauthorized.' };
   }
 
