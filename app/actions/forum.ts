@@ -192,12 +192,12 @@ export async function getGroupForumDataAction(
       const formattedPosts: ForumPostItem[] = rawPosts.map((p) => {
         const postLikes = p.reactions.filter((r) => r.type === 'LIKE').length;
         const postDislikes = p.reactions.filter((r) => r.type === 'DISLIKE').length;
-        const myPostReaction = p.reactions.find((r) => r.userId === userId)?.type;
+        const myPostReaction = (p.reactions.find((r) => r.userId === userId)?.type as 'LIKE' | 'DISLIKE' | undefined) || null;
 
         const formattedReplies: ForumReplyItem[] = p.replies.map((r) => {
           const rLikes = r.reactions.filter((rx) => rx.type === 'LIKE').length;
           const rDislikes = r.reactions.filter((rx) => rx.type === 'DISLIKE').length;
-          const myRReaction = r.reactions.find((rx) => rx.userId === userId)?.type;
+          const myRReaction = (r.reactions.find((rx) => rx.userId === userId)?.type as 'LIKE' | 'DISLIKE' | undefined) || null;
 
           return {
             id: r.id,
@@ -214,7 +214,7 @@ export async function getGroupForumDataAction(
             reactions: {
               likes: rLikes,
               dislikes: rDislikes,
-              userReaction: myRReaction || null,
+              userReaction: myRReaction,
             },
             markup: {
               netScore: 0,
@@ -431,7 +431,7 @@ export async function getGroupForumDataAction(
 
         const postLikes = p.reactions.filter((r) => r.type === 'LIKE').length;
         const postDislikes = p.reactions.filter((r) => r.type === 'DISLIKE').length;
-        const myPostReaction = p.reactions.find((r) => r.userId === userId)?.type;
+        const myPostReaction = (p.reactions.find((r) => r.userId === userId)?.type as 'LIKE' | 'DISLIKE' | undefined) || null;
 
         const postNetMarkup = p.markupVotes.reduce((acc, v) => acc + v.value, 0);
         const mySupervisorPostVote = isSupervisor
@@ -452,7 +452,7 @@ export async function getGroupForumDataAction(
 
             const rLikes = r.reactions.filter((rx) => rx.type === 'LIKE').length;
             const rDislikes = r.reactions.filter((rx) => rx.type === 'DISLIKE').length;
-            const myRReaction = r.reactions.find((rx) => rx.userId === userId)?.type;
+            const myRReaction = (r.reactions.find((rx) => rx.userId === userId)?.type as 'LIKE' | 'DISLIKE' | undefined) || null;
 
             const rNetMarkup = r.markupVotes.reduce((acc, v) => acc + v.value, 0);
             const mySupervisorRVote = isSupervisor
