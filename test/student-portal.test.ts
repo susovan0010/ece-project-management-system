@@ -224,8 +224,8 @@ describe('Student Project Details & Allocation Invites Actions', () => {
       },
       {
         id: 'faculty-1',
-        name: 'Dr. Dulal Mandal',
-        email: 'dulal.mandal@heritageit.edu',
+        name: 'Dr. Susovan Mandal',
+        email: 'susovan.mandal@heritageit.edu',
         role: 'FACULTY',
         domainExpertise: ['AI and ML', 'Python', 'Digital Electronics'],
       },
@@ -339,7 +339,7 @@ describe('Student Project Details & Allocation Invites Actions', () => {
       expect(res.data?.topic?.attributes.length).toBeGreaterThan(0);
 
       // Supervisor
-      expect(res.data?.supervisor?.name).toBe('Dr. Dulal Mandal');
+      expect(res.data?.supervisor?.name).toBe('Dr. Susovan Mandal');
       expect(res.data?.supervisor?.domainExpertise).toContain('AI and ML');
 
       // Team members

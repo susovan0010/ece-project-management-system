@@ -44,7 +44,11 @@ export default auth((req) => {
   }
 
   // Invariant 2: Non-Faculty hitting a faculty URL returns HTTP 403 Forbidden
+  // Admins who supervise groups or need to access the forum are permitted on /faculty/forum
   if (pathname.startsWith('/faculty') && userRole !== 'FACULTY') {
+    if (pathname.startsWith('/faculty/forum') && userRole === 'ADMIN') {
+      return NextResponse.next();
+    }
     return new NextResponse('Forbidden: Access restricted to Faculty Supervisors (403)', {
       status: 403,
       headers: { 'Content-Type': 'text/plain' },

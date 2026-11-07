@@ -160,15 +160,23 @@ export async function getGroupForumDataAction(requestedGroupId?: string): Promis
         targetGroupId = supervisedGroupsList[0].id;
       }
     } else {
-      // ADMIN
+      // ADMIN (can supervise groups and observe all groups)
+      supervisedGroupsList = await prisma.group.findMany({
+        include: {
+          topic: { select: { code: true, title: true } },
+          supervisor: { select: { id: true, name: true } },
+        },
+        orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
+      });
+
+      if (supervisedGroupsList.length === 0) {
+        return { success: false, error: 'No project groups exist yet.' };
+      }
+
       if (!targetGroupId) {
-        const firstGroup = await prisma.group.findFirst({
-          include: { topic: { select: { code: true, title: true } } },
-        });
-        if (!firstGroup) {
-          return { success: false, error: 'No project groups exist yet.' };
-        }
-        targetGroupId = firstGroup.id;
+        // If current admin supervises any groups, default to their supervised group
+        const mySupervisedGroup = supervisedGroupsList.find((g) => g.supervisorId === userId);
+        targetGroupId = mySupervisedGroup ? mySupervisedGroup.id : supervisedGroupsList[0].id;
       }
     }
 
@@ -422,6 +430,7 @@ export async function createForumPostAction(data: {
   const currentUser = session.user;
   const currentUserId = currentUser.id as string;
   const currentUserEmail = currentUser.email?.toLowerCase().trim();
+  const currentUserRole = (currentUser as { role?: string }).role;
 
   const title = data.title?.trim();
   const content = data.content?.trim();
@@ -447,8 +456,9 @@ export async function createForumPostAction(data: {
         m.student.userId === currentUserId ||
         (currentUserEmail && m.student.email?.toLowerCase().trim() === currentUserEmail)
     );
+    const isAdmin = currentUserRole === 'ADMIN';
 
-    if (!isSupervisor && !isMember) {
+    if (!isSupervisor && !isMember && !isAdmin) {
       return { success: false, error: 'You are not a participant in this group forum.' };
     }
 
@@ -464,6 +474,7 @@ export async function createForumPostAction(data: {
 
     revalidatePath('/student/forum');
     revalidatePath('/faculty/forum');
+    revalidatePath('/admin/forum');
 
     return { success: true, message: 'Discussion post published successfully.' };
   } catch (err) {
@@ -491,6 +502,7 @@ export async function createForumReplyAction(data: {
   const currentUser = session.user;
   const currentUserId = currentUser.id as string;
   const currentUserEmail = currentUser.email?.toLowerCase().trim();
+  const currentUserRole = (currentUser as { role?: string }).role;
 
   const content = data.content?.trim();
   if (!content) {
@@ -519,8 +531,9 @@ export async function createForumReplyAction(data: {
         m.student.userId === currentUserId ||
         (currentUserEmail && m.student.email?.toLowerCase().trim() === currentUserEmail)
     );
+    const isAdmin = currentUserRole === 'ADMIN';
 
-    if (!isSupervisor && !isMember) {
+    if (!isSupervisor && !isMember && !isAdmin) {
       return { success: false, error: 'You are not a participant in this group forum.' };
     }
 
@@ -535,6 +548,7 @@ export async function createForumReplyAction(data: {
 
     revalidatePath('/student/forum');
     revalidatePath('/faculty/forum');
+    revalidatePath('/admin/forum');
 
     return { success: true, message: 'Reply posted.' };
   } catch (err) {

@@ -241,8 +241,8 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Faculty Group Selector */}
-            {data.currentUserRole === 'FACULTY' && data.supervisedGroups.length > 1 && (
+            {/* Faculty / Admin Group Selector */}
+            {(data.currentUserRole === 'FACULTY' || data.currentUserRole === 'ADMIN') && data.supervisedGroups.length > 1 && (
               <select
                 value={selectedGroupId}
                 onChange={(e) => handleSelectGroup(e.target.value)}

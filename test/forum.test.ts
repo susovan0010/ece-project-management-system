@@ -214,7 +214,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
     mockMarkupVotes = [];
 
     mockUsers = [
-      { id: 'user-faculty-1', name: 'Dr. Dulal Mandal', email: 'dulal.mandal@heritageit.edu', role: 'FACULTY' },
+      { id: 'user-faculty-1', name: 'Dr. Susovan Mandal', email: 'susovan.mandal@heritageit.edu', role: 'FACULTY' },
       { id: 'user-student-1', name: 'Sourav Roy', email: 'student.demo@heritageit.edu', role: 'STUDENT' },
       { id: 'user-student-2', name: 'Ananya Sen', email: 'ananya.sen@heritageit.edu', role: 'STUDENT' },
     ];
@@ -246,7 +246,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
         topicId: 'topic-1',
         supervisorId: 'user-faculty-1',
         topic: { code: 'SIH26015', title: 'Geospatial Watershed AI' },
-        supervisor: { id: 'user-faculty-1', name: 'Dr. Dulal Mandal', email: 'dulal.mandal@heritageit.edu' },
+        supervisor: { id: 'user-faculty-1', name: 'Dr. Susovan Mandal', email: 'susovan.mandal@heritageit.edu' },
         members: [
           { student: { id: 'stud-1', userId: 'user-student-1', name: 'Sourav Roy', roll: '12620003001', email: 'student.demo@heritageit.edu' } },
           { student: { id: 'stud-2', userId: 'user-student-2', name: 'Ananya Sen', roll: '12620003002', email: 'ananya.sen@heritageit.edu' } },
@@ -272,7 +272,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       expect(res.success).toBe(true);
       expect(res.data).toBeDefined();
       expect(res.data?.group.number).toBe(1);
-      expect(res.data?.group.supervisor.name).toBe('Dr. Dulal Mandal');
+      expect(res.data?.group.supervisor.name).toBe('Dr. Susovan Mandal');
       expect(res.data?.isSupervisor).toBe(false);
       expect(res.data?.members.length).toBe(2);
     });
@@ -311,7 +311,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       });
 
       (auth as any).mockResolvedValue({
-        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'dulal.mandal@heritageit.edu' },
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
       });
 
       const res = await createForumReplyAction({
@@ -377,7 +377,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
 
     it('allows supervisor to cast Mark Up (+1) and toggle it off', async () => {
       (auth as any).mockResolvedValue({
-        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'dulal.mandal@heritageit.edu' },
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
       });
 
       // Give Mark Up
