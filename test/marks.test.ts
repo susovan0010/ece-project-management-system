@@ -147,4 +147,42 @@ describe('Marks Entry: Supervisor Isolation & Window Lock Check', () => {
     expect(res.error).toBeDefined();
     expect(res.error).toContain('is locked');
   });
+
+  it('rejects unauthenticated requests to get printable evaluation rubrics', async () => {
+    (auth as any).mockResolvedValue(null);
+    const res = await getPrintableRubricsAction();
+    expect(res.error).toBe('Unauthorized.');
+  });
+
+  it('allows authenticated users to query printable evaluation rubrics', async () => {
+    (auth as any).mockResolvedValue({
+      user: { id: 'student-user-1', role: 'STUDENT', email: 'student.demo@heritageit.edu' },
+    });
+
+    vi.spyOn(prisma.rubric, 'upsert').mockResolvedValue({} as any);
+    vi.spyOn(prisma.criterion, 'deleteMany').mockResolvedValue({ count: 0 } as any);
+    vi.spyOn(prisma.criterion, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.criterion, 'create').mockResolvedValue({ id: 1 } as any);
+    vi.spyOn(prisma.criterionMap, 'deleteMany').mockResolvedValue({ count: 0 } as any);
+    vi.spyOn(prisma.criterionMap, 'upsert').mockResolvedValue({} as any);
+    vi.spyOn(prisma.rubric, 'findMany').mockResolvedValue([
+      {
+        code: 'A',
+        name: 'Supervisor Continuous Evaluation (Sem 6)',
+        semester: 6,
+        criteria: [],
+      },
+      {
+        code: 'D',
+        name: 'Panellist Evaluation (Sem 7)',
+        semester: 7,
+        criteria: [],
+      },
+    ] as any);
+
+    const res = await getPrintableRubricsAction();
+    expect(res.error).toBeUndefined();
+    expect(res.rubrics).toBeDefined();
+    expect(res.rubrics?.length).toBe(2);
+  });
 });
