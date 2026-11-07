@@ -12,6 +12,7 @@ import {
   purgeExpiredArchivedProjectsAction,
   getCapstoneCatalogueAction,
   getCapstoneProjectDetailReportAction,
+  forceDeleteBatchSessionAction,
   AdminGroupCapstoneEvaluation,
   Semester8Status,
   CapstoneCatalogueItem,
@@ -72,6 +73,14 @@ export default function AdminCapstoneClient() {
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
+
+  // Force Delete Session Modal
+  const [forceDeleteModalOpen, setForceDeleteModalOpen] = useState(false);
+  const [forceDeletePassword, setForceDeletePassword] = useState('');
+  const [forceDeleteConfirmId, setForceDeleteConfirmId] = useState('');
+  const [forceDeletePreserveCapstones, setForceDeletePreserveCapstones] = useState(true);
+  const [forceDeleting, setForceDeleting] = useState(false);
+  const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
 
   // 1. Load Decision Board Data
   async function loadData(batch = selectedBatch) {
@@ -302,6 +311,47 @@ export default function AdminCapstoneClient() {
     } else {
       setSuccessMsg(res.message || 'Cleanup completed.');
       setTimeout(() => setSuccessMsg(null), 4000);
+    }
+  }
+
+  // Force Delete Batch Session Action
+  async function handleForceDeleteSession() {
+    if (!closeSessionBatch) return;
+
+    if (forceDeleteConfirmId.trim() !== closeSessionBatch.trim()) {
+      setForceDeleteError(`Confirmation text must match "${closeSessionBatch}".`);
+      return;
+    }
+
+    if (!forceDeletePassword) {
+      setForceDeleteError('Please enter your Admin login password.');
+      return;
+    }
+
+    setForceDeleting(true);
+    setForceDeleteError(null);
+
+    const res = await forceDeleteBatchSessionAction({
+      batchId: closeSessionBatch,
+      password: forceDeletePassword,
+      confirmBatchId: forceDeleteConfirmId,
+      preserveCapstones: forceDeletePreserveCapstones,
+    });
+
+    setForceDeleting(false);
+
+    if (res.error) {
+      setForceDeleteError(res.error);
+    } else {
+      setSuccessMsg(res.message || 'Forceful batch deletion completed.');
+      setForceDeleteModalOpen(false);
+      setForceDeletePassword('');
+      setForceDeleteConfirmId('');
+      await loadData();
+      if (batches.length > 0) {
+        setCloseSessionBatch(batches[0].id);
+      }
+      setTimeout(() => setSuccessMsg(null), 5000);
     }
   }
 
@@ -982,6 +1032,33 @@ export default function AdminCapstoneClient() {
                     </button>
                   </div>
                 </div>
+
+                {/* 3. Force Delete Batch Session Action (Danger Zone) */}
+                <div className="bg-rose-50/70 p-5 rounded-2xl border border-rose-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <h4 className="font-bold text-sm text-rose-950 flex items-center gap-2">
+                      <span>⚠️</span> Danger Zone: Force Delete Session (Immediate DB Free-up)
+                    </h4>
+                    <p className="text-xs text-rose-800 mt-1 max-w-xl">
+                      Admins can forcefully delete records for Batch {closeSessionBatch} immediately to free up institutional database storage without waiting for the 4-year archival retention cycle.
+                    </p>
+                  </div>
+
+                  <div>
+                    <button
+                      onClick={() => {
+                        setForceDeletePassword('');
+                        setForceDeleteConfirmId('');
+                        setForceDeleteError(null);
+                        setForceDeletePreserveCapstones(true);
+                        setForceDeleteModalOpen(true);
+                      }}
+                      className="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2"
+                    >
+                      <span>🗑️ Force Delete Session</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1045,6 +1122,128 @@ export default function AdminCapstoneClient() {
                 className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
               >
                 {unlocking ? 'Verifying...' : 'Unlock Batch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: FORCE DELETE BATCH SESSION */}
+      {/* ==================================================== */}
+      {forceDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-start border-b border-rose-200 pb-3">
+              <div>
+                <h4 className="font-bold text-sm text-rose-900 flex items-center gap-2">
+                  <span>⚠️</span> Force Delete Batch Session
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Permanent database storage cleanup for Batch {closeSessionBatch}
+                </p>
+              </div>
+              <button
+                onClick={() => setForceDeleteModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+              <strong>Caution: This action cannot be undone.</strong>
+              <p>
+                This will immediately delete allocations, mark entries, student memberships, and discussion posts from the database to reclaim storage.
+              </p>
+            </div>
+
+            {/* Preserve Capstones Selection */}
+            <div className="space-y-2 pt-1">
+              <label className="text-xs font-bold text-slate-700 block">Deletion Strategy:</label>
+              <div className="space-y-2 text-xs">
+                <label className="flex items-start gap-2.5 p-2.5 rounded-xl border border-purple-200 bg-purple-50/50 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="preserveCapstones"
+                    checked={forceDeletePreserveCapstones === true}
+                    onChange={() => setForceDeletePreserveCapstones(true)}
+                    className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                  />
+                  <div>
+                    <strong className="text-purple-950 block">Retain Capstone Projects (Recommended)</strong>
+                    <span className="text-purple-800 text-[11px]">
+                      Confirmed Capstone projects remain safely in the Capstone Catalogue forever. Only non-capstone project records are permanently wiped.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2.5 p-2.5 rounded-xl border border-rose-200 bg-rose-50/50 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="preserveCapstones"
+                    checked={forceDeletePreserveCapstones === false}
+                    onChange={() => setForceDeletePreserveCapstones(false)}
+                    className="mt-0.5 text-rose-600 focus:ring-rose-500"
+                  />
+                  <div>
+                    <strong className="text-rose-950 block">Delete Entire Batch Session Completely</strong>
+                    <span className="text-rose-800 text-[11px]">
+                      Completely removes the batch and all associated group projects (including capstones) from the database.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Confirm by typing batch ID */}
+            <div className="space-y-1 pt-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                Type <span className="text-rose-700 font-mono select-all font-bold">{closeSessionBatch}</span> to confirm:
+              </label>
+              <input
+                type="text"
+                placeholder={`Type ${closeSessionBatch}`}
+                value={forceDeleteConfirmId}
+                onChange={(e) => setForceDeleteConfirmId(e.target.value)}
+                className="w-full text-xs p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Admin Password */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                Admin Login Password:
+              </label>
+              <input
+                type="password"
+                placeholder="Enter your admin login password"
+                value={forceDeletePassword}
+                onChange={(e) => setForceDeletePassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleForceDeleteSession()}
+                className="w-full text-xs p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              />
+            </div>
+
+            {forceDeleteError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
+                {forceDeleteError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setForceDeleteModalOpen(false)}
+                className="px-3.5 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleForceDeleteSession}
+                disabled={forceDeleting || forceDeleteConfirmId.trim() !== closeSessionBatch.trim()}
+                className="px-4 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold shadow-xs disabled:opacity-50 transition-all"
+              >
+                {forceDeleting ? 'Deleting...' : 'Confirm Forceful Deletion'}
               </button>
             </div>
           </div>

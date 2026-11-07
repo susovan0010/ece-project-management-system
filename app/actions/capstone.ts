@@ -1120,3 +1120,145 @@ export async function getCapstoneProjectDetailReportAction(topicId: string): Pro
   }
 }
 
+// ----------------------------------------------------
+// 11. Force Delete Batch Session (Database Space Cleanup)
+// ----------------------------------------------------
+export async function forceDeleteBatchSessionAction(input: {
+  batchId: string;
+  password: string;
+  confirmBatchId: string;
+  preserveCapstones: boolean;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  deletedGroupsCount?: number;
+  preservedCapstonesCount?: number;
+  error?: string;
+}> {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { success: false, error: 'Unauthorized: Admin access required.' };
+  }
+
+  if (input.confirmBatchId.trim() !== input.batchId.trim()) {
+    return {
+      success: false,
+      error: `Confirmation mismatch. You typed "${input.confirmBatchId}", but the selected batch ID is "${input.batchId}".`,
+    };
+  }
+
+  if (!input.password || input.password.trim().length === 0) {
+    return { success: false, error: 'Admin login password is required to execute forceful deletion.' };
+  }
+
+  try {
+    const adminUser = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { passwordHash: true },
+    });
+
+    if (!adminUser?.passwordHash) {
+      return { success: false, error: 'Admin password record could not be found.' };
+    }
+
+    const isValidPassword = await bcrypt.compare(input.password, adminUser.passwordHash);
+    if (!isValidPassword) {
+      return { success: false, error: 'Incorrect admin login password. Forceful deletion aborted.' };
+    }
+
+    const batch = await prisma.batch.findUnique({
+      where: { id: input.batchId },
+      include: {
+        groups: {
+          include: {
+            topic: {
+              include: {
+                decisions: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!batch) {
+      return { success: false, error: `Batch "${input.batchId}" not found in database.` };
+    }
+
+    if (input.preserveCapstones) {
+      // 1. Identify capstones vs non-capstones
+      const capstoneGroups = batch.groups.filter(
+        (g) =>
+          g.isCapstonePermanent ||
+          g.topic?.decisions?.some((d) => d.isCapstone && d.status === 'CONFIRMED')
+      );
+      const nonCapstoneGroups = batch.groups.filter(
+        (g) =>
+          !g.isCapstonePermanent &&
+          !g.topic?.decisions?.some((d) => d.isCapstone && d.status === 'CONFIRMED')
+      );
+
+      // Ensure capstones are marked permanent
+      for (const cg of capstoneGroups) {
+        await prisma.group.update({
+          where: { id: cg.id },
+          data: { isCapstonePermanent: true, isArchived: false, purgeAt: null },
+        });
+      }
+
+      // Delete non-capstone groups and their cascades
+      const nonCapstoneIds = nonCapstoneGroups.map((g) => g.id);
+      if (nonCapstoneIds.length > 0) {
+        await prisma.groupMember.deleteMany({ where: { groupId: { in: nonCapstoneIds } } });
+        await prisma.markEntry.deleteMany({ where: { groupId: { in: nonCapstoneIds } } });
+        await prisma.attainmentSnapshot.deleteMany({ where: { groupId: { in: nonCapstoneIds } } });
+        await prisma.forumPost.deleteMany({ where: { groupId: { in: nonCapstoneIds } } });
+        await prisma.group.deleteMany({ where: { id: { in: nonCapstoneIds } } });
+      }
+
+      // Mark batch as closed & archived
+      await prisma.batch.update({
+        where: { id: input.batchId },
+        data: { isLocked: true, isArchived: true, active: false },
+      });
+
+      revalidatePath('/admin/capstone');
+      revalidatePath('/admin/reports');
+      revalidatePath('/admin/allocation');
+
+      return {
+        success: true,
+        deletedGroupsCount: nonCapstoneIds.length,
+        preservedCapstonesCount: capstoneGroups.length,
+        message: `Forceful cleanup complete: Permanently deleted ${nonCapstoneIds.length} non-capstone project group(s) to free up database storage. ${capstoneGroups.length} Capstone project(s) remain permanently preserved in the Capstone Catalogue.`,
+      };
+    } else {
+      // Complete Deletion of Batch and all groups
+      const allGroupIds = batch.groups.map((g) => g.id);
+      if (allGroupIds.length > 0) {
+        await prisma.groupMember.deleteMany({ where: { groupId: { in: allGroupIds } } });
+        await prisma.markEntry.deleteMany({ where: { groupId: { in: allGroupIds } } });
+        await prisma.attainmentSnapshot.deleteMany({ where: { groupId: { in: allGroupIds } } });
+        await prisma.forumPost.deleteMany({ where: { groupId: { in: allGroupIds } } });
+        await prisma.group.deleteMany({ where: { id: { in: allGroupIds } } });
+      }
+
+      await prisma.batch.delete({ where: { id: input.batchId } });
+
+      revalidatePath('/admin/capstone');
+      revalidatePath('/admin/reports');
+      revalidatePath('/admin/allocation');
+
+      return {
+        success: true,
+        deletedGroupsCount: allGroupIds.length,
+        preservedCapstonesCount: 0,
+        message: `Batch "${input.batchId}" and all associated group records (${allGroupIds.length}) were permanently deleted from the database.`,
+      };
+    }
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+

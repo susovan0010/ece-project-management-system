@@ -8,6 +8,7 @@ import {
   purgeExpiredArchivedProjectsAction,
   getCapstoneCatalogueAction,
   getCapstoneProjectDetailReportAction,
+  forceDeleteBatchSessionAction,
 } from '@/app/actions/capstone';
 
 vi.mock('@/auth', () => ({
@@ -36,7 +37,10 @@ vi.mock('@/lib/prisma', () => ({
           groups: mockGroups.filter((g) => g.batchId === b.id).map((g) => ({
             ...g,
             supervisor: mockUsers.find((u) => u.id === g.supervisorId) || null,
-            topic: mockTopics.find((t) => t.id === g.topicId) || null,
+            topic: {
+              ...(mockTopics.find((t) => t.id === g.topicId) || {}),
+              decisions: mockDecisions.filter((d) => d.topicId === g.topicId),
+            },
             markEntries: g.markEntries || [],
           })),
         };
@@ -46,6 +50,10 @@ vi.mock('@/lib/prisma', () => ({
         const b = mockBatches.find((item) => item.id === where.id);
         if (b) Object.assign(b, data);
         return b;
+      }),
+      delete: vi.fn().mockImplementation(({ where }: any) => {
+        mockBatches = mockBatches.filter((b) => b.id !== where.id);
+        return { id: where.id };
       }),
     },
     user: {
@@ -105,6 +113,12 @@ vi.mock('@/lib/prisma', () => ({
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     markEntry: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    attainmentSnapshot: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    forumPost: {
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     capstoneDecision: {
@@ -410,5 +424,50 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     expect(sem6?.pos.find((p) => p.code === 'PO1')?.percentage).toBe(85);
     expect(sem7?.pos.find((p) => p.code === 'PO2')?.percentage).toBe(88);
     expect(sem8?.pos.find((p) => p.code === 'PO3')?.percentage).toBe(90);
+  });
+
+  it('8. forceDeleteBatchSessionAction enforces admin password and allows forceful cleanup / deletion', async () => {
+    // 1. Rejects mismatched batch confirmation text
+    const mismatchRes = await forceDeleteBatchSessionAction({
+      batchId: '2023-2027',
+      confirmBatchId: 'wrong-batch',
+      password: 'AdminSecret123!',
+      preserveCapstones: true,
+    });
+    expect(mismatchRes.success).toBe(false);
+    expect(mismatchRes.error).toContain('Confirmation mismatch');
+
+    // 2. Rejects wrong admin password
+    const wrongPassRes = await forceDeleteBatchSessionAction({
+      batchId: '2023-2027',
+      confirmBatchId: '2023-2027',
+      password: 'WrongPassword!',
+      preserveCapstones: true,
+    });
+    expect(wrongPassRes.success).toBe(false);
+    expect(wrongPassRes.error).toContain('Incorrect admin login password');
+
+    // 3. Forceful cleanup with preserveCapstones = true
+    const preserveRes = await forceDeleteBatchSessionAction({
+      batchId: '2023-2027',
+      confirmBatchId: '2023-2027',
+      password: 'AdminSecret123!',
+      preserveCapstones: true,
+    });
+    expect(preserveRes.success).toBe(true);
+    expect(preserveRes.deletedGroupsCount).toBe(1); // Group 2 non-capstone deleted
+    expect(preserveRes.preservedCapstonesCount).toBe(1); // Group 1 capstone preserved
+    expect(mockGroups.some((g) => g.id === 'group-2')).toBe(false);
+    expect(mockGroups.some((g) => g.id === 'group-1')).toBe(true);
+
+    // 4. Forceful complete deletion with preserveCapstones = false
+    const deleteTotalRes = await forceDeleteBatchSessionAction({
+      batchId: '2023-2027',
+      confirmBatchId: '2023-2027',
+      password: 'AdminSecret123!',
+      preserveCapstones: false,
+    });
+    expect(deleteTotalRes.success).toBe(true);
+    expect(mockBatches.some((b) => b.id === '2023-2027')).toBe(false);
   });
 });
