@@ -268,18 +268,26 @@ model ComplexityDeclaration {
 // ------------------------------------------
 
 model Batch {
-  id        String   @id // e.g. "2023-2027"
-  active    Boolean  @default(true)
-  groups    Group[]
+  id         String    @id // e.g. "2023-2027"
+  active     Boolean   @default(true)
+  isLocked   Boolean   @default(false)
+  lockedAt   DateTime?
+  lockedById String?
+  isArchived Boolean   @default(false)
+  archivedAt DateTime?
+  groups     Group[]
 }
 
 model Group {
-  id           String        @id @default(cuid())
-  number       Int
-  batchId      String
-  topicId      String
-  supervisorId String
-  createdAt    DateTime      @default(now())
+  id                  String        @id @default(cuid())
+  number              Int
+  batchId             String
+  topicId             String
+  supervisorId        String
+  createdAt           DateTime      @default(now())
+  isArchived          Boolean       @default(false)
+  isCapstonePermanent Boolean       @default(false)
+  purgeAt             DateTime?
 
   batch        Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
   topic        Topic         @relation(fields: [topicId], references: [id])
@@ -352,15 +360,16 @@ model AttainmentSnapshot {
 }
 
 model CapstoneDecision {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   topicId       String
   step1Qualify  Boolean
   step2Panel    Boolean
   step3External Boolean
   step4Declared Boolean
   isCapstone    Boolean
-  status        String   // "CONFIRMED" | "HOLD" | "PENDING"
+  status        String    // "CONFIRMED" | "HOLD" | "PENDING"
   notes         String?
+  decisionYear  Int?
   confirmedAt   DateTime?
   topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
