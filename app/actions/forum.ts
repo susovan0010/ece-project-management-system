@@ -53,6 +53,8 @@ export interface ForumPostItem {
   groupId: string | null;
   channel: 'GROUP' | 'COMMITTEE';
   targetScope?: string | null;
+  targetUserIds?: string[] | null;
+  targetSupervisorNames?: string[] | null;
   title: string;
   content: string;
   attachments: ForumAttachment[];
@@ -98,6 +100,11 @@ export interface GroupForumData {
     badges: StudentBadgeSummary;
   }>;
   posts: ForumPostItem[];
+  facultyList?: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
 }
 
 /**
@@ -159,6 +166,12 @@ export async function getGroupForumDataAction(
         };
       }
 
+      const facultyUsers = await prisma.user.findMany({
+        where: { role: 'FACULTY' },
+        select: { id: true, name: true, email: true },
+        orderBy: { name: 'asc' },
+      });
+
       const rawPosts = await prisma.forumPost.findMany({
         where: { channel: 'COMMITTEE' },
         include: {
@@ -189,10 +202,37 @@ export async function getGroupForumDataAction(
         orderBy: { createdAt: 'desc' },
       });
 
-      const formattedPosts: ForumPostItem[] = rawPosts.map((p) => {
+      // Filter visible posts for the current user
+      // ADMIN: sees all committee communications
+      // FACULTY: sees their own posts to admin, admin broadcasts to all supervisors, and admin posts targeted to them
+      const visiblePosts = userRole === 'ADMIN'
+        ? rawPosts
+        : rawPosts.filter((p) => {
+            // 1. If faculty is author: always visible to them
+            if (p.authorId === userId) return true;
+            // 2. If author is not ADMIN, other faculty cannot see it! (strict private between supervisor & admin)
+            if (p.author.role !== 'ADMIN') return false;
+            // 3. Author is ADMIN: check scope
+            if (!p.targetScope || p.targetScope === 'COMMITTEE' || p.targetScope === 'BROADCAST_ALL') {
+              return true;
+            }
+            if (p.targetScope === 'SELECTED_SUPERVISORS') {
+              const targetIds = Array.isArray(p.targetUserIds) ? (p.targetUserIds as string[]) : [];
+              return targetIds.includes(userId);
+            }
+            return false;
+          });
+
+      const formattedPosts: ForumPostItem[] = visiblePosts.map((p) => {
         const postLikes = p.reactions.filter((r) => r.type === 'LIKE').length;
         const postDislikes = p.reactions.filter((r) => r.type === 'DISLIKE').length;
         const myPostReaction = (p.reactions.find((r) => r.userId === userId)?.type as 'LIKE' | 'DISLIKE' | undefined) || null;
+
+        const postTargetUserIds = Array.isArray(p.targetUserIds) ? (p.targetUserIds as string[]) : [];
+        const targetSupervisorNames = postTargetUserIds.map((tid) => {
+          const f = facultyUsers.find((fu) => fu.id === tid);
+          return f ? f.name : tid;
+        });
 
         const formattedReplies: ForumReplyItem[] = p.replies.map((r) => {
           const rLikes = r.reactions.filter((rx) => rx.type === 'LIKE').length;
@@ -228,6 +268,8 @@ export async function getGroupForumDataAction(
           groupId: null,
           channel: 'COMMITTEE',
           targetScope: p.targetScope || 'COMMITTEE',
+          targetUserIds: postTargetUserIds,
+          targetSupervisorNames,
           title: p.title,
           content: p.content,
           attachments: (p.attachments as any) || [],
@@ -268,6 +310,7 @@ export async function getGroupForumDataAction(
           isSupervisor: false,
           members: [],
           posts: formattedPosts,
+          facultyList: facultyUsers,
         },
       };
     }
@@ -562,7 +605,8 @@ export async function getGroupForumDataAction(
 export async function createForumPostAction(data: {
   channel?: 'GROUP' | 'COMMITTEE';
   groupId?: string;
-  targetScope?: 'SINGLE_GROUP' | 'ALL_SUPERVISED_GROUPS' | 'COMMITTEE';
+  targetScope?: 'SINGLE_GROUP' | 'ALL_SUPERVISED_GROUPS' | 'COMMITTEE' | 'BROADCAST_ALL' | 'SELECTED_SUPERVISORS' | 'PRIVATE_ADMIN';
+  targetUserIds?: string[];
   title: string;
   content: string;
   attachments?: ForumAttachment[];
@@ -598,6 +642,25 @@ export async function createForumPostAction(data: {
         return { success: false, error: 'Only faculty and administrators can post to Committee discussions.' };
       }
 
+      let targetScope: string = data.targetScope || 'BROADCAST_ALL';
+      let targetUserIds: string[] | null = null;
+
+      if (currentUserRole === 'FACULTY') {
+        // Faculty supervisor posting to Committee Admins is strictly private
+        targetScope = 'PRIVATE_ADMIN';
+        targetUserIds = null;
+      } else if (currentUserRole === 'ADMIN') {
+        if (targetScope === 'SELECTED_SUPERVISORS') {
+          if (!data.targetUserIds || data.targetUserIds.length === 0) {
+            return { success: false, error: 'Please select at least one faculty supervisor to direct this communication.' };
+          }
+          targetUserIds = data.targetUserIds;
+        } else {
+          targetScope = 'BROADCAST_ALL';
+          targetUserIds = null;
+        }
+      }
+
       let processedAttachments: ForumAttachment[] = [];
       if (data.attachments && data.attachments.length > 0) {
         processedAttachments = await Promise.all(
@@ -630,7 +693,8 @@ export async function createForumPostAction(data: {
         data: {
           groupId: null,
           channel: 'COMMITTEE',
-          targetScope: 'COMMITTEE',
+          targetScope,
+          targetUserIds: targetUserIds ? (targetUserIds as any) : null,
           authorId: currentUserId,
           title,
           content,
@@ -844,6 +908,15 @@ export async function createForumReplyAction(data: {
       if (currentUserRole !== 'FACULTY' && currentUserRole !== 'ADMIN') {
         return { success: false, error: 'Unauthorized: Students cannot reply to Committee posts.' };
       }
+      if (currentUserRole === 'FACULTY') {
+        const isAuthor = post.authorId === currentUserId;
+        const targetIds = Array.isArray(post.targetUserIds) ? (post.targetUserIds as string[]) : [];
+        const isTargeted = post.targetScope === 'SELECTED_SUPERVISORS' && targetIds.includes(currentUserId);
+        const isBroadcast = !post.targetScope || post.targetScope === 'COMMITTEE' || post.targetScope === 'BROADCAST_ALL';
+        if (!isAuthor && (!isBroadcast && !isTargeted)) {
+          return { success: false, error: 'Unauthorized: You do not have permission to view or reply to this private committee thread.' };
+        }
+      }
       batchId = 'Committee';
     } else {
       // Group Channel
@@ -953,8 +1026,17 @@ export async function toggleForumReactionAction(data: {
       });
       if (!post) return { success: false, error: 'Post not found.' };
 
-      if (post.channel === 'COMMITTEE' && userRole === 'STUDENT') {
-        return { success: false, error: 'Unauthorized.' };
+      if (post.channel === 'COMMITTEE') {
+        if (userRole === 'STUDENT') return { success: false, error: 'Unauthorized.' };
+        if (userRole === 'FACULTY') {
+          const isAuthor = post.authorId === userId;
+          const targetIds = Array.isArray(post.targetUserIds) ? (post.targetUserIds as string[]) : [];
+          const isTargeted = post.targetScope === 'SELECTED_SUPERVISORS' && targetIds.includes(userId);
+          const isBroadcast = !post.targetScope || post.targetScope === 'COMMITTEE' || post.targetScope === 'BROADCAST_ALL';
+          if (!isAuthor && (!isBroadcast && !isTargeted)) {
+            return { success: false, error: 'Unauthorized.' };
+          }
+        }
       }
       if (post.channel === 'GROUP') {
         if (userRole === 'ADMIN') return { success: false, error: 'Unauthorized.' };
@@ -1006,8 +1088,17 @@ export async function toggleForumReactionAction(data: {
       });
       if (!reply) return { success: false, error: 'Reply not found.' };
 
-      if (reply.post.channel === 'COMMITTEE' && userRole === 'STUDENT') {
-        return { success: false, error: 'Unauthorized.' };
+      if (reply.post.channel === 'COMMITTEE') {
+        if (userRole === 'STUDENT') return { success: false, error: 'Unauthorized.' };
+        if (userRole === 'FACULTY') {
+          const isAuthor = reply.post.authorId === userId;
+          const targetIds = Array.isArray(reply.post.targetUserIds) ? (reply.post.targetUserIds as string[]) : [];
+          const isTargeted = reply.post.targetScope === 'SELECTED_SUPERVISORS' && targetIds.includes(userId);
+          const isBroadcast = !reply.post.targetScope || reply.post.targetScope === 'COMMITTEE' || reply.post.targetScope === 'BROADCAST_ALL';
+          if (!isAuthor && (!isBroadcast && !isTargeted)) {
+            return { success: false, error: 'Unauthorized.' };
+          }
+        }
       }
       if (reply.post.channel === 'GROUP') {
         if (userRole === 'ADMIN') return { success: false, error: 'Unauthorized.' };

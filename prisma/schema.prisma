@@ -465,7 +465,8 @@ model ForumPost {
   id          String            @id @default(cuid())
   groupId     String?
   channel     String            @default("GROUP") // "GROUP" | "COMMITTEE"
-  targetScope String?           // "SINGLE_GROUP" | "ALL_SUPERVISED_GROUPS" | "COMMITTEE"
+  targetScope String?           // "SINGLE_GROUP" | "ALL_SUPERVISED_GROUPS" | "BROADCAST_ALL" | "SELECTED_SUPERVISORS" | "PRIVATE_ADMIN"
+  targetUserIds Json?           // Array of userIds for targeted supervisors, e.g. ["user-1", "user-2"]
   authorId    String
   title       String
   content     String            @db.Text

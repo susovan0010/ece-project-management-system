@@ -101,9 +101,26 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostAttachments, setNewPostAttachments] = useState<ForumAttachment[]>([]);
-  const [newPostTargetScope, setNewPostTargetScope] = useState<'SINGLE_GROUP' | 'ALL_SUPERVISED_GROUPS'>('SINGLE_GROUP');
+  const [newPostTargetScope, setNewPostTargetScope] = useState<
+    'SINGLE_GROUP' | 'ALL_SUPERVISED_GROUPS' | 'BROADCAST_ALL' | 'SELECTED_SUPERVISORS'
+  >('SINGLE_GROUP');
+  const [selectedSupervisorIds, setSelectedSupervisorIds] = useState<string[]>([]);
   const [isPosting, setIsPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
+
+  function handleOpenNewPostModal() {
+    setNewPostTitle('');
+    setNewPostContent('');
+    setNewPostAttachments([]);
+    setPostError(null);
+    if (isCommittee) {
+      setNewPostTargetScope('BROADCAST_ALL');
+      setSelectedSupervisorIds([]);
+    } else {
+      setNewPostTargetScope('SINGLE_GROUP');
+    }
+    setShowNewPostModal(true);
+  }
 
   // Reply States (keyed by postId)
   const [activeReplyBoxPostId, setActiveReplyBoxPostId] = useState<string | null>(null);
@@ -196,13 +213,23 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
       return;
     }
 
+    if (isCommittee && data.currentUserRole === 'ADMIN' && newPostTargetScope === 'SELECTED_SUPERVISORS' && selectedSupervisorIds.length === 0) {
+      setPostError('Please select at least one faculty supervisor to direct this communication.');
+      return;
+    }
+
     setIsPosting(true);
     setPostError(null);
 
     const res = await createForumPostAction({
       channel: data.channel,
       groupId: isCommittee ? undefined : selectedGroupId,
-      targetScope: isCommittee ? 'COMMITTEE' : newPostTargetScope,
+      targetScope: isCommittee
+        ? data.currentUserRole === 'ADMIN'
+          ? (newPostTargetScope as 'BROADCAST_ALL' | 'SELECTED_SUPERVISORS')
+          : 'PRIVATE_ADMIN'
+        : (newPostTargetScope as 'SINGLE_GROUP' | 'ALL_SUPERVISED_GROUPS'),
+      targetUserIds: isCommittee && newPostTargetScope === 'SELECTED_SUPERVISORS' ? selectedSupervisorIds : undefined,
       title: newPostTitle.trim(),
       content: newPostContent.trim(),
       attachments: newPostAttachments,
@@ -404,7 +431,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
 
             <button
               type="button"
-              onClick={() => setShowNewPostModal(true)}
+              onClick={handleOpenNewPostModal}
               className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/40 transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -780,9 +807,101 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                 </div>
               )}
 
-              {isCommittee && (
-                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900">
-                  <strong>Audience:</strong> Project Committee Admins &amp; Faculty Supervisors. (Not visible to students).
+              {isCommittee && data.currentUserRole === 'FACULTY' && (
+                <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-start gap-2.5">
+                  <span className="text-base">🔒</span>
+                  <div>
+                    <strong className="block font-semibold">Private to Project Committee Admins</strong>
+                    <p className="text-[11px] text-indigo-700 leading-relaxed mt-0.5">
+                      This post and all subsequent replies are strictly private between you and the Project Committee Administrators. Other faculty supervisors and students cannot see this discussion.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {isCommittee && data.currentUserRole === 'ADMIN' && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Target Audience:
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-4 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
+                      <input
+                        type="radio"
+                        name="adminTargetScope"
+                        checked={newPostTargetScope === 'BROADCAST_ALL'}
+                        onChange={() => setNewPostTargetScope('BROADCAST_ALL')}
+                        className="text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>📢 Broadcast to All Faculty Supervisors</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer font-medium text-amber-800">
+                      <input
+                        type="radio"
+                        name="adminTargetScope"
+                        checked={newPostTargetScope === 'SELECTED_SUPERVISORS'}
+                        onChange={() => setNewPostTargetScope('SELECTED_SUPERVISORS')}
+                        className="text-amber-600 focus:ring-amber-500"
+                      />
+                      <span>🔒 Direct to Selected Supervisor(s)</span>
+                    </label>
+                  </div>
+
+                  {newPostTargetScope === 'SELECTED_SUPERVISORS' && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-700">Select Supervisor(s):</span>
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSupervisorIds(data.facultyList?.map((f) => f.id) || [])}
+                            className="text-blue-600 hover:underline font-semibold"
+                          >
+                            Select All
+                          </button>
+                          <span>•</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSupervisorIds([])}
+                            className="text-slate-500 hover:underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-1 border border-slate-200 rounded-lg p-2 bg-white">
+                        {data.facultyList && data.facultyList.length > 0 ? (
+                          data.facultyList.map((fac) => (
+                            <label
+                              key={fac.id}
+                              className="flex items-center gap-2 text-xs text-slate-700 hover:bg-slate-50 p-1.5 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSupervisorIds.includes(fac.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedSupervisorIds([...selectedSupervisorIds, fac.id]);
+                                  } else {
+                                    setSelectedSupervisorIds(selectedSupervisorIds.filter((id) => id !== fac.id));
+                                  }
+                                }}
+                                className="rounded text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="font-medium text-slate-800">{fac.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">({fac.email})</span>
+                            </label>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-400 p-1">No faculty supervisors found.</div>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-amber-700">
+                        Selected: {selectedSupervisorIds.length} supervisor{selectedSupervisorIds.length === 1 ? '' : 's'}. Only the selected supervisor(s) and committee admins will see this thread.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -909,7 +1028,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
             </p>
             <button
               type="button"
-              onClick={() => setShowNewPostModal(true)}
+              onClick={handleOpenNewPostModal}
               className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
             >
               <span>+ Start First Discussion</span>
@@ -993,6 +1112,28 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                         >
                           {supervisorVote === 1 ? '⭐ Supervisor Marked Up (+1)' : '⚠️ Supervisor Marked Down (-1)'}
                         </span>
+                      </div>
+                    )}
+
+                    {/* Committee Discussion Audience Badge */}
+                    {isCommittee && (
+                      <div className="flex items-center gap-1.5">
+                        {post.targetScope === 'BROADCAST_ALL' || post.targetScope === 'COMMITTEE' || (!post.targetScope && post.author.role === 'ADMIN') ? (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-indigo-50 border border-indigo-200 text-indigo-800">
+                            📢 Broadcast (All Supervisors)
+                          </span>
+                        ) : post.targetScope === 'SELECTED_SUPERVISORS' ? (
+                          <span
+                            className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-900"
+                            title={post.targetSupervisorNames?.length ? `Direct to: ${post.targetSupervisorNames.join(', ')}` : undefined}
+                          >
+                            🔒 Direct: {post.targetSupervisorNames && post.targetSupervisorNames.length > 0 ? (post.targetSupervisorNames.length === 1 ? post.targetSupervisorNames[0] : `${post.targetSupervisorNames.length} Supervisors`) : 'Selected Supervisors'}
+                          </span>
+                        ) : post.author.role === 'FACULTY' ? (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-purple-50 border border-purple-200 text-purple-900">
+                            🔒 {data.currentUserRole === 'ADMIN' ? `Private from ${post.author.name}` : 'Private to Committee Admins'}
+                          </span>
+                        ) : null}
                       </div>
                     )}
                   </div>

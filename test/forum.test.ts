@@ -205,6 +205,17 @@ vi.mock('@/lib/prisma', () => ({
         return {};
       }),
     },
+    user: {
+      findMany: vi.fn().mockImplementation(({ where }: any) => {
+        if (where?.role) {
+          return mockUsers.filter((u) => u.role === where.role);
+        }
+        return mockUsers;
+      }),
+      findUnique: vi.fn().mockImplementation(({ where }: any) => {
+        return mockUsers.find((u) => u.id === where.id) || null;
+      }),
+    },
   },
 }));
 
@@ -220,6 +231,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
 
     mockUsers = [
       { id: 'user-faculty-1', name: 'Dr. Susovan Mandal', email: 'susovan.mandal@heritageit.edu', role: 'FACULTY' },
+      { id: 'user-faculty-2', name: 'Dr. Debasish Roy', email: 'debasish.roy@heritageit.edu', role: 'FACULTY' },
       { id: 'user-student-1', name: 'Sourav Roy', email: 'student.demo@heritageit.edu', role: 'STUDENT' },
       { id: 'user-student-2', name: 'Ananya Sen', email: 'ananya.sen@heritageit.edu', role: 'STUDENT' },
       { id: 'user-admin-1', name: 'Prof. Subhashis Majumder', email: 'admin@heritageit.edu', role: 'ADMIN' },
@@ -506,6 +518,131 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       expect(res2.success).toBe(true);
       expect(res2.currentVote).toBeNull();
       expect(mockMarkupVotes.length).toBe(0);
+    });
+  });
+
+  describe('Supervisor-Admin Private Communication & Broadcast Targeting', () => {
+    it('ensures faculty post to Admin is strictly private and hidden from other faculty', async () => {
+      // 1. Faculty 1 creates post to Admin Committee
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
+      });
+
+      const createRes = await createForumPostAction({
+        channel: 'COMMITTEE',
+        title: 'Private Question on Rubrics Weightage',
+        content: 'Dear Committee, I need clarification on Group 1 rubric scoring.',
+      });
+      expect(createRes.success).toBe(true);
+
+      const createdPost = mockPosts.find((p) => p.title === 'Private Question on Rubrics Weightage');
+      expect(createdPost).toBeDefined();
+      expect(createdPost?.targetScope).toBe('PRIVATE_ADMIN');
+
+      // 2. Admin can see this private communication
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+      });
+      const adminData = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(adminData.success).toBe(true);
+      expect(adminData.data?.posts.some((p) => p.id === createdPost?.id)).toBe(true);
+
+      // 3. Faculty 1 (author) can see this post
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
+      });
+      const fac1Data = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(fac1Data.success).toBe(true);
+      expect(fac1Data.data?.posts.some((p) => p.id === createdPost?.id)).toBe(true);
+
+      // 4. Faculty 2 MUST NOT see Faculty 1's private communication
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-2', role: 'FACULTY', email: 'debasish.roy@heritageit.edu' },
+      });
+      const fac2Data = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(fac2Data.success).toBe(true);
+      expect(fac2Data.data?.posts.some((p) => p.id === createdPost?.id)).toBe(false);
+
+      // 5. Faculty 2 cannot reply to Faculty 1's private thread
+      const fac2Reply = await createForumReplyAction({
+        postId: createdPost!.id,
+        content: 'I want to reply to this thread.',
+      });
+      expect(fac2Reply.success).toBe(false);
+      expect(fac2Reply.error).toMatch(/unauthorized|permission/i);
+    });
+
+    it('allows Admin to broadcast to all faculty supervisors', async () => {
+      // Admin creates broadcast
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+      });
+
+      const broadcastRes = await createForumPostAction({
+        channel: 'COMMITTEE',
+        targetScope: 'BROADCAST_ALL',
+        title: 'Department Circular: Phase 2 Evaluation Dates',
+        content: 'All faculty supervisors must submit marks by Friday.',
+      });
+      expect(broadcastRes.success).toBe(true);
+
+      const broadcastPost = mockPosts.find((p) => p.title === 'Department Circular: Phase 2 Evaluation Dates');
+      expect(broadcastPost).toBeDefined();
+
+      // Faculty 1 sees broadcast
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
+      });
+      const fac1Data = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(fac1Data.data?.posts.some((p) => p.id === broadcastPost?.id)).toBe(true);
+
+      // Faculty 2 sees broadcast
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-2', role: 'FACULTY', email: 'debasish.roy@heritageit.edu' },
+      });
+      const fac2Data = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(fac2Data.data?.posts.some((p) => p.id === broadcastPost?.id)).toBe(true);
+    });
+
+    it('allows Admin to target specific supervisor(s) exclusively', async () => {
+      // Admin targets Faculty 1 only
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+      });
+
+      const targetedRes = await createForumPostAction({
+        channel: 'COMMITTEE',
+        targetScope: 'SELECTED_SUPERVISORS',
+        targetUserIds: ['user-faculty-1'],
+        title: 'Specific Query regarding Group 1 Topic Scope',
+        content: 'Please adjust WK attributes for Group 1.',
+      });
+      expect(targetedRes.success).toBe(true);
+
+      const targetedPost = mockPosts.find((p) => p.title === 'Specific Query regarding Group 1 Topic Scope');
+      expect(targetedPost).toBeDefined();
+
+      // Faculty 1 (targeted) can see it
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
+      });
+      const fac1Data = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(fac1Data.data?.posts.some((p) => p.id === targetedPost?.id)).toBe(true);
+
+      // Faculty 2 (not targeted) cannot see it
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-2', role: 'FACULTY', email: 'debasish.roy@heritageit.edu' },
+      });
+      const fac2Data = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(fac2Data.data?.posts.some((p) => p.id === targetedPost?.id)).toBe(false);
+
+      // Faculty 2 cannot reply to targeted post
+      const fac2Reply = await createForumReplyAction({
+        postId: targetedPost!.id,
+        content: 'Attempting to reply to targeted post.',
+      });
+      expect(fac2Reply.success).toBe(false);
+      expect(fac2Reply.error).toMatch(/unauthorized|permission/i);
     });
   });
 });
