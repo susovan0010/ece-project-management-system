@@ -4,12 +4,17 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-engine';
+import { uploadFileToGoogleDrive } from '@/lib/google-drive';
 
 export interface ForumAttachment {
   name: string;
   size: number;
   type: string;
-  url: string; // Base64 data URL or file reference
+  url: string; // Base64 data URL or Google Drive link
+  driveFileId?: string;
+  driveViewLink?: string;
+  driveDownloadLink?: string;
+  hostedOn?: 'GOOGLE_DRIVE' | 'LOCAL_FALLBACK';
 }
 
 export interface ForumAuthor {
@@ -462,13 +467,42 @@ export async function createForumPostAction(data: {
       return { success: false, error: 'You are not a participant in this group forum.' };
     }
 
+    // Process attachments: upload each file to Google Drive (ece.project.committee@heritageit.edu)
+    let processedAttachments: ForumAttachment[] = [];
+    if (data.attachments && data.attachments.length > 0) {
+      processedAttachments = await Promise.all(
+        data.attachments.map(async (att) => {
+          const res = await uploadFileToGoogleDrive({
+            fileName: att.name,
+            size: att.size,
+            mimeType: att.type,
+            dataUrlOrBase64: att.url,
+            batchId: group.batchId,
+            groupNumber: group.number,
+            uploaderEmail: currentUserEmail,
+          });
+
+          return {
+            name: res.fileName,
+            size: res.size,
+            type: res.mimeType,
+            url: res.viewUrl,
+            driveFileId: res.fileId,
+            driveViewLink: res.viewUrl,
+            driveDownloadLink: res.downloadUrl,
+            hostedOn: res.hostedOn,
+          };
+        })
+      );
+    }
+
     await prisma.forumPost.create({
       data: {
         groupId: data.groupId,
         authorId: currentUserId,
         title,
         content,
-        attachments: data.attachments && data.attachments.length > 0 ? (data.attachments as any) : null,
+        attachments: processedAttachments.length > 0 ? (processedAttachments as any) : null,
       },
     });
 
@@ -537,12 +571,41 @@ export async function createForumReplyAction(data: {
       return { success: false, error: 'You are not a participant in this group forum.' };
     }
 
+    // Process attachments: upload each file to Google Drive (ece.project.committee@heritageit.edu)
+    let processedAttachments: ForumAttachment[] = [];
+    if (data.attachments && data.attachments.length > 0) {
+      processedAttachments = await Promise.all(
+        data.attachments.map(async (att) => {
+          const res = await uploadFileToGoogleDrive({
+            fileName: att.name,
+            size: att.size,
+            mimeType: att.type,
+            dataUrlOrBase64: att.url,
+            batchId: post.group.batchId,
+            groupNumber: post.group.number,
+            uploaderEmail: currentUserEmail,
+          });
+
+          return {
+            name: res.fileName,
+            size: res.size,
+            type: res.mimeType,
+            url: res.viewUrl,
+            driveFileId: res.fileId,
+            driveViewLink: res.viewUrl,
+            driveDownloadLink: res.downloadUrl,
+            hostedOn: res.hostedOn,
+          };
+        })
+      );
+    }
+
     await prisma.forumReply.create({
       data: {
         postId: data.postId,
         authorId: currentUserId,
         content,
-        attachments: data.attachments && data.attachments.length > 0 ? (data.attachments as any) : null,
+        attachments: processedAttachments.length > 0 ? (processedAttachments as any) : null,
       },
     });
 

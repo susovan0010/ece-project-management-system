@@ -11,6 +11,11 @@ import {
   toggleForumReactionAction,
   castSupervisorMarkupAction,
 } from '@/app/actions/forum';
+import {
+  getGoogleDriveStatusAction,
+  saveGoogleDriveWebhookAction,
+  testGoogleDriveConnectionAction,
+} from '@/app/actions/google-drive';
 
 interface ForumViewProps {
   initialData: GroupForumData;
@@ -26,6 +31,64 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
     setData(initialData);
     setSelectedGroupId(initialData.group.id);
   }, [initialData]);
+
+  // Google Drive Storage Modal State
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [driveConfig, setDriveConfig] = useState<{
+    isConfigured: boolean;
+    targetEmail: string;
+    maskedWebhookUrl: string | null;
+    scriptTemplate: string;
+  } | null>(null);
+  const [driveWebhookInput, setDriveWebhookInput] = useState('');
+  const [isSavingDrive, setIsSavingDrive] = useState(false);
+  const [isTestingDrive, setIsTestingDrive] = useState(false);
+  const [driveMessage, setDriveMessage] = useState<string | null>(null);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [copiedScript, setCopiedScript] = useState(false);
+
+  async function loadDriveStatus() {
+    setDriveError(null);
+    setDriveMessage(null);
+    const res = await getGoogleDriveStatusAction();
+    if (res.success) {
+      setDriveConfig({
+        isConfigured: res.isConfigured,
+        targetEmail: res.targetEmail,
+        maskedWebhookUrl: res.maskedWebhookUrl,
+        scriptTemplate: res.scriptTemplate,
+      });
+    }
+  }
+
+  async function handleSaveDriveWebhook(e: React.FormEvent) {
+    e.preventDefault();
+    setIsSavingDrive(true);
+    setDriveError(null);
+    setDriveMessage(null);
+    const res = await saveGoogleDriveWebhookAction(driveWebhookInput);
+    setIsSavingDrive(false);
+    if (res.success) {
+      setDriveMessage(res.message || 'Saved successfully.');
+      setDriveWebhookInput('');
+      await loadDriveStatus();
+    } else {
+      setDriveError(res.error || 'Failed to save webhook URL.');
+    }
+  }
+
+  async function handleTestDriveConnection() {
+    setIsTestingDrive(true);
+    setDriveError(null);
+    setDriveMessage(null);
+    const res = await testGoogleDriveConnectionAction();
+    setIsTestingDrive(false);
+    if (res.success) {
+      setDriveMessage(res.message || 'Connection verified!');
+    } else {
+      setDriveError(res.error || 'Connection failed.');
+    }
+  }
 
   // New Post State
   const [showNewPostModal, setShowNewPostModal] = useState(false);
@@ -227,6 +290,20 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
               >
                 <span>🏆 Gamification &amp; Badges</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDriveModal(true);
+                  loadDriveStatus();
+                }}
+                className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-500/40 transition inline-flex items-center gap-1.5"
+                title="Google Drive space of ece.project.committee@heritageit.edu"
+              >
+                <svg className="w-3.5 h-3.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                </svg>
+                <span>Google Drive Storage</span>
+              </button>
             </div>
             <h1 className="text-xl font-bold tracking-tight text-white mt-1">
               {data.group.topic ? `${data.group.topic.title}` : 'Capstone Project Discussion Forum'}
@@ -396,6 +473,152 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
         </div>
       )}
 
+      {/* Google Drive Storage Modal */}
+      {showDriveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Google Drive Cloud Storage</h3>
+                  <p className="text-xs text-slate-500">Official storage space for all capstone project attachments</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDriveModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Target Account Info */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-950 uppercase tracking-wide">Target Google Workspace Account</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  driveConfig?.isConfigured
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                }`}>
+                  {driveConfig?.isConfigured ? '🟢 Live & Connected' : '🟡 Webhook Configuration Ready'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-mono font-bold text-slate-900">
+                  {driveConfig?.targetEmail || 'ece.project.committee@heritageit.edu'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                All PDFs, design documents, source codes, and images uploaded in the forum discussion are hosted directly in this Google Drive space under structured folders:
+                <code className="block mt-1 font-mono text-[10px] bg-white/80 p-1.5 rounded border border-emerald-200 text-slate-800">
+                  My Drive / ECE_Capstone_Forum_Attachments / Batch_{data.group.batchId} / Group_{data.group.number}
+                </code>
+              </p>
+            </div>
+
+            {driveMessage && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-medium flex items-center justify-between">
+                <span>{driveMessage}</span>
+                <button type="button" onClick={() => setDriveMessage(null)} className="text-emerald-600 font-bold ml-2">✕</button>
+              </div>
+            )}
+
+            {driveError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium flex items-center justify-between">
+                <span>{driveError}</span>
+                <button type="button" onClick={() => setDriveError(null)} className="text-red-600 font-bold ml-2">✕</button>
+              </div>
+            )}
+
+            {/* Admin Configuration Section */}
+            {data.currentUserRole === 'ADMIN' && (
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800">Google Apps Script Webhook Endpoint</span>
+                  {driveConfig?.maskedWebhookUrl && (
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Current: {driveConfig.maskedWebhookUrl}
+                    </span>
+                  )}
+                </div>
+
+                <form onSubmit={handleSaveDriveWebhook} className="space-y-2">
+                  <input
+                    type="url"
+                    value={driveWebhookInput}
+                    onChange={(e) => setDriveWebhookInput(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-mono bg-white"
+                  />
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isTestingDrive || !driveConfig?.isConfigured}
+                      onClick={handleTestDriveConnection}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-100 disabled:opacity-40 transition inline-flex items-center gap-1.5"
+                    >
+                      <span>🔄</span>
+                      <span>{isTestingDrive ? 'Pinging Drive...' : 'Test Connection'}</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingDrive}
+                      className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs disabled:opacity-50 transition"
+                    >
+                      {isSavingDrive ? 'Saving...' : 'Save & Connect Webhook'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Setup Instructions Accordion */}
+            <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/50 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-950">How to deploy Google Apps Script in 2 minutes:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (driveConfig?.scriptTemplate) {
+                      navigator.clipboard.writeText(driveConfig.scriptTemplate);
+                      setCopiedScript(true);
+                      setTimeout(() => setCopiedScript(false), 3000);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs transition inline-flex items-center gap-1"
+                >
+                  <span>{copiedScript ? '✓ Copied!' : '📋 Copy Ready Script'}</span>
+                </button>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
+                <li>Log in to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">script.google.com</a> using <strong>ece.project.committee@heritageit.edu</strong>.</li>
+                <li>Click <strong>New project</strong>, paste the copied script, and click <strong>Save</strong>.</li>
+                <li>Click <strong>Deploy → New deployment</strong>, choose <strong>Web app</strong>.</li>
+                <li>Set Execute as: <strong>Me (ece.project.committee@heritageit.edu)</strong>, Who has access: <strong>Anyone</strong>.</li>
+                <li>Click <strong>Deploy</strong> and paste the resulting Web App URL into the box above.</li>
+              </ol>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowDriveModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* New Discussion Post Modal */}
       {showNewPostModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in">
@@ -498,6 +721,15 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                     ))}
                   </div>
                 )}
+
+                {newPostAttachments.length > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] rounded-lg">
+                    <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                    </svg>
+                    <span>Files will be hosted in Google Drive of <strong>ece.project.committee@heritageit.edu</strong></span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
@@ -513,7 +745,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                   disabled={isPosting}
                   className="inline-flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
                 >
-                  {isPosting ? 'Publishing...' : 'Publish Discussion Post'}
+                  {isPosting ? 'Uploading to Drive & Publishing...' : 'Publish Discussion Post'}
                 </button>
               </div>
             </form>
@@ -643,15 +875,29 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                         {post.attachments.map((att, idx) => (
                           <a
                             key={idx}
-                            href={att.url}
-                            download={att.name}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:border-blue-300 transition shadow-xs"
+                            href={att.driveViewLink || att.url}
+                            target={att.driveViewLink ? '_blank' : undefined}
+                            rel="noopener noreferrer"
+                            download={att.driveViewLink ? undefined : att.name}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:border-blue-300 transition shadow-xs group"
+                            title={att.driveViewLink ? "Open file in Google Drive of ece.project.committee@heritageit.edu" : att.name}
                           >
-                            <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
+                            {att.driveViewLink ? (
+                              <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            )}
                             <span className="truncate max-w-[200px]">{att.name}</span>
                             <span className="text-[10px] text-slate-400 font-normal">({Math.round(att.size / 1024)} KB)</span>
+                            {att.driveViewLink && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                                Drive ↗
+                              </span>
+                            )}
                           </a>
                         ))}
                       </div>
@@ -817,12 +1063,25 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                                 {reply.attachments.map((att, idx) => (
                                   <a
                                     key={idx}
-                                    href={att.url}
-                                    download={att.name}
-                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-blue-700 font-semibold hover:bg-blue-50"
+                                    href={att.driveViewLink || att.url}
+                                    target={att.driveViewLink ? '_blank' : undefined}
+                                    rel="noopener noreferrer"
+                                    download={att.driveViewLink ? undefined : att.name}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-blue-700 font-semibold hover:bg-blue-50 transition"
+                                    title={att.driveViewLink ? "Open file in Google Drive of ece.project.committee@heritageit.edu" : att.name}
                                   >
-                                    <span>📎 {att.name}</span>
+                                    {att.driveViewLink ? (
+                                      <svg className="w-3 h-3 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                                      </svg>
+                                    ) : (
+                                      <span>📎</span>
+                                    )}
+                                    <span className="truncate max-w-[180px]">{att.name}</span>
                                     <span className="text-[9px] text-slate-400">({Math.round(att.size / 1024)} KB)</span>
+                                    {att.driveViewLink && (
+                                      <span className="text-[9px] font-bold text-emerald-700">Drive ↗</span>
+                                    )}
                                   </a>
                                 ))}
                               </div>
@@ -974,7 +1233,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                             onClick={() => handleCreateReply(post.id)}
                             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
                           >
-                            {isReplyingMap[post.id] ? 'Posting...' : 'Post Reply'}
+                            {isReplyingMap[post.id] ? 'Uploading to Drive & Posting...' : 'Post Reply'}
                           </button>
                         </div>
                       </div>
