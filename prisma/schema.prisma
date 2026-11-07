@@ -463,7 +463,9 @@ model DepartmentAuthority {
 
 model ForumPost {
   id          String            @id @default(cuid())
-  groupId     String
+  groupId     String?
+  channel     String            @default("GROUP") // "GROUP" | "COMMITTEE"
+  targetScope String?           // "SINGLE_GROUP" | "ALL_SUPERVISED_GROUPS" | "COMMITTEE"
   authorId    String
   title       String
   content     String            @db.Text
@@ -471,13 +473,14 @@ model ForumPost {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  group       Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group       Group?            @relation(fields: [groupId], references: [id], onDelete: Cascade)
   author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
   replies     ForumReply[]
   reactions   ForumReaction[]
   markupVotes ForumMarkupVote[]
 
   @@index([groupId, createdAt])
+  @@index([channel, createdAt])
   @@index([authorId])
 }
 

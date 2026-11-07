@@ -53,7 +53,11 @@ vi.mock('@/lib/prisma', () => ({
     forumPost: {
       findMany: vi.fn().mockImplementation(({ where }: any) => {
         return mockPosts
-          .filter((p) => p.groupId === where.groupId)
+          .filter((p) => {
+            if (where?.channel && p.channel !== where.channel) return false;
+            if (where?.groupId && p.groupId !== where.groupId) return false;
+            return true;
+          })
           .map((p) => ({
             ...p,
             reactions: mockReactions.filter((r) => r.postId === p.id),
@@ -78,9 +82,10 @@ vi.mock('@/lib/prisma', () => ({
       }),
       create: vi.fn().mockImplementation(({ data }: any) => {
         const newPost = {
-          id: `post-${Date.now()}`,
+          id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           createdAt: new Date(),
           updatedAt: new Date(),
+          channel: data.channel || 'GROUP',
           ...data,
           author: mockUsers.find((u) => u.id === data.authorId) || {
             id: data.authorId,
@@ -217,6 +222,7 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       { id: 'user-faculty-1', name: 'Dr. Susovan Mandal', email: 'susovan.mandal@heritageit.edu', role: 'FACULTY' },
       { id: 'user-student-1', name: 'Sourav Roy', email: 'student.demo@heritageit.edu', role: 'STUDENT' },
       { id: 'user-student-2', name: 'Ananya Sen', email: 'ananya.sen@heritageit.edu', role: 'STUDENT' },
+      { id: 'user-admin-1', name: 'Prof. Subhashis Majumder', email: 'admin@heritageit.edu', role: 'ADMIN' },
     ];
 
     mockStudents = [
@@ -252,10 +258,20 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
           { student: { id: 'stud-2', userId: 'user-student-2', name: 'Ananya Sen', roll: '12620003002', email: 'ananya.sen@heritageit.edu' } },
         ],
       },
+      {
+        id: 'group-2',
+        number: 2,
+        batchId: '2023-2027',
+        topicId: 'topic-2',
+        supervisorId: 'user-faculty-1',
+        topic: { code: 'SIH26016', title: 'FPGA Cryptographic Accelerator' },
+        supervisor: { id: 'user-faculty-1', name: 'Dr. Susovan Mandal', email: 'susovan.mandal@heritageit.edu' },
+        members: [],
+      },
     ];
   });
 
-  describe('getGroupForumDataAction', () => {
+  describe('Channel Routing and Privacy Boundaries', () => {
     it('rejects unauthenticated requests', async () => {
       (auth as any).mockResolvedValue(null);
       const res = await getGroupForumDataAction();
@@ -271,20 +287,43 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       const res = await getGroupForumDataAction();
       expect(res.success).toBe(true);
       expect(res.data).toBeDefined();
-      expect(res.data?.group.number).toBe(1);
-      expect(res.data?.group.supervisor.name).toBe('Dr. Susovan Mandal');
+      expect(res.data?.channel).toBe('GROUP');
+      expect(res.data?.group?.number).toBe(1);
+      expect(res.data?.group?.supervisor.name).toBe('Dr. Susovan Mandal');
       expect(res.data?.isSupervisor).toBe(false);
       expect(res.data?.members.length).toBe(2);
     });
+
+    it('prevents students from accessing the COMMITTEE channel', async () => {
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-student-1', role: 'STUDENT', email: 'student.demo@heritageit.edu' },
+      });
+
+      // Student attempting to access committee forum
+      const res = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(res.data?.channel).toBe('GROUP'); // Enforced to GROUP
+    });
+
+    it('routes Admin directly to the COMMITTEE channel and blocks student group inspection', async () => {
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+      });
+
+      const res = await getGroupForumDataAction(undefined, 'COMMITTEE');
+      expect(res.success).toBe(true);
+      expect(res.data?.channel).toBe('COMMITTEE');
+      expect(res.data?.group).toBeNull(); // No student group details leaked
+    });
   });
 
-  describe('createForumPostAction and createForumReplyAction', () => {
+  describe('createForumPostAction and Broadcasts', () => {
     it('allows student to publish a discussion thread with title and attachments', async () => {
       (auth as any).mockResolvedValue({
         user: { id: 'user-student-1', role: 'STUDENT', email: 'student.demo@heritageit.edu' },
       });
 
       const res = await createForumPostAction({
+        channel: 'GROUP',
         groupId: 'group-1',
         title: 'YOLOv8 Satellite Image Pipeline',
         content: 'We need to discuss memory optimization for edge inference.',
@@ -294,12 +333,50 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       expect(res.success).toBe(true);
       expect(mockPosts.length).toBe(1);
       expect(mockPosts[0].title).toBe('YOLOv8 Satellite Image Pipeline');
+      expect(mockPosts[0].channel).toBe('GROUP');
     });
 
-    it('allows supervisor to reply to a discussion thread', async () => {
-      // First seed a post
+    it('allows supervisor to broadcast a post to ALL supervised groups simultaneously', async () => {
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
+      });
+
+      const res = await createForumPostAction({
+        channel: 'GROUP',
+        targetScope: 'ALL_SUPERVISED_GROUPS',
+        title: 'Mandatory Phase 2 Review Preparation Guidelines',
+        content: 'All groups supervised under me must prepare slides covering block diagrams and state machines.',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.message).toMatch(/broadcast to all 2 supervised groups/i);
+      expect(mockPosts.length).toBe(2); // One created for Group 1 and one for Group 2
+      expect(mockPosts.every((p) => p.targetScope === 'ALL_SUPERVISED_GROUPS')).toBe(true);
+    });
+
+    it('allows faculty to post in the COMMITTEE channel', async () => {
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
+      });
+
+      const res = await createForumPostAction({
+        channel: 'COMMITTEE',
+        title: 'Component Procurement Schedule Query',
+        content: 'Requesting the committee to clarify component reimbursement deadlines.',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockPosts.length).toBe(1);
+      expect(mockPosts[0].channel).toBe('COMMITTEE');
+      expect(mockPosts[0].groupId).toBeNull();
+    });
+  });
+
+  describe('createForumReplyAction and toggleForumReactionAction', () => {
+    beforeEach(() => {
       mockPosts.push({
         id: 'post-1',
+        channel: 'GROUP',
         groupId: 'group-1',
         authorId: 'user-student-1',
         title: 'Dataset query',
@@ -308,8 +385,11 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         author: mockUsers[1],
+        group: mockGroups[0],
       });
+    });
 
+    it('allows supervisor to reply to a discussion thread', async () => {
       (auth as any).mockResolvedValue({
         user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
       });
@@ -323,21 +403,17 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       expect(mockReplies.length).toBe(1);
       expect(mockReplies[0].content).toContain('ISRO Bhuvan');
     });
-  });
 
-  describe('toggleForumReactionAction', () => {
     it('allows toggling likes on posts', async () => {
       (auth as any).mockResolvedValue({
         user: { id: 'user-student-2', role: 'STUDENT', email: 'ananya.sen@heritageit.edu' },
       });
 
-      // Like
       const res1 = await toggleForumReactionAction({ postId: 'post-1', type: 'LIKE' });
       expect(res1.success).toBe(true);
       expect(res1.userReaction).toBe('LIKE');
       expect(mockReactions.length).toBe(1);
 
-      // Toggle off
       const res2 = await toggleForumReactionAction({ postId: 'post-1', type: 'LIKE' });
       expect(res2.success).toBe(true);
       expect(res2.userReaction).toBeNull();
@@ -345,10 +421,11 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
     });
   });
 
-  describe('castSupervisorMarkupAction', () => {
+  describe('castSupervisorMarkupAction and Badge Rules', () => {
     beforeEach(() => {
       mockPosts.push({
         id: 'post-1',
+        channel: 'GROUP',
         groupId: 'group-1',
         authorId: 'user-student-1',
         title: 'Deep Research on Transformers',
@@ -357,6 +434,18 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         group: mockGroups[0],
+      });
+      mockPosts.push({
+        id: 'post-committee-1',
+        channel: 'COMMITTEE',
+        groupId: null,
+        authorId: 'user-faculty-1',
+        title: 'Committee Notice',
+        content: 'Notice for all supervisors.',
+        attachments: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        group: null,
       });
     });
 
@@ -375,7 +464,22 @@ describe('Group Forum Discussion & Supervisor Feedback Actions', () => {
       expect(res.error).toMatch(/only the project supervisor/i);
     });
 
-    it('allows supervisor to cast Mark Up (+1) and toggle it off', async () => {
+    it('disallows markups in the COMMITTEE channel', async () => {
+      (auth as any).mockResolvedValue({
+        user: { id: 'user-admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+      });
+
+      const res = await castSupervisorMarkupAction({
+        postId: 'post-committee-1',
+        targetUserId: 'user-faculty-1',
+        value: 1,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/not applicable in Committee discussions/i);
+    });
+
+    it('allows supervisor to cast Mark Up (+1) and toggle it off in Group discussions', async () => {
       (auth as any).mockResolvedValue({
         user: { id: 'user-faculty-1', role: 'FACULTY', email: 'susovan.mandal@heritageit.edu' },
       });

@@ -3,16 +3,12 @@ import { getGroupForumDataAction } from '@/app/actions/forum';
 import ForumView from '@/components/forum/forum-view';
 
 export const metadata: Metadata = {
-  title: 'Project Forum Discussion | Project Committee',
-  description: 'Supervised group project forum discussions and technical feedback.',
+  title: 'Supervisor & Admin Discussion Forum | Project Committee',
+  description: 'Committee-level forum discussions between Project Committee and Faculty Supervisors.',
 };
 
-export default async function AdminForumPage({
-  searchParams,
-}: {
-  searchParams: { groupId?: string };
-}) {
-  const res = await getGroupForumDataAction(searchParams?.groupId);
+export default async function AdminForumPage() {
+  const res = await getGroupForumDataAction(undefined, 'COMMITTEE');
 
   if (!res.success || !res.data) {
     return (
@@ -20,9 +16,9 @@ export default async function AdminForumPage({
         <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-xl">
           ⚠️
         </div>
-        <h2 className="text-lg font-bold text-slate-900">Project Group Forum Unavailable</h2>
+        <h2 className="text-lg font-bold text-slate-900">Committee Forum Unavailable</h2>
         <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto">
-          {res.error || 'No active project groups found.'}
+          {res.error || 'Failed to load committee discussions.'}
         </p>
       </div>
     );

@@ -286,8 +286,12 @@ export async function uploadFileToGoogleDrive(params: {
     };
   }
 
-  const subFolder =
-    batchId && groupNumber !== undefined ? `Batch_${batchId}_Group_${groupNumber}` : 'General_Discussions';
+  let subFolder = 'General_Discussions';
+  if (batchId === 'Committee') {
+    subFolder = 'Committee_Discussions';
+  } else if (batchId && groupNumber !== undefined) {
+    subFolder = `Batch_${batchId}_Group_${groupNumber}`;
+  }
 
   try {
     const response = await googleDriveHttpClient.postJsonToAppsScript(config.webhookUrl, {

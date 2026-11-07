@@ -10,9 +10,10 @@ export const metadata: Metadata = {
 export default async function FacultyForumPage({
   searchParams,
 }: {
-  searchParams: { groupId?: string };
+  searchParams: { groupId?: string; channel?: 'GROUP' | 'COMMITTEE' };
 }) {
-  const res = await getGroupForumDataAction(searchParams?.groupId);
+  const channel = searchParams?.channel === 'COMMITTEE' ? 'COMMITTEE' : 'GROUP';
+  const res = await getGroupForumDataAction(searchParams?.groupId, channel);
 
   if (!res.success || !res.data) {
     return (

@@ -25,12 +25,15 @@ interface ForumViewProps {
 export default function ForumView({ initialData, onGroupChange }: ForumViewProps) {
   const router = useRouter();
   const [data, setData] = useState<GroupForumData>(initialData);
-  const [selectedGroupId, setSelectedGroupId] = useState(initialData.group.id);
+  const [selectedGroupId, setSelectedGroupId] = useState(initialData.group?.id || '');
 
   useEffect(() => {
     setData(initialData);
-    setSelectedGroupId(initialData.group.id);
+    setSelectedGroupId(initialData.group?.id || '');
   }, [initialData]);
+
+  const isCommittee = data.channel === 'COMMITTEE';
+  const isSupervisorOfGroup = !isCommittee && data.isSupervisor;
 
   // Google Drive Storage Modal State
   const [showDriveModal, setShowDriveModal] = useState(false);
@@ -98,6 +101,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostAttachments, setNewPostAttachments] = useState<ForumAttachment[]>([]);
+  const [newPostTargetScope, setNewPostTargetScope] = useState<'SINGLE_GROUP' | 'ALL_SUPERVISED_GROUPS'>('SINGLE_GROUP');
   const [isPosting, setIsPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
@@ -120,7 +124,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
     if (onGroupChange) {
       onGroupChange(newId);
     } else {
-      router.push(`?groupId=${newId}`);
+      router.push(`?channel=GROUP&groupId=${newId}`);
       router.refresh();
     }
   }
@@ -131,7 +135,6 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach((file) => {
-      // 5MB limit per file
       if (file.size > 5 * 1024 * 1024) {
         alert(`File "${file.name}" exceeds the 5MB size limit.`);
         return;
@@ -197,7 +200,9 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
     setPostError(null);
 
     const res = await createForumPostAction({
-      groupId: data.group.id,
+      channel: data.channel,
+      groupId: isCommittee ? undefined : selectedGroupId,
+      targetScope: isCommittee ? 'COMMITTEE' : newPostTargetScope,
       title: newPostTitle.trim(),
       content: newPostContent.trim(),
       attachments: newPostAttachments,
@@ -211,8 +216,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
       setNewPostContent('');
       setNewPostAttachments([]);
       setShowNewPostModal(false);
-      // Trigger data refresh if parent provided callback or reload
-      if (onGroupChange) onGroupChange(data.group.id);
+      if (onGroupChange && data.group) onGroupChange(data.group.id);
       router.refresh();
     }
   }
@@ -236,7 +240,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
       setReplyContents((prev) => ({ ...prev, [postId]: '' }));
       setReplyAttachments((prev) => ({ ...prev, [postId]: [] }));
       setActiveReplyBoxPostId(null);
-      if (onGroupChange) onGroupChange(data.group.id);
+      if (onGroupChange && data.group) onGroupChange(data.group.id);
       router.refresh();
     } else {
       alert(res.error || 'Failed to post reply.');
@@ -246,7 +250,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
   // Toggle Reaction (Like / Dislike)
   async function handleToggleReaction(opts: { postId?: string; replyId?: string; type: 'LIKE' | 'DISLIKE' }) {
     await toggleForumReactionAction(opts);
-    if (onGroupChange) onGroupChange(data.group.id);
+    if (onGroupChange && data.group) onGroupChange(data.group.id);
     router.refresh();
   }
 
@@ -257,72 +261,134 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
     targetUserId: string;
     value: 1 | -1;
   }) {
-    if (!data.isSupervisor) return;
+    if (!isSupervisorOfGroup) return;
     const res = await castSupervisorMarkupAction(opts);
     if (!res.success) {
       alert(res.error || 'Could not register supervisor evaluation.');
     } else {
-      if (onGroupChange) onGroupChange(data.group.id);
+      if (onGroupChange && data.group) onGroupChange(data.group.id);
       router.refresh();
     }
   }
 
-  // Find current user's student badges (if student)
-  const currentStudentMember = data.members.find((m) => m.name === data.group.supervisor.name ? false : true);
-  const myMemberProfile = data.members.find(
-    (m) => m.email && m.email.toLowerCase() === (data as any).currentUserEmail?.toLowerCase?.()
-  ) || data.members[0];
-
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-16 text-slate-800">
-      {/* Group & Forum Header */}
+      {/* Faculty Channel Switcher Tab (Only on Faculty account) */}
+      {data.currentUserRole === 'FACULTY' && (
+        <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+          <button
+            type="button"
+            onClick={() => {
+              router.push('/faculty/forum?channel=GROUP');
+              router.refresh();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              !isCommittee
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+            }`}
+          >
+            <span>👥 My Supervised Groups</span>
+            {data.supervisedGroups.length > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${!isCommittee ? 'bg-blue-500 text-white' : 'bg-slate-300 text-slate-700'}`}>
+                {data.supervisedGroups.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              router.push('/faculty/forum?channel=COMMITTEE');
+              router.refresh();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              isCommittee
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+            }`}
+          >
+            <span>🏛️ Admin Committee Discussion</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${isCommittee ? 'bg-indigo-500 text-white' : 'bg-slate-300 text-slate-700'}`}>
+              Faculty &amp; Admin
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Header Banner */}
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-6 shadow-md border border-blue-800/60 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/30 text-blue-200 border border-blue-400/40 font-mono">
-                Batch {data.group.batchId} • Group #{data.group.number}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
-                Group Forum
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowRulesModal(true)}
-                className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/25 text-amber-300 border border-amber-400/30 hover:bg-amber-500/40 transition inline-flex items-center gap-1"
-              >
-                <span>🏆 Gamification &amp; Badges</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDriveModal(true);
-                  loadDriveStatus();
-                }}
-                className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-500/40 transition inline-flex items-center gap-1.5"
-                title="Google Drive space of ece.project.committee@heritageit.edu"
-              >
-                <svg className="w-3.5 h-3.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
-                </svg>
-                <span>Google Drive Storage</span>
-              </button>
+              {isCommittee ? (
+                <>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/40">
+                    🏛️ Committee Channel
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
+                    Faculty &amp; Admin Hub
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/30 text-blue-200 border border-blue-400/40 font-mono">
+                    Batch {data.group?.batchId} • Group #{data.group?.number}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30">
+                    Group Forum
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowRulesModal(true)}
+                    className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/25 text-amber-300 border border-amber-400/30 hover:bg-amber-500/40 transition inline-flex items-center gap-1"
+                  >
+                    <span>🏆 Badges &amp; Marks</span>
+                  </button>
+                </>
+              )}
+
+              {/* Google Drive Storage Modal Trigger */}
+              {(data.currentUserRole === 'ADMIN' || data.currentUserRole === 'FACULTY') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDriveModal(true);
+                    loadDriveStatus();
+                  }}
+                  className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30 hover:bg-emerald-500/40 transition inline-flex items-center gap-1.5"
+                  title="Official Google Drive space of ece.project.committee@heritageit.edu"
+                >
+                  <svg className="w-3.5 h-3.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                  </svg>
+                  <span>Google Drive Storage</span>
+                </button>
+              )}
             </div>
+
             <h1 className="text-xl font-bold tracking-tight text-white mt-1">
-              {data.group.topic ? `${data.group.topic.title}` : 'Capstone Project Discussion Forum'}
+              {isCommittee
+                ? 'Supervisor & Project Committee Discussion Forum'
+                : data.group?.topic?.title
+                ? `${data.group.topic.title}`
+                : 'Capstone Project Discussion Forum'}
             </h1>
-            {data.group.topic?.code && (
+
+            {data.group?.topic?.code && (
               <p className="text-xs text-blue-300 font-mono">Topic Code: {data.group.topic.code}</p>
             )}
+
             <p className="text-xs text-blue-200 max-w-2xl leading-relaxed">
-              Collaborative discussion room for Group #{data.group.number} and Supervisor{' '}
-              <span className="font-semibold text-white">{data.group.supervisor.name}</span>. Share technical queries, progress updates, project documentation, and peer answers.
+              {isCommittee
+                ? 'Official two-way communication channel between Faculty Supervisors and Project Committee Administrators. Deliberate academic issues, project approvals, schedules, and policy directives.'
+                : `Collaborative technical forum for Group #${data.group?.number} and Supervisor ${data.group?.supervisor.name}. Share queries, progress updates, documentation, and peer answers.`}
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Faculty / Admin Group Selector */}
-            {(data.currentUserRole === 'FACULTY' || data.currentUserRole === 'ADMIN') && data.supervisedGroups.length > 1 && (
+            {/* Faculty Group Selector (Only in Group mode) */}
+            {!isCommittee && data.currentUserRole === 'FACULTY' && data.supervisedGroups.length > 1 && (
               <select
                 value={selectedGroupId}
                 onChange={(e) => handleSelectGroup(e.target.value)}
@@ -344,46 +410,56 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <span>Start Discussion</span>
+              <span>{isCommittee ? 'New Committee Topic' : 'Start Discussion'}</span>
             </button>
           </div>
         </div>
 
-        {/* Member Badges & Leaderboard Bar */}
-        <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Group Roster ({data.members.length} Students):
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {data.members.map((m) => (
-                <div
-                  key={m.id}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-[11px]"
-                  title={`Net Markups: ${m.badges.effectiveScore} | Diamonds: ${m.badges.diamonds}, Gold: ${m.badges.gold}, Silver: ${m.badges.silver}, Copper: ${m.badges.copper}, Iron: ${m.badges.iron}`}
-                >
-                  <span className="font-semibold text-white">{m.name.split(' ')[0]}</span>
-                  <span className="text-slate-400 font-mono text-[10px]">({m.roll})</span>
-                  {/* Badges count pill */}
-                  <div className="inline-flex items-center gap-1 ml-1">
-                    {m.badges.diamonds > 0 && <span title={`${m.badges.diamonds} Diamonds`}>💎{m.badges.diamonds}</span>}
-                    {m.badges.gold > 0 && <span title={`${m.badges.gold} Gold`}>🥇{m.badges.gold}</span>}
-                    {m.badges.silver > 0 && <span title={`${m.badges.silver} Silver`}>🥈{m.badges.silver}</span>}
-                    {m.badges.copper > 0 && <span title={`${m.badges.copper} Copper`}>🥉{m.badges.copper}</span>}
-                    {m.badges.iron > 0 && <span title={`${m.badges.iron} Iron`}>⚙️{m.badges.iron}</span>}
-                    {m.badges.badges.length === 0 && (
-                      <span className="text-[10px] text-slate-400 font-mono">{m.badges.effectiveScore} pts</span>
-                    )}
+        {/* Member Badges & Leaderboard Bar (Only in Group discussions) */}
+        {!isCommittee && data.members.length > 0 && (
+          <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Group Roster ({data.members.length} Students):
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {data.members.map((m) => (
+                  <div
+                    key={m.id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-[11px]"
+                    title={`Net Markups: ${m.badges.effectiveScore} | Diamonds: ${m.badges.diamonds}, Gold: ${m.badges.gold}, Silver: ${m.badges.silver}, Copper: ${m.badges.copper}, Iron: ${m.badges.iron}`}
+                  >
+                    <span className="font-semibold text-white">{m.name.split(' ')[0]}</span>
+                    <span className="text-slate-400 font-mono text-[10px]">({m.roll})</span>
+                    <div className="inline-flex items-center gap-1 ml-1">
+                      {m.badges.diamonds > 0 && <span title={`${m.badges.diamonds} Diamonds`}>💎{m.badges.diamonds}</span>}
+                      {m.badges.gold > 0 && <span title={`${m.badges.gold} Gold`}>🥇{m.badges.gold}</span>}
+                      {m.badges.silver > 0 && <span title={`${m.badges.silver} Silver`}>🥈{m.badges.silver}</span>}
+                      {m.badges.copper > 0 && <span title={`${m.badges.copper} Copper`}>🥉{m.badges.copper}</span>}
+                      {m.badges.iron > 0 && <span title={`${m.badges.iron} Iron`}>⚙️{m.badges.iron}</span>}
+                      {m.badges.badges.length === 0 && (
+                        <span className="text-[10px] text-slate-400 font-mono">{m.badges.effectiveScore} pts</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="text-[11px] text-blue-300">
-            Supervisor: <span className="font-semibold text-white">{data.group.supervisor.name}</span>
+            {data.group?.supervisor?.name && (
+              <div className="text-[11px] text-blue-300">
+                Supervisor: <span className="font-semibold text-white">{data.group.supervisor.name}</span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {isCommittee && (
+          <div className="pt-2 border-t border-white/10 text-[11px] text-indigo-200 flex items-center justify-between">
+            <span>🔒 Confidential Channel: Accessible solely to Faculty Supervisors and Project Committee Admins. Students cannot view or post here.</span>
+            <span className="text-slate-400">Badge Gamification: Not Applicable</span>
+          </div>
+        )}
       </div>
 
       {/* Gamification Explainer Modal */}
@@ -458,7 +534,6 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                 <p>
                   From 60 to 90 points, students earn duplicates starting from Iron (60), Copper (70), Silver (80), and Gold (90).
                   Upon reaching <strong>100 Markups (Double Diamond)</strong>, the student receives <strong>3 Cumulative Diamonds</strong>, and all lower materials are compensated and cleared.
-                  The cycle then restarts with 3 diamonds in the student&apos;s vault.
                 </p>
               </div>
             </div>
@@ -488,8 +563,8 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">Google Drive Cloud Storage</h3>
-                  <p className="text-xs text-slate-500">Official storage space for all capstone project attachments</p>
+                  <h3 className="font-bold text-slate-900 text-base">Google Drive Cloud Storage (100% Free)</h3>
+                  <p className="text-xs text-slate-500">Official storage space for all capstone forum attachments</p>
                 </div>
               </div>
               <button
@@ -501,92 +576,98 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
               </button>
             </div>
 
-            {/* Target Account Info */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200 space-y-2">
+            {/* Target Account Badge */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-950 uppercase tracking-wide">Target Google Workspace Account</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  driveConfig?.isConfigured
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-amber-100 text-amber-800 border border-amber-300'
-                }`}>
-                  {driveConfig?.isConfigured ? '🟢 Live & Connected' : '🟡 Webhook Configuration Ready'}
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Target Google Workspace Account
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    driveConfig?.isConfigured
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {driveConfig?.isConfigured ? '● Live & Connected' : '○ Configuration Needed'}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-mono font-bold text-slate-900">
-                  {driveConfig?.targetEmail || 'ece.project.committee@heritageit.edu'}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                All PDFs, design documents, source codes, and images uploaded in the forum discussion are hosted directly in this Google Drive space under structured folders:
-                <code className="block mt-1 font-mono text-[10px] bg-white/80 p-1.5 rounded border border-emerald-200 text-slate-800">
-                  My Drive / ECE_Capstone_Forum_Attachments / Batch_{data.group.batchId} / Group_{data.group.number}
-                </code>
+              <p className="font-mono text-xs font-bold text-slate-900">
+                ece.project.committee@heritageit.edu
+              </p>
+              <p className="text-[11px] text-slate-600">
+                All PDFs, design documents, and images uploaded in the forum discussion are hosted in this Google Drive space under structured folders without any recurring cost.
               </p>
             </div>
 
             {driveMessage && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-medium flex items-center justify-between">
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between">
                 <span>{driveMessage}</span>
-                <button type="button" onClick={() => setDriveMessage(null)} className="text-emerald-600 font-bold ml-2">✕</button>
+                <button type="button" onClick={() => setDriveMessage(null)} className="text-emerald-700 font-bold ml-2">
+                  ✕
+                </button>
               </div>
             )}
 
             {driveError && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium flex items-center justify-between">
-                <span>{driveError}</span>
-                <button type="button" onClick={() => setDriveError(null)} className="text-red-600 font-bold ml-2">✕</button>
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold">Connection Notice:</span>
+                  <button type="button" onClick={() => setDriveError(null)} className="text-red-700 font-bold ml-2">
+                    ✕
+                  </button>
+                </div>
+                <p className="whitespace-pre-wrap">{driveError}</p>
               </div>
             )}
 
-            {/* Admin Configuration Section */}
-            {data.currentUserRole === 'ADMIN' && (
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Google Apps Script Webhook Endpoint</span>
+            {/* Webhook Form */}
+            <form onSubmit={handleSaveDriveWebhook} className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    Google Apps Script Webhook Endpoint
+                  </label>
                   {driveConfig?.maskedWebhookUrl && (
-                    <span className="text-[10px] text-slate-500 font-mono">
+                    <span className="text-[10px] font-mono text-slate-500">
                       Current: {driveConfig.maskedWebhookUrl}
                     </span>
                   )}
                 </div>
-
-                <form onSubmit={handleSaveDriveWebhook} className="space-y-2">
-                  <input
-                    type="url"
-                    value={driveWebhookInput}
-                    onChange={(e) => setDriveWebhookInput(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/.../exec"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 font-mono bg-white"
-                  />
-                  <div className="flex items-center justify-between gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={isTestingDrive || !driveConfig?.isConfigured}
-                      onClick={handleTestDriveConnection}
-                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-100 disabled:opacity-40 transition inline-flex items-center gap-1.5"
-                    >
-                      <span>🔄</span>
-                      <span>{isTestingDrive ? 'Pinging Drive...' : 'Test Connection'}</span>
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSavingDrive}
-                      className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs disabled:opacity-50 transition"
-                    >
-                      {isSavingDrive ? 'Saving...' : 'Save & Connect Webhook'}
-                    </button>
-                  </div>
-                </form>
+                <input
+                  type="url"
+                  value={driveWebhookInput}
+                  onChange={(e) => setDriveWebhookInput(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                />
               </div>
-            )}
 
-            {/* Setup Instructions Accordion */}
-            <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/50 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestDriveConnection}
+                  disabled={isTestingDrive}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <span>{isTestingDrive ? 'Testing...' : '🔄 Test Connection'}</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingDrive || !driveWebhookInput.trim()}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition disabled:opacity-50"
+                >
+                  {isSavingDrive ? 'Saving...' : 'Save & Connect Webhook'}
+                </button>
+              </div>
+            </form>
+
+            {/* Step-by-Step Guide */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-blue-950">How to deploy Google Apps Script in 2 minutes:</span>
-                <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-800">Fresh Setup in 60 seconds (100% Free):</span>
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -596,10 +677,9 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                         setTimeout(() => setCopiedManifest(false), 3000);
                       }
                     }}
-                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-800 text-white text-[10px] font-bold shadow-xs transition"
-                    title="Copy appsscript.json manifest with Drive OAuth scopes"
+                    className="px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 text-[10px] font-bold transition"
                   >
-                    <span>{copiedManifest ? '✓ Copied Manifest!' : '📋 Copy appsscript.json'}</span>
+                    <span>{copiedManifest ? '✓ Copied appsscript.json!' : '📋 Copy appsscript.json'}</span>
                   </button>
                   <button
                     type="button"
@@ -610,19 +690,19 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                         setTimeout(() => setCopiedScript(false), 3000);
                       }
                     }}
-                    className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs transition inline-flex items-center gap-1"
+                    className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition"
                   >
-                    <span>{copiedScript ? '✓ Copied!' : '📋 Copy Ready Script'}</span>
+                    <span>{copiedScript ? '✓ Copied Code.gs!' : '📋 Copy Code.gs'}</span>
                   </button>
                 </div>
               </div>
               <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
-                <li>Log in to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">script.google.com</a> using <strong>ece.project.committee@heritageit.edu</strong>.</li>
-                <li>Click <strong>New project</strong>, replace with the copied script, and click <strong>Save (Ctrl+S)</strong>.</li>
-                <li><strong>IMPORTANT:</strong> In the function dropdown at the top, select <strong>authorizeDrive</strong> and click <strong>Run (▶️)</strong>. Review permissions and click <strong>Allow</strong>.</li>
-                <li>Click <strong>Deploy → New deployment</strong> (or Manage deployments → Edit), choose <strong>Web app</strong>.</li>
-                <li>Set Execute as: <strong>Me (ece.project.committee@heritageit.edu)</strong>, Who has access: <strong>Anyone</strong>.</li>
-                <li>Click <strong>Deploy</strong> and paste the resulting Web App URL into the box above.</li>
+                <li>Log in to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">script.google.com</a> with <strong>ece.project.committee@heritageit.edu</strong>.</li>
+                <li>Click <strong>New project</strong>. Paste the copied <strong>Code.gs</strong> and save (`Ctrl+S`).</li>
+                <li>In ⚙️ <strong>Project Settings</strong>, check <em>&quot;Show &apos;appsscript.json&apos; manifest file in editor&quot;</em>. In editor, paste the copied <strong>appsscript.json</strong> and save.</li>
+                <li>Select <strong>authorizeDrive</strong> in function dropdown at top and click <strong>Run (▶️)</strong>. Review permissions $\to$ Advanced $\to$ Allow.</li>
+                <li>Click <strong>Deploy $\to$ New deployment</strong> $\to$ Web app $\to$ Execute as: <strong>Me (ece.project.committee@heritageit.edu)</strong>, Who has access: <strong>Anyone</strong> $\to$ Deploy.</li>
+                <li>Copy the resulting Web App URL and paste it into the box above.</li>
               </ol>
             </div>
 
@@ -648,7 +728,9 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                 <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
                   💬
                 </span>
-                <h3 className="font-bold text-slate-900 text-base">Create New Discussion Thread</h3>
+                <h3 className="font-bold text-slate-900 text-base">
+                  {isCommittee ? 'Create New Committee Discussion Topic' : 'Create New Group Discussion Post'}
+                </h3>
               </div>
               <button
                 type="button"
@@ -666,6 +748,44 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                 </div>
               )}
 
+              {/* Scope Selection for Faculty in Group Discussions */}
+              {data.currentUserRole === 'FACULTY' && !isCommittee && data.supervisedGroups.length > 0 && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Distribution Audience:
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-4 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
+                      <input
+                        type="radio"
+                        name="postTargetScope"
+                        checked={newPostTargetScope === 'SINGLE_GROUP'}
+                        onChange={() => setNewPostTargetScope('SINGLE_GROUP')}
+                        className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>This Group Only (Group #{data.group?.number})</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer font-medium text-indigo-800">
+                      <input
+                        type="radio"
+                        name="postTargetScope"
+                        checked={newPostTargetScope === 'ALL_SUPERVISED_GROUPS'}
+                        onChange={() => setNewPostTargetScope('ALL_SUPERVISED_GROUPS')}
+                        className="text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>Broadcast to All My Supervised Groups ({data.supervisedGroups.length})</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {isCommittee && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900">
+                  <strong>Audience:</strong> Project Committee Admins &amp; Faculty Supervisors. (Not visible to students).
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Discussion Title <span className="text-red-500">*</span>
@@ -675,7 +795,11 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                   required
                   value={newPostTitle}
                   onChange={(e) => setNewPostTitle(e.target.value)}
-                  placeholder="e.g. Literature Survey findings on YOLOv8 edge inference..."
+                  placeholder={
+                    isCommittee
+                      ? 'e.g. Schedule clarification for Phase 2 interim evaluations...'
+                      : 'e.g. Literature Survey queries on edge inference...'
+                  }
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
                 />
               </div>
@@ -689,7 +813,11 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                   rows={6}
                   value={newPostContent}
                   onChange={(e) => setNewPostContent(e.target.value)}
-                  placeholder="Provide technical context, questions, simulation results, or discussion points..."
+                  placeholder={
+                    isCommittee
+                      ? 'Describe the administrative query, schedule question, or academic topic for the committee...'
+                      : 'Provide technical context, questions, simulation results, or guidance...'
+                  }
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 leading-relaxed font-sans"
                 />
               </div>
@@ -741,31 +869,22 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                     ))}
                   </div>
                 )}
-
-                {newPostAttachments.length > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] rounded-lg">
-                    <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
-                    </svg>
-                    <span>Files will be hosted in Google Drive of <strong>ece.project.committee@heritageit.edu</strong></span>
-                  </div>
-                )}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowNewPostModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPosting}
-                  className="inline-flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
                 >
-                  {isPosting ? 'Uploading to Drive & Publishing...' : 'Publish Discussion Post'}
+                  {isPosting ? 'Publishing...' : isCommittee ? 'Post Committee Topic' : 'Publish Discussion'}
                 </button>
               </div>
             </form>
@@ -773,208 +892,186 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
         </div>
       )}
 
-      {/* Discussion Feed */}
-      <div className="space-y-4">
+      {/* Discussion Posts Feed */}
+      <div className="space-y-6">
         {data.posts.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-4 shadow-sm">
-            <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto text-2xl">
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3 shadow-2xs">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto text-xl">
               💬
             </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-base">No discussions started yet</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Be the first to create a discussion thread in this group forum. Any group member or the supervisor can publish questions, research notes, and updates.
-              </p>
-            </div>
+            <h3 className="font-bold text-slate-900 text-sm">
+              {isCommittee ? 'No Committee Discussions Yet' : 'No Group Discussions Yet'}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+              {isCommittee
+                ? 'Supervisors and administrators can start a discussion thread to discuss project committee decisions, evaluations, and guidelines.'
+                : 'Be the first to start a conversation! Share technical ideas, literature papers, or project doubts with your supervisor and peers.'}
+            </p>
             <button
               type="button"
               onClick={() => setShowNewPostModal(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+              className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
             >
-              Start First Discussion
+              <span>+ Start First Discussion</span>
             </button>
           </div>
         ) : (
           data.posts.map((post) => {
-            const isSupervisorOfGroup = data.isSupervisor;
-            const isPostAuthorStudent = post.author.role === 'STUDENT';
             const supervisorVote = post.markup.supervisorVote;
+            const isAuthorStudent = post.author.role === 'STUDENT';
 
             return (
               <div
                 key={post.id}
-                className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden divide-y divide-slate-100 hover:border-slate-300 transition"
+                className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden transition hover:border-slate-300"
               >
-                {/* Main Post Header & Body */}
-                <div className="p-6 space-y-4">
-                  {/* Author Meta & Badge Header */}
+                {/* Post Header */}
+                <div className="p-6 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-700 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
                         {post.author.name[0]}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-sm">{post.author.name}</span>
+                          <span className="font-bold text-slate-900 text-xs">{post.author.name}</span>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              post.author.role === 'FACULTY'
-                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                                : 'bg-blue-100 text-blue-800 border border-blue-200'
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              post.author.role === 'ADMIN'
+                                ? 'bg-purple-100 text-purple-800'
+                                : post.author.role === 'FACULTY'
+                                ? 'bg-indigo-100 text-indigo-800'
+                                : 'bg-blue-100 text-blue-800'
                             }`}
                           >
-                            {post.author.role === 'FACULTY' ? 'Supervisor' : `Student (${post.author.roll || 'Enrolled'})`}
+                            {post.author.role === 'ADMIN'
+                              ? 'Admin'
+                              : post.author.role === 'FACULTY'
+                              ? 'Supervisor'
+                              : 'Student'}
                           </span>
-
-                          {/* Author Badges */}
-                          {post.author.badges.diamonds > 0 && (
-                            <span className="text-xs" title={`${post.author.badges.diamonds} Diamonds`}>
-                              💎{post.author.badges.diamonds}
-                            </span>
-                          )}
-                          {post.author.badges.gold > 0 && (
-                            <span className="text-xs" title={`${post.author.badges.gold} Gold`}>
-                              🥇{post.author.badges.gold}
-                            </span>
-                          )}
-                          {post.author.badges.silver > 0 && (
-                            <span className="text-xs" title={`${post.author.badges.silver} Silver`}>
-                              🥈{post.author.badges.silver}
-                            </span>
-                          )}
-                          {post.author.badges.copper > 0 && (
-                            <span className="text-xs" title={`${post.author.badges.copper} Copper`}>
-                              🥉{post.author.badges.copper}
-                            </span>
-                          )}
-                          {post.author.badges.iron > 0 && (
-                            <span className="text-xs" title={`${post.author.badges.iron} Iron`}>
-                              ⚙️{post.author.badges.iron}
-                            </span>
+                          {!isCommittee && post.author.badges && (
+                            <>
+                              {post.author.badges.diamonds > 0 && <span title={`${post.author.badges.diamonds} Diamonds`}>💎{post.author.badges.diamonds}</span>}
+                              {post.author.badges.gold > 0 && <span title={`${post.author.badges.gold} Gold`}>🥇{post.author.badges.gold}</span>}
+                              {post.author.badges.silver > 0 && <span title={`${post.author.badges.silver} Silver`}>🥈{post.author.badges.silver}</span>}
+                              {post.author.badges.copper > 0 && <span title={`${post.author.badges.copper} Copper`}>🥉{post.author.badges.copper}</span>}
+                              {post.author.badges.iron > 0 && <span title={`${post.author.badges.iron} Iron`}>⚙️{post.author.badges.iron}</span>}
+                            </>
                           )}
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          {new Date(post.createdAt).toLocaleDateString('en-US', {
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(post.createdAt).toLocaleDateString([], {
                             month: 'short',
                             day: 'numeric',
                             year: 'numeric',
+                          })}{' '}
+                          at{' '}
+                          {new Date(post.createdAt).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
-                        </div>
+                        </span>
                       </div>
                     </div>
 
-                    {/* Supervisor Feedback Indicator Badge (read-only for students) */}
-                    {supervisorVote !== null && (
-                      <div
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                          supervisorVote === 1
-                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
-                            : 'bg-red-50 text-red-800 border border-red-300'
-                        }`}
-                      >
-                        <span>{supervisorVote === 1 ? '⭐ Supervisor Mark Up (+1)' : '⚠️ Supervisor Mark Down (-1)'}</span>
+                    {/* Supervisor Markup Indicator on Post */}
+                    {!isCommittee && supervisorVote !== null && (
+                      <div className="inline-flex items-center gap-1.5">
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                            supervisorVote === 1
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                              : 'bg-red-50 text-red-800 border border-red-300'
+                          }`}
+                        >
+                          {supervisorVote === 1 ? '⭐ Supervisor Marked Up (+1)' : '⚠️ Supervisor Marked Down (-1)'}
+                        </span>
                       </div>
                     )}
                   </div>
 
-                  {/* Title & Body */}
-                  <div className="space-y-2">
-                    <h3 className="text-base font-bold text-slate-900 tracking-tight">{post.title}</h3>
-                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                  {/* Post Content */}
+                  <div className="space-y-1.5">
+                    <h2 className="text-base font-bold text-slate-900 leading-snug">{post.title}</h2>
+                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-sans">
+                      {post.content}
+                    </p>
                   </div>
 
-                  {/* Attachments */}
+                  {/* Attachments list */}
                   {post.attachments && post.attachments.length > 0 && (
-                    <div className="pt-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                        Attachments ({post.attachments.length})
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {post.attachments.map((att, idx) => (
-                          <a
-                            key={idx}
-                            href={att.driveViewLink || att.url}
-                            target={att.driveViewLink ? '_blank' : undefined}
-                            rel="noopener noreferrer"
-                            download={att.driveViewLink ? undefined : att.name}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:border-blue-300 transition shadow-xs group"
-                            title={att.driveViewLink ? "Open file in Google Drive of ece.project.committee@heritageit.edu" : att.name}
-                          >
-                            {att.driveViewLink ? (
-                              <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
-                              </svg>
-                            ) : (
-                              <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                            )}
-                            <span className="truncate max-w-[200px]">{att.name}</span>
-                            <span className="text-[10px] text-slate-400 font-normal">({Math.round(att.size / 1024)} KB)</span>
-                            {att.driveViewLink && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
-                                Drive ↗
-                              </span>
-                            )}
-                          </a>
-                        ))}
-                      </div>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {post.attachments.map((att, idx) => (
+                        <a
+                          key={idx}
+                          href={att.driveViewLink || att.url}
+                          target={att.driveViewLink ? '_blank' : undefined}
+                          rel="noopener noreferrer"
+                          download={att.driveViewLink ? undefined : att.name}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-blue-700 font-semibold hover:bg-blue-50 transition"
+                          title={att.driveViewLink ? "Open file in Google Drive of ece.project.committee@heritageit.edu" : att.name}
+                        >
+                          {att.driveViewLink ? (
+                            <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+                            </svg>
+                          ) : (
+                            <span>📎</span>
+                          )}
+                          <span className="truncate max-w-[220px]">{att.name}</span>
+                          <span className="text-[10px] text-slate-400">({Math.round(att.size / 1024)} KB)</span>
+                          {att.driveViewLink && (
+                            <span className="text-[10px] font-bold text-emerald-700">Drive ↗</span>
+                          )}
+                        </a>
+                      ))}
                     </div>
                   )}
 
-                  {/* Action Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 text-xs">
-                    {/* Reactions & Reply Toggle */}
-                    <div className="flex items-center gap-2">
-                      {/* Like Button */}
+                  {/* Post Footer Action Bar */}
+                  <div className="flex flex-wrap items-center justify-between pt-3 border-t border-slate-100 text-xs gap-3">
+                    <div className="flex items-center gap-3">
+                      {/* Like / Dislike */}
                       <button
                         type="button"
                         onClick={() => handleToggleReaction({ postId: post.id, type: 'LIKE' })}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
                           post.reactions.userReaction === 'LIKE'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-xs'
-                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            ? 'bg-blue-100 text-blue-800 font-bold'
+                            : 'text-slate-600 hover:bg-slate-100'
                         }`}
                       >
                         <span>👍</span>
                         <span>{post.reactions.likes}</span>
                       </button>
 
-                      {/* Dislike Button */}
                       <button
                         type="button"
                         onClick={() => handleToggleReaction({ postId: post.id, type: 'DISLIKE' })}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
                           post.reactions.userReaction === 'DISLIKE'
-                            ? 'bg-red-50 text-red-700 border border-red-300 shadow-xs'
-                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            ? 'bg-red-100 text-red-800 font-bold'
+                            : 'text-slate-600 hover:bg-slate-100'
                         }`}
                       >
                         <span>👎</span>
                         <span>{post.reactions.dislikes}</span>
                       </button>
 
-                      {/* Reply Button */}
                       <button
                         type="button"
-                        onClick={() =>
-                          setActiveReplyBoxPostId((prev) => (prev === post.id ? null : post.id))
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition"
+                        onClick={() => setActiveReplyBoxPostId(activeReplyBoxPostId === post.id ? null : post.id)}
+                        className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-600 font-semibold text-xs ml-2"
                       >
-                        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                        </svg>
-                        <span>Reply ({post.replies.length})</span>
+                        <span>💬 {post.replies.length} Answers</span>
                       </button>
                     </div>
 
-                    {/* Supervisor Markup / Markdown Controls */}
-                    {isSupervisorOfGroup && isPostAuthorStudent && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold text-slate-500">Supervisor Feedback:</span>
+                    {/* Supervisor Mark Up / Down Action (Only for student authors in group discussions) */}
+                    {isSupervisorOfGroup && isAuthorStudent && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-slate-500 mr-1">Supervisor Marks:</span>
                         <button
                           type="button"
                           onClick={() =>
@@ -989,10 +1086,11 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                               ? 'bg-emerald-600 text-white shadow-sm'
                               : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300'
                           }`}
-                          title="Award Mark Up (+1) for technical depth and relevance"
+                          title="Award Mark Up (+1) for technical rigor"
                         >
                           <span>▲ Mark Up (+1)</span>
                         </button>
+
                         <button
                           type="button"
                           onClick={() =>
@@ -1007,7 +1105,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                               ? 'bg-red-600 text-white shadow-sm'
                               : 'bg-red-50 hover:bg-red-100 text-red-800 border border-red-300'
                           }`}
-                          title="Award Mark Down (-1) for irrelevant or poor content"
+                          title="Award Mark Down (-1) for irrelevant content"
                         >
                           <span>▼ Mark Down (-1)</span>
                         </button>
@@ -1040,18 +1138,24 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                                 <span className="font-bold text-slate-900 text-xs">{reply.author.name}</span>
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                    reply.author.role === 'FACULTY'
+                                    reply.author.role === 'ADMIN'
                                       ? 'bg-purple-100 text-purple-800'
+                                      : reply.author.role === 'FACULTY'
+                                      ? 'bg-indigo-100 text-indigo-800'
                                       : 'bg-blue-100 text-blue-800'
                                   }`}
                                 >
-                                  {reply.author.role === 'FACULTY' ? 'Supervisor' : 'Student'}
+                                  {reply.author.role === 'ADMIN' ? 'Admin' : reply.author.role === 'FACULTY' ? 'Supervisor' : 'Student'}
                                 </span>
-                                {reply.author.badges.diamonds > 0 && <span>💎{reply.author.badges.diamonds}</span>}
-                                {reply.author.badges.gold > 0 && <span>🥇{reply.author.badges.gold}</span>}
-                                {reply.author.badges.silver > 0 && <span>🥈{reply.author.badges.silver}</span>}
-                                {reply.author.badges.copper > 0 && <span>🥉{reply.author.badges.copper}</span>}
-                                {reply.author.badges.iron > 0 && <span>⚙️{reply.author.badges.iron}</span>}
+                                {!isCommittee && reply.author.badges && (
+                                  <>
+                                    {reply.author.badges.diamonds > 0 && <span>💎{reply.author.badges.diamonds}</span>}
+                                    {reply.author.badges.gold > 0 && <span>🥇{reply.author.badges.gold}</span>}
+                                    {reply.author.badges.silver > 0 && <span>🥈{reply.author.badges.silver}</span>}
+                                    {reply.author.badges.copper > 0 && <span>🥉{reply.author.badges.copper}</span>}
+                                    {reply.author.badges.iron > 0 && <span>⚙️{reply.author.badges.iron}</span>}
+                                  </>
+                                )}
                                 <span className="text-[10px] text-slate-400">
                                   {new Date(reply.createdAt).toLocaleTimeString([], {
                                     hour: '2-digit',
@@ -1060,7 +1164,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                                 </span>
                               </div>
 
-                              {replySupervisorVote !== null && (
+                              {!isCommittee && replySupervisorVote !== null && (
                                 <span
                                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                     replySupervisorVote === 1
@@ -1088,7 +1192,6 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                                     rel="noopener noreferrer"
                                     download={att.driveViewLink ? undefined : att.name}
                                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-blue-700 font-semibold hover:bg-blue-50 transition"
-                                    title={att.driveViewLink ? "Open file in Google Drive of ece.project.committee@heritageit.edu" : att.name}
                                   >
                                     {att.driveViewLink ? (
                                       <svg className="w-3 h-3 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
@@ -1191,7 +1294,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                         onChange={(e) =>
                           setReplyContents((prev) => ({ ...prev, [post.id]: e.target.value }))
                         }
-                        placeholder="Contribute your technical answer, explanation, or reference..."
+                        placeholder="Contribute your answer, technical explanation, or reference..."
                         className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
                       />
 
@@ -1253,7 +1356,7 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                             onClick={() => handleCreateReply(post.id)}
                             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
                           >
-                            {isReplyingMap[post.id] ? 'Uploading to Drive & Posting...' : 'Post Reply'}
+                            {isReplyingMap[post.id] ? 'Posting...' : 'Post Reply'}
                           </button>
                         </div>
                       </div>
