@@ -427,19 +427,19 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                   <div
                     key={m.id}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-[11px]"
-                    title={`Net Markups: ${m.badges.effectiveScore} | Diamonds: ${m.badges.diamonds}, Gold: ${m.badges.gold}, Silver: ${m.badges.silver}, Copper: ${m.badges.copper}, Iron: ${m.badges.iron}`}
+                    title={`Net Markups: ${m.badges.effectiveScore} pts | Diamonds: ${m.badges.diamonds}, Gold: ${m.badges.gold}, Silver: ${m.badges.silver}, Copper: ${m.badges.copper}, Iron: ${m.badges.iron}`}
                   >
-                    <span className="font-semibold text-white">{m.name.split(' ')[0]}</span>
+                    <span className="font-semibold text-white">{m.name}</span>
                     <span className="text-slate-400 font-mono text-[10px]">({m.roll})</span>
-                    <div className="inline-flex items-center gap-1 ml-1">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-300 font-bold font-mono text-[10px]">
+                      {m.badges.effectiveScore > 0 ? `+${m.badges.effectiveScore}` : m.badges.effectiveScore} pts
+                    </span>
+                    <div className="inline-flex items-center gap-1 ml-0.5">
                       {m.badges.diamonds > 0 && <span title={`${m.badges.diamonds} Diamonds`}>💎{m.badges.diamonds}</span>}
                       {m.badges.gold > 0 && <span title={`${m.badges.gold} Gold`}>🥇{m.badges.gold}</span>}
                       {m.badges.silver > 0 && <span title={`${m.badges.silver} Silver`}>🥈{m.badges.silver}</span>}
                       {m.badges.copper > 0 && <span title={`${m.badges.copper} Copper`}>🥉{m.badges.copper}</span>}
                       {m.badges.iron > 0 && <span title={`${m.badges.iron} Iron`}>⚙️{m.badges.iron}</span>}
-                      {m.badges.badges.length === 0 && (
-                        <span className="text-[10px] text-slate-400 font-mono">{m.badges.effectiveScore} pts</span>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -951,13 +951,19 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                               : 'Student'}
                           </span>
                           {!isCommittee && post.author.badges && (
-                            <>
+                            <div
+                              className="inline-flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-medium"
+                              title={`Supervisor Markups: ${post.author.badges.effectiveScore} pts`}
+                            >
+                              <span className="font-bold font-mono">
+                                {post.author.badges.effectiveScore > 0 ? `+${post.author.badges.effectiveScore}` : post.author.badges.effectiveScore} pts
+                              </span>
                               {post.author.badges.diamonds > 0 && <span title={`${post.author.badges.diamonds} Diamonds`}>💎{post.author.badges.diamonds}</span>}
                               {post.author.badges.gold > 0 && <span title={`${post.author.badges.gold} Gold`}>🥇{post.author.badges.gold}</span>}
                               {post.author.badges.silver > 0 && <span title={`${post.author.badges.silver} Silver`}>🥈{post.author.badges.silver}</span>}
                               {post.author.badges.copper > 0 && <span title={`${post.author.badges.copper} Copper`}>🥉{post.author.badges.copper}</span>}
                               {post.author.badges.iron > 0 && <span title={`${post.author.badges.iron} Iron`}>⚙️{post.author.badges.iron}</span>}
-                            </>
+                            </div>
                           )}
                         </div>
                         <span className="text-[10px] text-slate-400">
@@ -1148,13 +1154,19 @@ export default function ForumView({ initialData, onGroupChange }: ForumViewProps
                                   {reply.author.role === 'ADMIN' ? 'Admin' : reply.author.role === 'FACULTY' ? 'Supervisor' : 'Student'}
                                 </span>
                                 {!isCommittee && reply.author.badges && (
-                                  <>
+                                  <div
+                                    className="inline-flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-medium"
+                                    title={`Supervisor Markups: ${reply.author.badges.effectiveScore} pts`}
+                                  >
+                                    <span className="font-bold font-mono">
+                                      {reply.author.badges.effectiveScore > 0 ? `+${reply.author.badges.effectiveScore}` : reply.author.badges.effectiveScore} pts
+                                    </span>
                                     {reply.author.badges.diamonds > 0 && <span>💎{reply.author.badges.diamonds}</span>}
                                     {reply.author.badges.gold > 0 && <span>🥇{reply.author.badges.gold}</span>}
                                     {reply.author.badges.silver > 0 && <span>🥈{reply.author.badges.silver}</span>}
                                     {reply.author.badges.copper > 0 && <span>🥉{reply.author.badges.copper}</span>}
                                     {reply.author.badges.iron > 0 && <span>⚙️{reply.author.badges.iron}</span>}
-                                  </>
+                                  </div>
                                 )}
                                 <span className="text-[10px] text-slate-400">
                                   {new Date(reply.createdAt).toLocaleTimeString([], {

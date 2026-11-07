@@ -47,8 +47,20 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
               Allocation In Progress
             </span>
-            <h1 className="text-xl font-bold text-slate-900 mt-2">{student.name}</h1>
-            <p className="text-xs font-mono text-slate-500">
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              <h1 className="text-xl font-bold text-slate-900">{student.name}</h1>
+              {student.badges && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-xs font-bold shadow-2xs">
+                  <span className="text-amber-700 font-mono">⭐ {student.badges.effectiveScore} Markups</span>
+                  {student.badges.diamonds > 0 && <span title={`${student.badges.diamonds} Diamonds`}>💎{student.badges.diamonds}</span>}
+                  {student.badges.gold > 0 && <span title={`${student.badges.gold} Gold`}>🥇{student.badges.gold}</span>}
+                  {student.badges.silver > 0 && <span title={`${student.badges.silver} Silver`}>🥈{student.badges.silver}</span>}
+                  {student.badges.copper > 0 && <span title={`${student.badges.copper} Copper`}>🥉{student.badges.copper}</span>}
+                  {student.badges.iron > 0 && <span title={`${student.badges.iron} Iron`}>⚙️{student.badges.iron}</span>}
+                </div>
+              )}
+            </div>
+            <p className="text-xs font-mono text-slate-500 mt-1">
               Roll: <strong>{student.roll}</strong> • {student.email || 'No email registered'}
             </p>
           </div>
@@ -84,7 +96,30 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
                 Group #{group.number}
               </span>
             </div>
-            <h1 className="text-2xl font-bold mt-2 tracking-tight">{student.name}</h1>
+
+            {/* Student Name with Earned Markups & Badges Around Name */}
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              <h1 className="text-2xl font-bold tracking-tight">{student.name}</h1>
+              {student.badges && (
+                <div
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-white/20 backdrop-blur-md border border-white/30 text-xs font-bold shadow-xs transition hover:bg-white/25"
+                  title={`Net Supervisor Markups: ${student.badges.effectiveScore} | Diamonds: ${student.badges.diamonds}, Gold: ${student.badges.gold}, Silver: ${student.badges.silver}, Copper: ${student.badges.copper}, Iron: ${student.badges.iron}`}
+                >
+                  <span className="text-amber-300 font-mono">⭐ {student.badges.effectiveScore} Markups</span>
+                  <div className="flex items-center gap-1">
+                    {student.badges.diamonds > 0 && <span title={`${student.badges.diamonds} Diamonds`}>💎{student.badges.diamonds}</span>}
+                    {student.badges.gold > 0 && <span title={`${student.badges.gold} Gold`}>🥇{student.badges.gold}</span>}
+                    {student.badges.silver > 0 && <span title={`${student.badges.silver} Silver`}>🥈{student.badges.silver}</span>}
+                    {student.badges.copper > 0 && <span title={`${student.badges.copper} Copper`}>🥉{student.badges.copper}</span>}
+                    {student.badges.iron > 0 && <span title={`${student.badges.iron} Iron`}>⚙️{student.badges.iron}</span>}
+                    {student.badges.badges.length === 0 && (
+                      <span className="text-[10px] text-white/70">Badge Starter</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <p className="text-xs text-white/80 font-mono mt-0.5">
               Roll: <strong className="text-white">{student.roll}</strong> • {student.email}
               {student.phone ? ` • ${student.phone}` : ''}
@@ -98,6 +133,133 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
           </div>
         </div>
       </div>
+
+      {/* 2. Gamification & Supervisor Recognition Showcase */}
+      {student.badges && (
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white rounded-2xl p-6 shadow-md border border-indigo-800/50 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center font-bold text-sm">
+                  🏆
+                </span>
+                <h2 className="text-base font-bold text-white tracking-wide">
+                  Academic Standing &amp; Supervisor Recognition Badges
+                </h2>
+              </div>
+              <p className="text-xs text-indigo-200 leading-relaxed">
+                Earned from your supervisor&apos;s feedback in the discussion forum. Higher marks and badges reflect academic regularity, depth, and peer collaboration.
+              </p>
+            </div>
+
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-500/25 border border-indigo-400/30 text-xs font-mono self-start sm:self-auto">
+              <span className="text-amber-300 font-bold text-sm">⭐ {student.badges.effectiveScore}</span>
+              <span className="text-indigo-200">Total Net Markups</span>
+            </div>
+          </div>
+
+          {/* Badges Inventory Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div
+              className={`p-3 rounded-xl border flex flex-col items-center text-center transition ${
+                student.badges.diamonds > 0
+                  ? 'bg-teal-500/20 border-teal-400/50 text-teal-100 shadow-md shadow-teal-950/40'
+                  : 'bg-white/5 border-white/10 text-white/40'
+              }`}
+            >
+              <span className="text-2xl mb-1">💎</span>
+              <span className="text-xs font-bold text-white">Diamond Pioneer</span>
+              <span className="text-[10px] text-teal-300 font-mono mt-0.5">
+                {student.badges.diamonds > 0 ? `${student.badges.diamonds} Earned` : 'Locked (50 pts)'}
+              </span>
+            </div>
+
+            <div
+              className={`p-3 rounded-xl border flex flex-col items-center text-center transition ${
+                student.badges.gold > 0
+                  ? 'bg-yellow-500/20 border-yellow-400/50 text-yellow-100 shadow-md shadow-yellow-950/40'
+                  : 'bg-white/5 border-white/10 text-white/40'
+              }`}
+            >
+              <span className="text-2xl mb-1">🥇</span>
+              <span className="text-xs font-bold text-white">Gold Innovator</span>
+              <span className="text-[10px] text-yellow-300 font-mono mt-0.5">
+                {student.badges.gold > 0 ? `${student.badges.gold} Earned` : 'Locked (40 pts)'}
+              </span>
+            </div>
+
+            <div
+              className={`p-3 rounded-xl border flex flex-col items-center text-center transition ${
+                student.badges.silver > 0
+                  ? 'bg-sky-500/20 border-sky-400/50 text-sky-100 shadow-md shadow-sky-950/40'
+                  : 'bg-white/5 border-white/10 text-white/40'
+              }`}
+            >
+              <span className="text-2xl mb-1">🥈</span>
+              <span className="text-xs font-bold text-white">Silver Scholar</span>
+              <span className="text-[10px] text-sky-300 font-mono mt-0.5">
+                {student.badges.silver > 0 ? `${student.badges.silver} Earned` : 'Locked (30 pts)'}
+              </span>
+            </div>
+
+            <div
+              className={`p-3 rounded-xl border flex flex-col items-center text-center transition ${
+                student.badges.copper > 0
+                  ? 'bg-amber-500/20 border-amber-400/50 text-amber-100 shadow-md shadow-amber-950/40'
+                  : 'bg-white/5 border-white/10 text-white/40'
+              }`}
+            >
+              <span className="text-2xl mb-1">🥉</span>
+              <span className="text-xs font-bold text-white">Copper Contributor</span>
+              <span className="text-[10px] text-amber-300 font-mono mt-0.5">
+                {student.badges.copper > 0 ? `${student.badges.copper} Earned` : 'Locked (20 pts)'}
+              </span>
+            </div>
+
+            <div
+              className={`p-3 rounded-xl border flex flex-col items-center text-center col-span-2 sm:col-span-1 transition ${
+                student.badges.iron > 0
+                  ? 'bg-slate-400/20 border-slate-300/50 text-slate-100 shadow-md shadow-slate-950/40'
+                  : 'bg-white/5 border-white/10 text-white/40'
+              }`}
+            >
+              <span className="text-2xl mb-1">⚙️</span>
+              <span className="text-xs font-bold text-white">Iron Contributor</span>
+              <span className="text-[10px] text-slate-300 font-mono mt-0.5">
+                {student.badges.iron > 0 ? `${student.badges.iron} Earned` : 'Locked (10 pts)'}
+              </span>
+            </div>
+          </div>
+
+          {/* Milestone Progress Bar */}
+          <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="space-y-1 flex-1 max-w-xl">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-indigo-200">
+                  Next Badge Target:{' '}
+                  <strong className="text-white">
+                    {student.badges.nextMilestone.targetMaterial.replace('_', ' ')}
+                  </strong>{' '}
+                  ({student.badges.nextMilestone.targetScore} pts)
+                </span>
+                <span className="font-mono text-amber-300 font-bold">
+                  {student.badges.nextMilestone.pointsRemaining} pts needed
+                </span>
+              </div>
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-emerald-400 to-teal-400 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, student.badges.nextMilestone.progressPercent)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-400 italic">
+              🔒 Strictly private between Group #{group.number} and Supervisor {supervisor?.name}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Assigned Project Topic & Complexity Attributes (8 Cols) */}
@@ -261,7 +423,7 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
             )}
           </div>
 
-          {/* Group Co-Members Card */}
+          {/* Group Co-Members Card with Each Member's Earned Badges & Marks */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
@@ -273,7 +435,7 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
               </span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {members.map((member) => (
                 <div
                   key={member.id}
@@ -303,6 +465,25 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
                     )}
                     {member.phone && <span className="text-slate-400">{member.phone}</span>}
                   </div>
+
+                  {/* Member Badges & Markups Row */}
+                  {member.badges && (
+                    <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[10px]">
+                        ⭐ {member.badges.effectiveScore} pts
+                      </span>
+                      <div className="inline-flex items-center gap-1 text-xs">
+                        {member.badges.diamonds > 0 && <span title={`${member.badges.diamonds} Diamonds`}>💎{member.badges.diamonds}</span>}
+                        {member.badges.gold > 0 && <span title={`${member.badges.gold} Gold`}>🥇{member.badges.gold}</span>}
+                        {member.badges.silver > 0 && <span title={`${member.badges.silver} Silver`}>🥈{member.badges.silver}</span>}
+                        {member.badges.copper > 0 && <span title={`${member.badges.copper} Copper`}>🥉{member.badges.copper}</span>}
+                        {member.badges.iron > 0 && <span title={`${member.badges.iron} Iron`}>⚙️{member.badges.iron}</span>}
+                        {member.badges.badges.length === 0 && (
+                          <span className="text-[10px] text-slate-400 font-normal">0 badges</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/sidebar';
 import { FirstLoginModal } from '@/components/first-login-modal';
 import { resolveUserAuthority, getOrCreateDepartmentAuthority } from '@/lib/authority-service';
 import { HodConsentBanner } from '@/components/hod-consent-banner';
+import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-engine';
 
 export default async function DashboardLayout({
   children,
@@ -53,6 +54,16 @@ export default async function DashboardLayout({
     role === 'ADMIN' &&
     Boolean(authority.hodRemovalRequested && authority.hodUserId === session.user.id);
 
+  let studentBadges: StudentBadgeSummary | null = null;
+  if (role === 'STUDENT') {
+    const markupVotes = await prisma.forumMarkupVote.findMany({
+      where: { targetUserId: session.user.id },
+      select: { value: true },
+    });
+    const netMarks = markupVotes.reduce((sum, v) => sum + (v.value || 0), 0);
+    studentBadges = calculateStudentBadges(netMarks);
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-50 print:block print:min-h-0 print:bg-white">
       <Sidebar
@@ -91,6 +102,25 @@ export default async function DashboardLayout({
                 mustChangePassword={mustChangePassword}
                 userDomains={dbUser?.domainExpertise || []}
               />
+            )}
+            {role === 'STUDENT' && studentBadges && (
+              <div
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-300 text-amber-900 shadow-sm"
+                title={`Supervisor Recognition Standing: ${studentBadges.effectiveScore} pts`}
+              >
+                <span className="font-bold font-mono">
+                  {studentBadges.effectiveScore > 0 ? `+${studentBadges.effectiveScore}` : studentBadges.effectiveScore} pts
+                </span>
+                <span className="text-amber-300">|</span>
+                <div className="inline-flex items-center gap-1">
+                  {studentBadges.diamonds > 0 && <span title={`${studentBadges.diamonds} Diamond Badges`}>💎{studentBadges.diamonds}</span>}
+                  {studentBadges.gold > 0 && <span title={`${studentBadges.gold} Gold Badges`}>🥇{studentBadges.gold}</span>}
+                  {studentBadges.silver > 0 && <span title={`${studentBadges.silver} Silver Badges`}>🥈{studentBadges.silver}</span>}
+                  {studentBadges.copper > 0 && <span title={`${studentBadges.copper} Copper Badges`}>🥉{studentBadges.copper}</span>}
+                  {studentBadges.iron > 0 && <span title={`${studentBadges.iron} Iron Badges`}>⚙️{studentBadges.iron}</span>}
+                  {studentBadges.badges.length === 0 && <span className="text-[10px] text-amber-700 font-normal">Level 0</span>}
+                </div>
+              </div>
             )}
             <span
               className={`px-2.5 py-1 rounded-full text-xs font-semibold ${

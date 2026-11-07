@@ -2,6 +2,7 @@
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-engine';
 
 export interface StudentProjectDetails {
   student: {
@@ -10,6 +11,7 @@ export interface StudentProjectDetails {
     roll: string;
     email: string | null;
     phone: string | null;
+    badges: StudentBadgeSummary;
   };
   group: {
     id: string;
@@ -53,6 +55,7 @@ export interface StudentProjectDetails {
     email: string | null;
     phone: string | null;
     isCurrentUser: boolean;
+    badges: StudentBadgeSummary;
   }>;
 }
 
@@ -143,6 +146,7 @@ export async function getStudentProjectDetailsAction(): Promise<{
             roll: student.roll,
             email: student.email,
             phone: student.phone,
+            badges: calculateStudentBadges(0),
           },
           group: null,
           topic: null,
@@ -155,15 +159,31 @@ export async function getStudentProjectDetailsAction(): Promise<{
     const topic = group.topic;
     const supervisor = group.supervisor;
 
-    // 3. Map group members
-    const members = group.members.map((gm) => ({
-      id: gm.student.id,
-      roll: gm.student.roll,
-      name: gm.student.name,
-      email: gm.student.email,
-      phone: gm.student.phone,
-      isCurrentUser: gm.student.id === student.id,
-    }));
+    // 3. Map group members and calculate badges
+    const members = await Promise.all(
+      group.members.map(async (gm) => {
+        let score = 0;
+        if (gm.student.userId) {
+          const votes = await prisma.forumMarkupVote.findMany({
+            where: { targetUserId: gm.student.userId },
+            select: { value: true },
+          });
+          score = votes.reduce((acc, v) => acc + v.value, 0);
+        }
+        return {
+          id: gm.student.id,
+          roll: gm.student.roll,
+          name: gm.student.name,
+          email: gm.student.email,
+          phone: gm.student.phone,
+          isCurrentUser: gm.student.id === student.id,
+          badges: calculateStudentBadges(score),
+        };
+      })
+    );
+
+    const currentMember = members.find((m) => m.isCurrentUser);
+    const studentBadges = currentMember ? currentMember.badges : calculateStudentBadges(0);
 
     return {
       success: true,
@@ -174,6 +194,7 @@ export async function getStudentProjectDetailsAction(): Promise<{
           roll: student.roll,
           email: student.email,
           phone: student.phone,
+          badges: studentBadges,
         },
         group: {
           id: group.id,

@@ -37,6 +37,7 @@ let mockUsers: any[] = [];
 let mockInviteTokens: any[] = [];
 let mockSettings: Record<string, any> = {};
 let mockAuditLogs: any[] = [];
+let mockMarkupVotes: any[] = [];
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -199,6 +200,14 @@ vi.mock('@/lib/prisma', () => ({
         return { key: where.key, value: val };
       }),
     },
+    forumMarkupVote: {
+      findMany: vi.fn().mockImplementation(({ where }: { where: any }) => {
+        if (where?.targetUserId) {
+          return mockMarkupVotes.filter((v) => v.targetUserId === where.targetUserId);
+        }
+        return mockMarkupVotes;
+      }),
+    },
     auditLog: {
       create: vi.fn().mockImplementation(({ data }: any) => {
         mockAuditLogs.push(data);
@@ -299,6 +308,9 @@ describe('Student Project Details & Allocation Invites Actions', () => {
     ];
 
     mockInviteTokens = [];
+    mockMarkupVotes = [
+      ...Array(12).fill({ targetUserId: 'student-user-1', value: 1 }),
+    ];
   });
 
   describe('getStudentProjectDetailsAction', () => {
@@ -347,6 +359,13 @@ describe('Student Project Details & Allocation Invites Actions', () => {
       const selfMember = res.data?.members.find((m) => m.isCurrentUser);
       expect(selfMember).toBeDefined();
       expect(selfMember?.roll).toBe('12620003001');
+
+      // Student badges & supervisor markups
+      expect(res.data?.student.badges).toBeDefined();
+      expect(res.data?.student.badges?.effectiveScore).toBe(12);
+      expect(res.data?.student.badges?.iron).toBe(1);
+      expect(selfMember?.badges?.effectiveScore).toBe(12);
+      expect(selfMember?.badges?.iron).toBe(1);
     });
   });
 
