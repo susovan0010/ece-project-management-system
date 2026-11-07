@@ -216,15 +216,7 @@ export const googleDriveHttpClient = {
  * Retrieve Google Drive configuration from Environment or Database Setting
  */
 export async function getGoogleDriveConfig(): Promise<GoogleDriveConfig> {
-  const envUrl = process.env.GOOGLE_DRIVE_WEBHOOK_URL?.trim();
-  if (envUrl) {
-    return {
-      webhookUrl: envUrl,
-      targetEmail: OFFICIAL_DRIVE_ACCOUNT,
-      isConfigured: true,
-    };
-  }
-
+  // 1. Database dynamic setting takes priority (configured via Admin UI)
   try {
     const setting = await prisma.setting.findUnique({
       where: { key: 'google_drive_config' },
@@ -241,7 +233,17 @@ export async function getGoogleDriveConfig(): Promise<GoogleDriveConfig> {
       }
     }
   } catch (err) {
-    // Non-fatal if database setting table lookup fails
+    // Non-fatal if database setting lookup fails
+  }
+
+  // 2. Fall back to Environment Variable if configured
+  const envUrl = process.env.GOOGLE_DRIVE_WEBHOOK_URL?.trim();
+  if (envUrl) {
+    return {
+      webhookUrl: envUrl,
+      targetEmail: OFFICIAL_DRIVE_ACCOUNT,
+      isConfigured: true,
+    };
   }
 
   return {
