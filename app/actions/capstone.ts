@@ -1050,7 +1050,7 @@ export async function archiveBatchAction(
         data: {
           isArchived: true,
           isCapstonePermanent: false,
-          purgeAt: new Date(Date.now() + 4 * 365.25 * 24 * 60 * 60 * 1000),
+          purgeAt: null, // Permanent archive retention (no 4-year deletion)
         },
       });
     }
@@ -1090,7 +1090,7 @@ export async function archiveBatchAction(
       archivedCount: nonCapstoneCount,
       purgedStudentsCount: uniqueStudentUserIds.length,
       driveUrl: driveUrl || undefined,
-      message: `Batch ${batchId} archived successfully. Static Academic Report saved to ECE Committee Google Drive. ${uniqueStudentUserIds.length} student account(s) deleted permanently. Database storage reclaimed.`,
+      message: `Batch ${batchId} archived permanently. Static Academic Report saved to ECE Committee Google Drive. ${uniqueStudentUserIds.length} student account(s) purged. All project records retained permanently with database storage optimized.`,
     };
   } catch (err) {
     return { success: false, error: (err as Error).message };

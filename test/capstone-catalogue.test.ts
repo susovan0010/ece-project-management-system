@@ -466,14 +466,11 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     expect(g1.isArchived).toBe(false);
     expect(g1.purgeAt).toBeNull();
 
-    // Group 2 (Non-Capstone)
+    // Group 2 (Non-Capstone - Permanently Retained in Optimized Archive)
     const g2 = mockGroups.find((g) => g.id === 'group-2');
     expect(g2.isCapstonePermanent).toBe(false);
     expect(g2.isArchived).toBe(true);
-    expect(g2.purgeAt).toBeInstanceOf(Date);
-    // Purge date should be ~4 years from now
-    const nowYears = new Date().getFullYear();
-    expect(g2.purgeAt.getFullYear()).toBeGreaterThanOrEqual(nowYears + 3);
+    expect(g2.purgeAt).toBeNull(); // Retained permanently with zero expiration
 
     // Batch itself is marked archived with Drive File URL
     expect(mockBatches[0].isArchived).toBe(true);
