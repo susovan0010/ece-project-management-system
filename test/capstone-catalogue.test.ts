@@ -11,6 +11,7 @@ import {
   forceDeleteBatchSessionAction,
   getArchivedProjectsAction,
 } from '@/app/actions/capstone';
+import { getBatchArchiveConfirmationSentence } from '@/lib/engine/archive-report-generator';
 
 vi.mock('@/auth', () => ({
   auth: vi.fn(),
@@ -387,8 +388,66 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     expect(mockBatches[0].lockedAt).toBeNull();
   });
 
-  it('4. archiveBatchAction permanently retains capstone and schedules 4-year purge for non-capstone', async () => {
-    const res = await archiveBatchAction('2023-2027');
+  it('4. archiveBatchAction enforces Sem 8 completion, Admin lock, confirmation sentence & password', async () => {
+    const validSentence = getBatchArchiveConfirmationSentence('2023-2027');
+
+    // 1. Rejects if session is not locked
+    mockBatches[0].isLocked = false;
+    const notLockedRes = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'AdminSecret123!',
+      confirmationSentence: validSentence,
+    });
+    expect(notLockedRes.success).toBe(false);
+    expect(notLockedRes.error).toContain('Session is not locked');
+
+    // Lock session
+    mockBatches[0].isLocked = true;
+
+    // 2. Rejects if Sem 8 marks are incomplete (group-2 is missing Sem 8)
+    const incompleteRes = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'AdminSecret123!',
+      confirmationSentence: validSentence,
+    });
+    expect(incompleteRes.success).toBe(false);
+    expect(incompleteRes.error).toContain('8th semester marks are incomplete');
+
+    // Submit Sem 8 marks for group-2
+    mockGroups[1].markEntries.push({
+      criterionId: 104,
+      marks: 75,
+      criterion: {
+        semester: 8,
+        maxMarks: 100,
+        maps: [{ code: 'PO1', kind: 'PO' }],
+      },
+    });
+
+    // 3. Rejects if confirmation sentence is mismatched
+    const badSentenceRes = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'AdminSecret123!',
+      confirmationSentence: 'Wrong confirmation sentence',
+    });
+    expect(badSentenceRes.success).toBe(false);
+    expect(badSentenceRes.error).toContain('Confirmation sentence does not match');
+
+    // 4. Rejects if admin password is wrong
+    const badPassRes = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'WrongPassword!',
+      confirmationSentence: validSentence,
+    });
+    expect(badPassRes.success).toBe(false);
+    expect(badPassRes.error).toContain('Incorrect admin login password');
+
+    // 5. Successful archival when all conditions are fulfilled
+    const res = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'AdminSecret123!',
+      confirmationSentence: validSentence,
+    });
     expect(res.success).toBe(true);
     expect(res.capstoneCount).toBe(1);
     expect(res.archivedCount).toBe(1);

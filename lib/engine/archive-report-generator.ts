@@ -5,6 +5,10 @@
 // for permanent Google Drive Archival of graduating batches
 // ========================================================
 
+export function getBatchArchiveConfirmationSentence(batchId: string): string {
+  return `ARCHIVE BATCH ${batchId} AND PURGE STUDENT CREDENTIALS`;
+}
+
 export interface ArchivedGroupProfile {
   groupId: string;
   groupNumber: number;

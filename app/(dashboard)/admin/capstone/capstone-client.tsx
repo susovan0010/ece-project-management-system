@@ -18,6 +18,7 @@ import {
   CapstoneCatalogueItem,
   CapstoneDetailReport,
 } from '@/app/actions/capstone';
+import { getBatchArchiveConfirmationSentence } from '@/lib/engine/archive-report-generator';
 
 export default function AdminCapstoneClient() {
   const [activeTab, setActiveTab] = useState<'DECISION_BOARD' | 'CATALOGUE' | 'CLOSE_SESSION'>('DECISION_BOARD');
@@ -81,6 +82,14 @@ export default function AdminCapstoneClient() {
   const [forceDeletePreserveCapstones, setForceDeletePreserveCapstones] = useState(true);
   const [forceDeleting, setForceDeleting] = useState(false);
   const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
+
+  // Secure Batch Archival Verification Modal
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [archiveStep, setArchiveStep] = useState<'WARNING' | 'VERIFY'>('WARNING');
+  const [archivePassword, setArchivePassword] = useState('');
+  const [archiveSentenceInput, setArchiveSentenceInput] = useState('');
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [copiedSentence, setCopiedSentence] = useState(false);
 
   // 1. Load Decision Board Data
   async function loadData(batch = selectedBatch) {
@@ -268,30 +277,50 @@ export default function AdminCapstoneClient() {
     }
   }
 
-  // Archive Batch Action
-  async function handleArchiveBatch() {
+  // 1. Initiate Secure Archival Flow (Open Warning Modal)
+  function handleInitiateArchive() {
     if (!closeSessionBatch) return;
-    const confirmed = window.confirm(
-      `Archive & Optimize Batch ${closeSessionBatch}?\n\n` +
-      `1. A permanent Academic Archive Report will be saved directly to the ECE Project Committee Google Drive.\n` +
-      `2. Login accounts & credentials of all graduating students from this batch will be deleted permanently.\n` +
-      `3. Faculty supervisor accounts will be strictly preserved.\n` +
-      `4. Confirmed Capstone projects will remain permanently in the Capstone Catalogue.\n` +
-      `5. Granular database rows will be purged to free up database storage immediately.\n\nProceed?`
-    );
-    if (!confirmed) return;
+    setArchiveStep('WARNING');
+    setArchivePassword('');
+    setArchiveSentenceInput('');
+    setArchiveError(null);
+    setCopiedSentence(false);
+    setArchiveModalOpen(true);
+  }
+
+  // 2. Confirm Archival with Password & Copy-Pasted Safety Sentence
+  async function handleConfirmArchive() {
+    if (!closeSessionBatch) return;
+
+    const expectedSentence = getBatchArchiveConfirmationSentence(closeSessionBatch);
+    if (archiveSentenceInput.trim().toUpperCase() !== expectedSentence.toUpperCase()) {
+      setArchiveError(`Confirmation sentence mismatch. Please copy and paste: "${expectedSentence}"`);
+      return;
+    }
+
+    if (!archivePassword) {
+      setArchiveError('Please enter your Admin login password.');
+      return;
+    }
 
     setArchivingBatch(true);
+    setArchiveError(null);
     setError(null);
     setSuccessMsg(null);
 
-    const res = await archiveBatchAction(closeSessionBatch);
+    const res = await archiveBatchAction({
+      batchId: closeSessionBatch,
+      adminPassword: archivePassword,
+      confirmationSentence: archiveSentenceInput.trim(),
+    });
+
     setArchivingBatch(false);
 
     if (res.error) {
-      setError(res.error);
+      setArchiveError(res.error);
     } else {
       setSuccessMsg(res.message || 'Batch archived and backed up to Google Drive successfully.');
+      setArchiveModalOpen(false);
       loadSem8Status(closeSessionBatch);
       loadData(selectedBatch);
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -1027,7 +1056,7 @@ export default function AdminCapstoneClient() {
                       </ul>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-2 self-start md:self-auto">
+                    <div className="flex flex-col sm:flex-row gap-3 self-start md:self-auto items-start sm:items-center">
                       {sem8Status.archiveDriveFileUrl && (
                         <a
                           href={sem8Status.archiveDriveFileUrl}
@@ -1039,13 +1068,53 @@ export default function AdminCapstoneClient() {
                         </a>
                       )}
 
-                      <button
-                        onClick={handleArchiveBatch}
-                        disabled={archivingBatch || sem8Status.isArchived}
-                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 flex items-center gap-2"
-                      >
-                        <span>🗄️ {archivingBatch ? 'Archiving & Uploading...' : sem8Status.isArchived ? 'Batch Archived' : 'Archive Batch to Drive'}</span>
-                      </button>
+                      {/* Archive Button with strict enablement */}
+                      {(() => {
+                        const canArchive = !!(sem8Status && sem8Status.isComplete && sem8Status.isLocked && !sem8Status.isArchived);
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <button
+                              onClick={handleInitiateArchive}
+                              disabled={!canArchive || archivingBatch}
+                              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 ${
+                                canArchive
+                                  ? 'bg-purple-700 hover:bg-purple-800 text-white cursor-pointer ring-2 ring-purple-400'
+                                  : 'bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-75'
+                              }`}
+                              title={
+                                !canArchive
+                                  ? sem8Status.isArchived
+                                    ? 'Batch is already archived.'
+                                    : !sem8Status.isComplete
+                                    ? 'All 8th semester marks must be submitted by supervisors first.'
+                                    : !sem8Status.isLocked
+                                    ? 'Admin must first confirm marks by clicking "Close Session & Lock Batch" above.'
+                                    : 'Archive option locked.'
+                                  : 'Archive batch and backup report to Google Drive'
+                              }
+                            >
+                              <span>
+                                {sem8Status.isArchived
+                                  ? '✓ Batch Archived'
+                                  : canArchive
+                                  ? '🗄️ Archive Batch to Drive'
+                                  : '🔒 Archive Option Locked'}
+                              </span>
+                            </button>
+
+                            {/* Helper Explanation why button is disabled */}
+                            {!canArchive && !sem8Status.isArchived && (
+                              <span className="text-[10px] text-purple-900 font-semibold max-w-xs">
+                                {!sem8Status.isComplete
+                                  ? `⚠️ Disabled: Waiting for all supervisors to submit 8th semester marks (${sem8Status.pendingGroups.length} pending).`
+                                  : !sem8Status.isLocked
+                                  ? '⚠️ Disabled: Admin must first click "Close Session & Lock Batch" above to confirm marks.'
+                                  : ''}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       <button
                         onClick={handlePurgeExpired}
@@ -1290,6 +1359,209 @@ export default function AdminCapstoneClient() {
                 {forceDeleting ? 'Deleting...' : 'Confirm Forceful Deletion'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* MODAL: SECURE BATCH ARCHIVAL PROTOCOL (2-STEP VERIFICATION) */}
+      {/* ==================================================== */}
+      {archiveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5">
+            {/* Header */}
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-purple-100 text-purple-800 text-base">
+                  🗄️
+                </span>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">
+                    {archiveStep === 'WARNING'
+                      ? 'Confirm Session Archival & Cold Storage'
+                      : 'Security Verification: Admin Authorization'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Graduating Batch {closeSessionBatch} • Permanent Archive Protocol
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setArchiveModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {archiveStep === 'WARNING' ? (
+              /* Step 1: Warning & Notification */
+              <div className="space-y-4 text-xs">
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-2">
+                  <div className="font-bold flex items-center gap-1.5 text-sm text-amber-950">
+                    <span>⚠️</span> Permanent Archival Decision Notice
+                  </div>
+                  <p>
+                    Archiving a batch is an irreversible and critical operation. Please review the following impacts carefully:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1.5 pt-1 text-amber-800">
+                    <li>
+                      <strong>Google Drive Cold Storage:</strong> A standalone, printable NBA SAR Academic Archive dossier will be saved permanently to the ECE Project Committee Google Drive (<span className="font-mono">ece.project.committee@heritageit.edu</span>).
+                    </li>
+                    <li>
+                      <strong>Student Accounts Deleted:</strong> Login credentials of all graduating students from Batch {closeSessionBatch} will be <strong>permanently purged</strong> to optimize database accounts.
+                    </li>
+                    <li>
+                      <strong>Faculty Accounts Retained:</strong> All faculty supervisor profiles, committee records, and directories are <strong>strictly preserved</strong>.
+                    </li>
+                    <li>
+                      <strong>Capstone Projects Preserved:</strong> Confirmed Capstone projects will remain permanently accessible in the <strong>Capstone Catalogue</strong> and <strong>Archived Projects</strong> repository.
+                    </li>
+                    <li>
+                      <strong>Database Optimization:</strong> Historical granular marks, members, and forum rows are cleaned up, freeing database quota.
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setArchiveModalOpen(false)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setArchiveStep('VERIFY');
+                      setArchiveError(null);
+                    }}
+                    className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                  >
+                    I Understand &amp; Agree (Proceed to Verification) &rarr;
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Step 2: Security Challenge (Copy-Paste Sentence + Admin Password) */
+              <div className="space-y-4 text-xs">
+                <p className="text-slate-600">
+                  To prevent unauthorized or accidental archival, please complete the dual-factor authorization below:
+                </p>
+
+                {/* Safety Confirmation Sentence */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-700">
+                      1. Copy &amp; Paste the Generated Security Sentence:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sentence = getBatchArchiveConfirmationSentence(closeSessionBatch);
+                        navigator.clipboard.writeText(sentence);
+                        setCopiedSentence(true);
+                        setTimeout(() => setCopiedSentence(false), 2500);
+                      }}
+                      className="text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-2.5 py-0.5 rounded-lg border border-purple-200 transition-colors flex items-center gap-1"
+                    >
+                      {copiedSentence ? '✓ Copied to Clipboard!' : '📋 Copy Sentence'}
+                    </button>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-100 border border-slate-300 rounded-xl font-mono text-[11px] text-slate-900 select-all break-all">
+                    {getBatchArchiveConfirmationSentence(closeSessionBatch)}
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Paste the sentence here exactly as shown above"
+                    value={archiveSentenceInput}
+                    onChange={(e) => setArchiveSentenceInput(e.target.value)}
+                    className={`w-full text-xs p-2.5 border rounded-xl focus:outline-none focus:ring-2 ${
+                      archiveSentenceInput.trim().toUpperCase() ===
+                      getBatchArchiveConfirmationSentence(closeSessionBatch).toUpperCase()
+                        ? 'border-emerald-400 bg-emerald-50/30 focus:ring-emerald-500'
+                        : 'border-slate-300 focus:ring-purple-500'
+                    }`}
+                  />
+                  {archiveSentenceInput.trim().toUpperCase() ===
+                    getBatchArchiveConfirmationSentence(closeSessionBatch).toUpperCase() && (
+                    <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                      ✓ Confirmation sentence verified
+                    </p>
+                  )}
+                </div>
+
+                {/* Admin Password */}
+                <div className="space-y-1 pt-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    2. Admin Login Password:
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Enter your admin login password"
+                    value={archivePassword}
+                    onChange={(e) => setArchivePassword(e.target.value)}
+                    onKeyDown={(e) =>
+                      e.key === 'Enter' &&
+                      archiveSentenceInput.trim().toUpperCase() ===
+                        getBatchArchiveConfirmationSentence(closeSessionBatch).toUpperCase() &&
+                      archivePassword &&
+                      handleConfirmArchive()
+                    }
+                    className="w-full text-xs p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                </div>
+
+                {archiveError && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
+                    {archiveError}
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center pt-3 border-t border-slate-200">
+                  <button
+                    onClick={() => setArchiveStep('WARNING')}
+                    disabled={archivingBatch}
+                    className="px-3.5 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    &larr; Back
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setArchiveModalOpen(false)}
+                      disabled={archivingBatch}
+                      className="px-3.5 py-1.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      onClick={handleConfirmArchive}
+                      disabled={
+                        archivingBatch ||
+                        archiveSentenceInput.trim().toUpperCase() !==
+                          getBatchArchiveConfirmationSentence(closeSessionBatch).toUpperCase() ||
+                        !archivePassword
+                      }
+                      className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                    >
+                      {archivingBatch ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Archiving &amp; Uploading...
+                        </>
+                      ) : (
+                        'Confirm & Execute Archival'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

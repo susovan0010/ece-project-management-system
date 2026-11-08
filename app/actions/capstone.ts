@@ -19,6 +19,7 @@ import {
 import { calculateStudentBadges } from '@/lib/engine/badge-engine';
 import {
   generateBatchStaticArchiveHtml,
+  getBatchArchiveConfirmationSentence,
   ArchivedGroupProfile,
 } from '@/lib/engine/archive-report-generator';
 import { uploadFileToGoogleDrive, OFFICIAL_DRIVE_ACCOUNT } from '@/lib/google-drive';
@@ -679,7 +680,19 @@ export async function unlockBatchSessionAction(
 // ----------------------------------------------------
 // 7. Archive Batch with Google Drive Report, Student Purge & DB Optimization
 // ----------------------------------------------------
-export async function archiveBatchAction(batchId: string): Promise<{
+export interface ArchiveBatchPayload {
+  batchId: string;
+  adminPassword?: string;
+  confirmationSentence?: string;
+}
+
+export async function getBatchArchiveConfirmationSentenceAction(batchId: string): Promise<string> {
+  return getBatchArchiveConfirmationSentence(batchId);
+}
+
+export async function archiveBatchAction(
+  input: string | ArchiveBatchPayload
+): Promise<{
   success: boolean;
   message?: string;
   capstoneCount?: number;
@@ -693,7 +706,35 @@ export async function archiveBatchAction(batchId: string): Promise<{
     return { success: false, error: 'Unauthorized: Admin access required.' };
   }
 
+  const batchId = typeof input === 'string' ? input : input.batchId;
+  const adminPassword = typeof input === 'string' ? undefined : input.adminPassword;
+  const confirmationSentence = typeof input === 'string' ? undefined : input.confirmationSentence;
+
+  if (!batchId) {
+    return { success: false, error: 'Batch ID is required.' };
+  }
+
   try {
+    const batch = await prisma.batch.findUnique({
+      where: { id: batchId },
+    });
+
+    if (!batch) {
+      return { success: false, error: `Batch "${batchId}" not found.` };
+    }
+
+    if (batch.isArchived) {
+      return { success: false, error: `Batch "${batchId}" is already archived.` };
+    }
+
+    // 1. Verify session is locked / confirmed by Admin
+    if (!batch.isLocked) {
+      return {
+        success: false,
+        error: `Cannot archive batch "${batchId}": Session is not locked. Admin must first confirm 8th semester mark completion by closing the session.`,
+      };
+    }
+
     const groups = await prisma.group.findMany({
       where: { batchId },
       include: {
@@ -730,6 +771,54 @@ export async function archiveBatchAction(batchId: string): Promise<{
 
     if (groups.length === 0) {
       return { success: false, error: `No groups found in batch ${batchId}.` };
+    }
+
+    // 2. Verify all groups have submitted Semester 8 marks (criterion.semester === 8)
+    const incompleteGroups = groups.filter(
+      (g) => !g.markEntries.some((m) => m.criterion?.semester === 8)
+    );
+    if (incompleteGroups.length > 0) {
+      return {
+        success: false,
+        error: `Cannot archive batch "${batchId}": 8th semester marks are incomplete for ${incompleteGroups.length} group(s). All faculty supervisors must submit marks before archival can be performed.`,
+      };
+    }
+
+    // 3. Verify Admin confirmation sentence
+    const expectedSentence = getBatchArchiveConfirmationSentence(batchId);
+    if (
+      !confirmationSentence ||
+      confirmationSentence.trim().toUpperCase() !== expectedSentence.toUpperCase()
+    ) {
+      return {
+        success: false,
+        error: `Confirmation sentence does not match. Please copy and paste: "${expectedSentence}"`,
+      };
+    }
+
+    // 4. Verify Admin login password
+    if (!adminPassword || adminPassword.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Admin login password is required to authorize batch archival.',
+      };
+    }
+
+    const adminUser = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { passwordHash: true },
+    });
+
+    if (!adminUser?.passwordHash) {
+      return { success: false, error: 'Admin account password record could not be found.' };
+    }
+
+    const isPasswordValid = await bcrypt.compare(adminPassword, adminUser.passwordHash);
+    if (!isPasswordValid) {
+      return {
+        success: false,
+        error: 'Incorrect admin login password. Archival aborted.',
+      };
     }
 
     const currentYear = new Date().getFullYear();
