@@ -60,6 +60,21 @@ export async function searchFacultyTopicsAction(params: SearchFacultyTopicsParam
       where.id = { notIn: deletedIds };
     }
 
+    // Role-based Privacy Isolation:
+    // Topics submitted by a faculty member must NOT be visible to other faculties.
+    const userRole = (session.user as { role?: string }).role;
+    if (userRole === 'FACULTY') {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: [
+            { proposerId: session.user.id },
+            { proposerId: null },
+          ],
+        },
+      ];
+    }
+
     // Source filtering
     if (source && source !== 'ALL') {
       where.source = source as TopicSource;
@@ -208,11 +223,27 @@ export async function getFacultyTopicDetailAction(topicIdOrCode: string) {
             email: true,
           },
         },
+        groups: {
+          select: {
+            id: true,
+            supervisorId: true,
+          },
+        },
       },
     });
 
     if (!topic) {
       return { error: 'Topic not found.' };
+    }
+
+    const user = session.user as { id: string; role?: string };
+    if (user.role === 'FACULTY' && topic.proposerId && topic.proposerId !== user.id) {
+      const isAssigned = (topic as any).groups?.some(
+        (g: { supervisorId: string | null }) => g.supervisorId === user.id
+      );
+      if (!isAssigned) {
+        return { error: 'Unauthorized: Topics submitted by other faculty members are private.' };
+      }
     }
 
     return { topic };

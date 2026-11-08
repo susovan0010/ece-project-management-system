@@ -3,6 +3,7 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { TopicStatus } from '@prisma/client';
 import {
   evaluateCapstone,
   CapstoneResult,
@@ -1055,7 +1056,19 @@ export async function archiveBatchAction(
       });
     }
 
-    // 6. Update Batch record with Google Drive reference and compact metadata
+    // 6. Transition all topics allotted to groups in this batch to ARCHIVED status
+    const topicIdsInBatch = Array.from(
+      new Set(groups.map((g) => g.topicId).filter(Boolean))
+    ) as string[];
+
+    if (topicIdsInBatch.length > 0) {
+      await prisma.topic.updateMany({
+        where: { id: { in: topicIdsInBatch } },
+        data: { status: TopicStatus.ARCHIVED },
+      });
+    }
+
+    // 7. Update Batch record with Google Drive reference and compact metadata
     const driveUrl = uploadRes.viewUrl || null;
     await prisma.batch.update({
       where: { id: batchId },
@@ -1083,6 +1096,8 @@ export async function archiveBatchAction(
     revalidatePath('/admin/reports');
     revalidatePath('/admin/allocation');
     revalidatePath('/admin/archived-projects');
+    revalidatePath('/faculty/my-topics');
+    revalidatePath('/faculty/topics');
 
     return {
       success: true,

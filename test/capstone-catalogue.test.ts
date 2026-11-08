@@ -188,6 +188,12 @@ vi.mock('@/lib/prisma', () => ({
           })),
         };
       }),
+      updateMany: vi.fn().mockImplementation(({ where, data }: any) => {
+        if (where?.id?.in) {
+          mockTopics.filter((t) => where.id.in.includes(t.id)).forEach((t) => Object.assign(t, data));
+        }
+        return { count: 1 };
+      }),
     },
     forumMarkupVote: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -475,6 +481,10 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     // Batch itself is marked archived with Drive File URL
     expect(mockBatches[0].isArchived).toBe(true);
     expect(mockBatches[0].archiveDriveFileUrl).toBeDefined();
+
+    // Topics associated with groups in this batch are transitioned to ARCHIVED
+    expect(mockTopics.find((t) => t.id === 'topic-1')?.status).toBe('ARCHIVED');
+    expect(mockTopics.find((t) => t.id === 'topic-2')?.status).toBe('ARCHIVED');
   });
 
   it('5. purgeExpiredArchivedProjectsAction cleans only eligible expired non-capstones', async () => {

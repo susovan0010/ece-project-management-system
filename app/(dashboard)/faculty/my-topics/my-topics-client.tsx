@@ -189,7 +189,16 @@ export default function MyTopicsClient() {
     setProcessingId(null);
   }
 
-  const activeTopics = topics.filter((t) => t.status !== 'ARCHIVED');
+  // A topic is considered archived if its status is ARCHIVED or all its groups/batches are archived
+  const isTopicArchived = (t: any) => {
+    if (t.status === 'ARCHIVED') return true;
+    if (t.groups && t.groups.length > 0) {
+      return t.groups.every((g: any) => g.isArchived || g.batch?.isArchived);
+    }
+    return false;
+  };
+
+  const activeTopics = topics.filter((t) => !isTopicArchived(t));
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">

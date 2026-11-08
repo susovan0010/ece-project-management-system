@@ -181,4 +181,50 @@ describe('Faculty Topics: Query & Filtering Execution', () => {
       })
     );
   });
+
+  it('isolates topics so that topics proposed by another faculty are hidden in search', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-A', role: 'FACULTY' },
+    } as any);
+
+    const countSpy = vi.spyOn(prisma.topic, 'count').mockResolvedValue(0);
+    vi.spyOn(prisma.topic, 'findMany').mockResolvedValue([] as any);
+    vi.spyOn(prisma.sdg, 'findMany').mockResolvedValue([] as any);
+
+    await searchFacultyTopicsAction({});
+
+    // Verify privacy filter is applied: must only see own topics or unassigned pool topics
+    expect(countSpy).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          {
+            OR: [
+              { proposerId: 'faculty-A' },
+              { proposerId: null },
+            ],
+          },
+        ]),
+      }),
+    });
+  });
+
+  it('blocks faculty from accessing topic details proposed by another faculty member', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-A', role: 'FACULTY' },
+    } as any);
+
+    // Topic belongs to faculty-B
+    const topicProposedByB = {
+      id: 'topic-b-1',
+      code: 'FAC-2026-099',
+      title: 'Private Topic of Faculty B',
+      proposerId: 'faculty-B',
+      groups: [],
+    };
+
+    vi.spyOn(prisma.topic, 'findFirst').mockResolvedValue(topicProposedByB as any);
+
+    const res = await getFacultyTopicDetailAction('topic-b-1');
+    expect(res.error).toBe('Unauthorized: Topics submitted by other faculty members are private.');
+  });
 });

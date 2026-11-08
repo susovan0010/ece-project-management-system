@@ -285,14 +285,31 @@ export async function getArchivedProjectsAction() {
   }
 
   try {
+    const archivedCondition = {
+      OR: [
+        { status: TopicStatus.ARCHIVED },
+        {
+          groups: {
+            some: {
+              OR: [{ isArchived: true }, { batch: { isArchived: true } }],
+            },
+          },
+        },
+      ],
+    };
+
     const whereClause =
       user.role === 'ADMIN'
-        ? { status: TopicStatus.ARCHIVED }
+        ? archivedCondition
         : {
-            status: TopicStatus.ARCHIVED,
-            OR: [
-              { proposerId: user.id },
-              { groups: { some: { supervisorId: user.id } } },
+            ...archivedCondition,
+            AND: [
+              {
+                OR: [
+                  { proposerId: user.id },
+                  { groups: { some: { supervisorId: user.id } } },
+                ],
+              },
             ],
           };
 
@@ -311,6 +328,7 @@ export async function getArchivedProjectsAction() {
         },
         groups: {
           include: {
+            batch: true,
             supervisor: {
               select: { id: true, name: true, email: true },
             },
