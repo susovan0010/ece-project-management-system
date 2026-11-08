@@ -9,6 +9,7 @@ import {
   getCapstoneCatalogueAction,
   getCapstoneProjectDetailReportAction,
   forceDeleteBatchSessionAction,
+  getArchivedProjectsAction,
 } from '@/app/actions/capstone';
 
 vi.mock('@/auth', () => ({
@@ -58,7 +59,13 @@ vi.mock('@/lib/prisma', () => ({
           })),
         };
       }),
-      findMany: vi.fn().mockImplementation(() => mockBatches),
+      findMany: vi.fn().mockImplementation(({ where }: any = {}) => {
+        let list = [...mockBatches];
+        if (where?.isArchived !== undefined) {
+          list = list.filter((b) => !!b.isArchived === where.isArchived);
+        }
+        return list;
+      }),
       update: vi.fn().mockImplementation(({ where, data }: any) => {
         const b = mockBatches.find((item) => item.id === where.id);
         if (b) Object.assign(b, data);
@@ -522,5 +529,106 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     });
     expect(deleteTotalRes.success).toBe(true);
     expect(mockBatches.some((b) => b.id === '2023-2027')).toBe(false);
+  });
+
+  it('9. getArchivedProjectsAction retrieves archived project listings and batch Google Drive dossiers', async () => {
+    // Set up an archived batch with archiveReportSummary
+    mockBatches.push({
+      id: '2022-2026',
+      active: false,
+      isLocked: true,
+      isArchived: true,
+      archivedAt: new Date(),
+      archiveDriveFileUrl: 'https://drive.google.com/file/d/test-drive-url/view',
+      archiveReportSummary: {
+        batchId: '2022-2026',
+        archivedAt: new Date().toISOString(),
+        totalGroups: 2,
+        capstoneGroups: 1,
+        driveViewUrl: 'https://drive.google.com/file/d/test-drive-url/view',
+        groups: [
+          {
+            groupId: 'g-archived-1',
+            groupNumber: 1,
+            batchId: '2022-2026',
+            topicCode: 'ECE-2026-001',
+            topicTitle: 'Next-Gen 6G MIMO Beamforming',
+            domain: 'Wireless Communications',
+            category: 'Hardware & System Design',
+            supervisorName: 'Dr. Archival Lead',
+            supervisorEmail: 'lead@heritageit.edu',
+            students: [
+              {
+                name: 'Student One',
+                roll: 'ECE22001',
+                badges: { diamonds: 1, gold: 2, silver: 1, copper: 0, iron: 0, total: 4 },
+              },
+            ],
+            attributes: [
+              { code: 'WP1', title: 'In-depth Engineering Knowledge', level: 3, reason: 'Advanced 6G processing' },
+            ],
+            sdgs: [
+              { code: 'SDG 9', title: 'Industry, Innovation and Infrastructure', target: '9.5' },
+            ],
+            isCapstone: true,
+            decisionYear: 2026,
+            poAttainments: [
+              { code: 'PO1', percentage: 88.5, level: 3, isAttained: true },
+              { code: 'PO2', percentage: 76.0, level: 3, isAttained: true },
+            ],
+          },
+          {
+            groupId: 'g-archived-2',
+            groupNumber: 2,
+            batchId: '2022-2026',
+            topicCode: 'ECE-2026-002',
+            topicTitle: 'Standard IoT Sensor Node',
+            domain: 'Embedded Systems',
+            category: 'Software Application',
+            supervisorName: 'Prof. Second Guide',
+            supervisorEmail: 'guide2@heritageit.edu',
+            students: [
+              {
+                name: 'Student Two',
+                roll: 'ECE22002',
+                badges: { diamonds: 0, gold: 1, silver: 0, copper: 0, iron: 0, total: 1 },
+              },
+            ],
+            attributes: [],
+            sdgs: [],
+            isCapstone: false,
+            decisionYear: 2026,
+            poAttainments: [
+              { code: 'PO1', percentage: 55.0, level: 1, isAttained: true },
+            ],
+          },
+        ],
+      },
+    });
+
+    const res = await getArchivedProjectsAction();
+    expect(res.success).toBe(true);
+    expect(res.projects).toBeDefined();
+    expect(res.projects?.length).toBeGreaterThanOrEqual(2);
+
+    const capstoneProject = res.projects?.find((p) => p.isCapstone);
+    expect(capstoneProject).toBeDefined();
+    expect(capstoneProject?.topicTitle).toBe('Next-Gen 6G MIMO Beamforming');
+    expect(capstoneProject?.batchId).toBe('2022-2026');
+    expect(capstoneProject?.year).toBe(2026);
+    expect(capstoneProject?.students[0].name).toBe('Student One');
+    expect(capstoneProject?.students[0].badges?.diamonds).toBe(1);
+    expect(capstoneProject?.driveFileUrl).toBe('https://drive.google.com/file/d/test-drive-url/view');
+    expect(capstoneProject?.poAttainments[0].code).toBe('PO1');
+    expect(capstoneProject?.poAttainments[0].percentage).toBe(88.5);
+
+    const standardProject = res.projects?.find((p) => !p.isCapstone);
+    expect(standardProject).toBeDefined();
+    expect(standardProject?.isCapstone).toBe(false);
+
+    // Verify batches metadata
+    const batchSummary = res.batches?.find((b) => b.id === '2022-2026');
+    expect(batchSummary).toBeDefined();
+    expect(batchSummary?.driveUrl).toBe('https://drive.google.com/file/d/test-drive-url/view');
   });
 });

@@ -985,13 +985,15 @@ export async function archiveBatchAction(batchId: string): Promise<{
           nonCapstoneCount,
           purgedStudentsCount: uniqueStudentUserIds.length,
           driveViewUrl: driveUrl,
-        },
+          groups: archivedProfiles,
+        } as any,
       },
     });
 
     revalidatePath('/admin/capstone');
     revalidatePath('/admin/reports');
     revalidatePath('/admin/allocation');
+    revalidatePath('/admin/archived-projects');
 
     return {
       success: true,
@@ -1501,5 +1503,198 @@ export async function forceDeleteBatchSessionAction(input: {
     return { success: false, error: (err as Error).message };
   }
 }
+
+// ----------------------------------------------------
+// 12. Get All Archived Projects (Admin / Archived Projects Hub)
+// ----------------------------------------------------
+export interface ArchivedProjectListItem {
+  id: string;
+  topicId: string;
+  topicCode: string;
+  topicTitle: string;
+  domain: string;
+  category: string;
+  batchId: string;
+  groupNumber: number;
+  year: number;
+  supervisorName: string;
+  supervisorEmail: string;
+  students: Array<{
+    name: string;
+    roll: string;
+    badges?: {
+      diamonds: number;
+      gold: number;
+      silver: number;
+      copper: number;
+      iron: number;
+      total: number;
+    };
+  }>;
+  isCapstone: boolean;
+  decisionYear: number;
+  decisionNotes?: string | null;
+  driveFileUrl?: string | null;
+  attributes: Array<{
+    code: string;
+    title: string;
+    level: number;
+    reason: string | null;
+  }>;
+  sdgs: Array<{
+    code: string;
+    title: string;
+    target: string;
+  }>;
+  semesterMarks?: {
+    sem6?: { rubricA?: number; rubricB?: number; total?: number };
+    sem7?: { rubricC?: number; rubricD?: number; total?: number };
+    sem8?: { rubricE?: number; rubricF?: number; total?: number };
+  };
+  poAttainments: Array<{
+    code: string;
+    percentage: number;
+    level: number;
+    isAttained: boolean;
+  }>;
+}
+
+export async function getArchivedProjectsAction(): Promise<{
+  success: boolean;
+  projects?: ArchivedProjectListItem[];
+  batches?: Array<{ id: string; archivedAt: string | null; driveUrl?: string | null }>;
+  error?: string;
+}> {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { success: false, error: 'Unauthorized: Admin access required.' };
+  }
+
+  try {
+    const archivedBatches = await prisma.batch.findMany({
+      where: { isArchived: true },
+      orderBy: { id: 'desc' },
+    });
+
+    const projectList: ArchivedProjectListItem[] = [];
+    const batchList: Array<{ id: string; archivedAt: string | null; driveUrl?: string | null }> = [];
+
+    for (const b of archivedBatches) {
+      batchList.push({
+        id: b.id,
+        archivedAt: b.archivedAt ? b.archivedAt.toISOString() : null,
+        driveUrl: b.archiveDriveFileUrl,
+      });
+
+      // Extract year from batch ID e.g. "2023-2027" -> 2027
+      let graduatingYear = new Date().getFullYear();
+      if (b.id.includes('-')) {
+        const parts = b.id.split('-');
+        const parsedYear = parseInt(parts[1], 10);
+        if (!isNaN(parsedYear)) graduatingYear = parsedYear;
+      }
+
+      const summary = b.archiveReportSummary as any;
+      if (summary?.groups && Array.isArray(summary.groups) && summary.groups.length > 0) {
+        // Fast path: load directly from the compiled archive summary
+        for (const g of summary.groups as ArchivedGroupProfile[]) {
+          projectList.push({
+            id: `${b.id}-g-${g.groupNumber}`,
+            topicId: g.groupId || `${b.id}-topic-${g.groupNumber}`,
+            topicCode: g.topicCode,
+            topicTitle: g.topicTitle,
+            domain: g.domain,
+            category: g.category,
+            batchId: b.id,
+            groupNumber: g.groupNumber,
+            year: g.decisionYear || graduatingYear,
+            supervisorName: g.supervisorName,
+            supervisorEmail: g.supervisorEmail,
+            students: g.students || [],
+            isCapstone: g.isCapstone,
+            decisionYear: g.decisionYear || graduatingYear,
+            decisionNotes: g.decisionNotes || null,
+            driveFileUrl: b.archiveDriveFileUrl || summary.driveViewUrl || null,
+            attributes: g.attributes || [],
+            sdgs: g.sdgs || [],
+            semesterMarks: g.semesterMarks,
+            poAttainments: g.poAttainments || [],
+          });
+        }
+      } else {
+        // Fallback: Query database records for this batch
+        const dbGroups = await prisma.group.findMany({
+          where: { batchId: b.id },
+          include: {
+            supervisor: { select: { name: true, email: true } },
+            topic: {
+              include: {
+                attributes: { include: { attribute: true } },
+                sdgs: { include: { sdg: true } },
+                decisions: true,
+              },
+            },
+            members: {
+              include: {
+                student: { select: { name: true, roll: true } },
+              },
+            },
+          },
+          orderBy: { number: 'asc' },
+        });
+
+        for (const g of dbGroups) {
+          const isCapstone =
+            g.isCapstonePermanent ||
+            g.topic?.decisions?.some((d) => d.isCapstone && d.status === 'CONFIRMED');
+          const decision = g.topic?.decisions?.find((d) => d.isCapstone && d.status === 'CONFIRMED') || g.topic?.decisions?.[0];
+
+          projectList.push({
+            id: g.id,
+            topicId: g.topic?.id || g.id,
+            topicCode: g.topic?.code || 'N/A',
+            topicTitle: g.topic?.title || `Group ${g.number}`,
+            domain: g.topic?.domain || 'General',
+            category: g.topic?.category || 'Standard',
+            batchId: b.id,
+            groupNumber: g.number,
+            year: decision?.decisionYear || graduatingYear,
+            supervisorName: g.supervisor?.name || 'Unassigned',
+            supervisorEmail: g.supervisor?.email || '',
+            students: g.members.map((m) => ({
+              name: m.student.name,
+              roll: m.student.roll,
+            })),
+            isCapstone: !!isCapstone,
+            decisionYear: decision?.decisionYear || graduatingYear,
+            decisionNotes: decision?.notes || null,
+            driveFileUrl: b.archiveDriveFileUrl,
+            attributes: (g.topic?.attributes || []).map((a) => ({
+              code: a.attribute.code,
+              title: a.attribute.title,
+              level: a.level,
+              reason: a.reason,
+            })),
+            sdgs: (g.topic?.sdgs || []).map((s) => ({
+              code: `SDG ${s.sdg.id}`,
+              title: s.sdg.title,
+              target: s.target || 'General',
+            })),
+            poAttainments: [],
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      projects: projectList,
+      batches: batchList,
+    };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+
 
 
