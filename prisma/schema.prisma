@@ -268,14 +268,17 @@ model ComplexityDeclaration {
 // ------------------------------------------
 
 model Batch {
-  id         String    @id // e.g. "2023-2027"
-  active     Boolean   @default(true)
-  isLocked   Boolean   @default(false)
-  lockedAt   DateTime?
-  lockedById String?
-  isArchived Boolean   @default(false)
-  archivedAt DateTime?
-  groups     Group[]
+  id                  String    @id // e.g. "2023-2027"
+  active              Boolean   @default(true)
+  isLocked            Boolean   @default(false)
+  lockedAt            DateTime?
+  lockedById          String?
+  isArchived          Boolean   @default(false)
+  archivedAt          DateTime?
+  archiveDriveFileUrl String?
+  archiveDriveFileId  String?
+  archiveReportSummary Json?
+  groups              Group[]
 }
 
 model Group {

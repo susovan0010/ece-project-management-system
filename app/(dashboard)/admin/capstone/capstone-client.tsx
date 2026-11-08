@@ -272,7 +272,12 @@ export default function AdminCapstoneClient() {
   async function handleArchiveBatch() {
     if (!closeSessionBatch) return;
     const confirmed = window.confirm(
-      `Archive Batch ${closeSessionBatch}?\n\n- Confirmed Capstone projects will be permanently catalogued forever.\n- Non-capstone projects will be moved to archive with a 4-year retention schedule and then purged.\n\nProceed?`
+      `Archive & Optimize Batch ${closeSessionBatch}?\n\n` +
+      `1. A permanent Academic Archive Report will be saved directly to the ECE Project Committee Google Drive.\n` +
+      `2. Login accounts & credentials of all graduating students from this batch will be deleted permanently.\n` +
+      `3. Faculty supervisor accounts will be strictly preserved.\n` +
+      `4. Confirmed Capstone projects will remain permanently in the Capstone Catalogue.\n` +
+      `5. Granular database rows will be purged to free up database storage immediately.\n\nProceed?`
     );
     if (!confirmed) return;
 
@@ -286,10 +291,10 @@ export default function AdminCapstoneClient() {
     if (res.error) {
       setError(res.error);
     } else {
-      setSuccessMsg(res.message || 'Batch archived successfully.');
+      setSuccessMsg(res.message || 'Batch archived and backed up to Google Drive successfully.');
       loadSem8Status(closeSessionBatch);
       loadData(selectedBatch);
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setTimeout(() => setSuccessMsg(null), 5000);
     }
   }
 
@@ -999,38 +1004,77 @@ export default function AdminCapstoneClient() {
                   </div>
                 </div>
 
-                {/* 2. Archive Batch & 4-Year Retention Action */}
-                <div className="bg-purple-50/70 p-5 rounded-2xl border border-purple-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h4 className="font-bold text-sm text-purple-950 flex items-center gap-2">
-                      <span>🗄️</span> Archive Batch &amp; 4-Year Retention Schedule
-                    </h4>
-                    <ul className="text-xs text-purple-800 mt-1.5 space-y-1 list-disc list-inside">
-                      <li>
-                        <strong>Capstone Projects:</strong> Permanently maintained forever under <strong>Admin / Capstone Catalogue</strong>.
-                      </li>
-                      <li>
-                        <strong>Non-Capstone Projects:</strong> Moved into archive with a <strong>4-year retention policy</strong> and then purged to free up institutional database storage.
-                      </li>
-                    </ul>
+                {/* 2. Archive Batch & Google Drive Cold Storage Action */}
+                <div className="bg-purple-50/70 p-5 rounded-2xl border border-purple-200 space-y-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h4 className="font-bold text-sm text-purple-950 flex items-center gap-2">
+                        <span>🗄️</span> Session Archival &amp; Google Drive Cold Storage
+                      </h4>
+                      <ul className="text-xs text-purple-800 mt-1.5 space-y-1 list-disc list-inside">
+                        <li>
+                          <strong>Google Drive Archive:</strong> Standalone static Academic Report uploaded to <strong>ECE Committee Drive</strong> (15 GB free space).
+                        </li>
+                        <li>
+                          <strong>Student Accounts:</strong> Graduating student login credentials are <strong>permanently deleted</strong>.
+                        </li>
+                        <li>
+                          <strong>Faculty Retention:</strong> All faculty supervisor accounts and directory records are <strong>strictly preserved</strong>.
+                        </li>
+                        <li>
+                          <strong>Database Space:</strong> Granular database operational rows purged, optimizing DB space by <strong>~98%</strong>.
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 self-start md:self-auto">
+                      {sem8Status.archiveDriveFileUrl && (
+                        <a
+                          href={sem8Status.archiveDriveFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2"
+                        >
+                          <span>📁 Open Drive Archive Report</span>
+                        </a>
+                      )}
+
+                      <button
+                        onClick={handleArchiveBatch}
+                        disabled={archivingBatch || sem8Status.isArchived}
+                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <span>🗄️ {archivingBatch ? 'Archiving & Uploading...' : sem8Status.isArchived ? 'Batch Archived' : 'Archive Batch to Drive'}</span>
+                      </button>
+
+                      <button
+                        onClick={handlePurgeExpired}
+                        disabled={purgingExpired}
+                        className="px-3.5 py-2 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold transition-all"
+                      >
+                        {purgingExpired ? 'Cleaning...' : 'Run 4-Yr Purge Cleanup'}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <button
-                      onClick={handleArchiveBatch}
-                      disabled={archivingBatch || sem8Status.isArchived}
-                      className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 flex items-center gap-2"
-                    >
-                      <span>🗄️ {archivingBatch ? 'Archiving...' : sem8Status.isArchived ? 'Batch Archived' : 'Archive Batch'}</span>
-                    </button>
-                    <button
-                      onClick={handlePurgeExpired}
-                      disabled={purgingExpired}
-                      className="px-3.5 py-2 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold transition-all"
-                    >
-                      {purgingExpired ? 'Cleaning...' : 'Run 4-Yr Purge Cleanup'}
-                    </button>
-                  </div>
+                  {sem8Status.archiveDriveFileUrl && (
+                    <div className="p-3 bg-white rounded-xl border border-purple-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
+                      <div className="text-purple-900">
+                        <strong className="block text-[11px] text-purple-700 uppercase tracking-wider">Permanent Cold Storage Link:</strong>
+                        <span className="text-[11px] font-mono text-slate-600 truncate max-w-md block">
+                          {sem8Status.archiveDriveFileUrl}
+                        </span>
+                      </div>
+                      <a
+                        href={sem8Status.archiveDriveFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-purple-700 hover:text-purple-900 underline whitespace-nowrap"
+                      >
+                        View in Google Drive ↗
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. Force Delete Batch Session Action (Danger Zone) */}

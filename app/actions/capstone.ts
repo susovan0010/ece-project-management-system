@@ -17,6 +17,11 @@ import {
   Levels,
 } from '@/lib/engine';
 import { calculateStudentBadges } from '@/lib/engine/badge-engine';
+import {
+  generateBatchStaticArchiveHtml,
+  ArchivedGroupProfile,
+} from '@/lib/engine/archive-report-generator';
+import { uploadFileToGoogleDrive, OFFICIAL_DRIVE_ACCOUNT } from '@/lib/google-drive';
 import { revalidatePath } from 'next/cache';
 
 export interface AdminGroupCapstoneEvaluation {
@@ -391,6 +396,8 @@ export interface Semester8Status {
   lockedAt: string | null;
   isArchived: boolean;
   archivedAt: string | null;
+  archiveDriveFileUrl?: string | null;
+  archiveReportSummary?: any;
   totalGroups: number;
   completedGroups: number;
   isComplete: boolean;
@@ -567,6 +574,8 @@ export async function checkSemester8CompletionAction(batchId: string): Promise<{
         lockedAt: batch.lockedAt ? batch.lockedAt.toISOString() : null,
         isArchived: !!batch.isArchived,
         archivedAt: batch.archivedAt ? batch.archivedAt.toISOString() : null,
+        archiveDriveFileUrl: batch.archiveDriveFileUrl || null,
+        archiveReportSummary: batch.archiveReportSummary || null,
         totalGroups,
         completedGroups,
         isComplete,
@@ -668,13 +677,15 @@ export async function unlockBatchSessionAction(
 }
 
 // ----------------------------------------------------
-// 7. Archive Batch with 4-Year Retention for Non-Capstones
+// 7. Archive Batch with Google Drive Report, Student Purge & DB Optimization
 // ----------------------------------------------------
 export async function archiveBatchAction(batchId: string): Promise<{
   success: boolean;
   message?: string;
   capstoneCount?: number;
   archivedCount?: number;
+  purgedStudentsCount?: number;
+  driveUrl?: string;
   error?: string;
 }> {
   const session = await auth();
@@ -686,22 +697,230 @@ export async function archiveBatchAction(batchId: string): Promise<{
     const groups = await prisma.group.findMany({
       where: { batchId },
       include: {
+        supervisor: { select: { id: true, name: true, email: true } },
         topic: {
           include: {
+            attributes: { include: { attribute: true } },
+            sdgs: { include: { sdg: true } },
             decisions: true,
           },
         },
+        members: {
+          include: {
+            student: {
+              include: {
+                user: { select: { id: true, email: true, role: true } },
+              },
+            },
+          },
+        },
+        markEntries: {
+          include: {
+            criterion: {
+              include: {
+                maps: true,
+                rubric: true,
+              },
+            },
+          },
+        },
       },
+      orderBy: { number: 'asc' },
     });
 
     if (groups.length === 0) {
       return { success: false, error: `No groups found in batch ${batchId}.` };
     }
 
-    let capstoneCount = 0;
-    let archivedCount = 0;
-    const fourYearsFromNow = new Date(Date.now() + 4 * 365.25 * 24 * 60 * 60 * 1000);
     const currentYear = new Date().getFullYear();
+    const poCodes = Array.from({ length: 11 }, (_, i) => `PO${i + 1}`);
+
+    // Helper to build pure mark inputs
+    const buildMarkInputs = (entries: typeof groups[0]['markEntries']): MarkEntryInput[] => {
+      const map = new Map<number, { sum: number; count: number; max: number; maps: string[] }>();
+      for (const e of entries) {
+        const critId = e.criterionId;
+        const maps = (e.criterion?.maps || []).map((m) => m.code);
+        if (!map.has(critId)) {
+          map.set(critId, { sum: e.marks, count: 1, max: e.criterion?.maxMarks || 10, maps });
+        } else {
+          const cur = map.get(critId)!;
+          cur.sum += e.marks;
+          cur.count += 1;
+        }
+      }
+      return Array.from(map.values()).map((v) => ({
+        marks: v.sum / v.count,
+        max: v.max,
+        maps: v.maps,
+      }));
+    };
+
+    // 1. Build Archived Profiles for all Groups
+    let totalStudents = 0;
+    let capstoneCount = 0;
+    let nonCapstoneCount = 0;
+    const studentUserIds: string[] = [];
+
+    const archivedProfiles: ArchivedGroupProfile[] = await Promise.all(
+      groups.map(async (g) => {
+        const isCapstone =
+          g.isCapstonePermanent ||
+          g.topic?.decisions?.some((d) => d.isCapstone && d.status === 'CONFIRMED');
+
+        if (isCapstone) capstoneCount++;
+        else nonCapstoneCount++;
+
+        const decision = g.topic?.decisions?.find((d) => d.isCapstone && d.status === 'CONFIRMED') || g.topic?.decisions?.[0];
+        const decisionYear = decision?.decisionYear || currentYear;
+
+        // Collect student members and badges
+        const studentProfiles = await Promise.all(
+          g.members.map(async (m) => {
+            totalStudents++;
+            const uid = m.student?.user?.id || m.student?.userId;
+            if (uid && (!m.student?.user || m.student.user.role === 'STUDENT')) {
+              studentUserIds.push(uid);
+            }
+
+            let diamonds = 0, gold = 0, silver = 0, copper = 0, iron = 0;
+            if (m.student?.userId) {
+              const votes = await prisma.forumMarkupVote.findMany({
+                where: { targetUserId: m.student.userId },
+                select: { value: true },
+              });
+              const netMarks = votes.reduce((sum, v) => sum + (v.value || 0), 0);
+              const badgeSummary = calculateStudentBadges(netMarks);
+              diamonds = badgeSummary.diamonds;
+              gold = badgeSummary.gold;
+              silver = badgeSummary.silver;
+              copper = badgeSummary.copper;
+              iron = badgeSummary.iron;
+            }
+
+            return {
+              name: m.student.name,
+              roll: m.student.roll,
+              badges: {
+                diamonds,
+                gold,
+                silver,
+                copper,
+                iron,
+                total: diamonds + gold + silver + copper + iron,
+              },
+            };
+          })
+        );
+
+        // Group mark inputs & PO attainments
+        const overallInputs = buildMarkInputs(g.markEntries);
+        const poAttainments = poCodes.map((code) => {
+          const att = attainment(overallInputs, code);
+          const percentage = att !== null ? Number((att * 100).toFixed(1)) : 0;
+          const level = att !== null ? getAttainmentLevel(att) : 0;
+          return {
+            code,
+            percentage,
+            level,
+            isAttained: level >= 1 || percentage >= 65,
+          };
+        });
+
+        return {
+          groupId: g.id,
+          groupNumber: g.number,
+          batchId: g.batchId,
+          topicCode: g.topic?.code || 'N/A',
+          topicTitle: g.topic?.title || `Group ${g.number}`,
+          domain: g.topic?.domain || 'General',
+          category: g.topic?.category || 'Standard',
+          supervisorName: g.supervisor?.name || 'Unassigned',
+          supervisorEmail: g.supervisor?.email || '',
+          students: studentProfiles,
+          attributes: (g.topic?.attributes || []).map((a) => ({
+            code: a.attribute.code,
+            title: a.attribute.title,
+            level: a.level,
+            reason: a.reason,
+          })),
+          sdgs: (g.topic?.sdgs || []).map((s) => ({
+            code: `SDG ${s.sdg.id}`,
+            title: s.sdg.title,
+            target: s.target || 'General',
+          })),
+          semesterMarks: {},
+          poAttainments,
+          isCapstone,
+          decisionYear,
+          decisionNotes: decision?.notes || null,
+        };
+      })
+    );
+
+    // Compute department average PO attainments
+    const departmentAveragePos = poCodes.map((code) => {
+      const pcts = archivedProfiles.map((p) => p.poAttainments.find((x) => x.code === code)?.percentage || 0);
+      const avg = Number((pcts.reduce((a, b) => a + b, 0) / (pcts.length || 1)).toFixed(1));
+      const lvl = getAttainmentLevel(avg);
+      return {
+        code,
+        avgPercentage: avg,
+        level: lvl,
+      };
+    });
+
+    // 2. Generate Static Standalone HTML Academic Archive Report
+    const reportHtml = generateBatchStaticArchiveHtml({
+      batchId,
+      archivedAt: new Date().toLocaleDateString('en-IN', { dateStyle: 'full' }),
+      archivedByAdmin: (session.user as any).name || session.user.email || 'Project Committee Admin',
+      totalGroups: groups.length,
+      totalStudents,
+      capstoneCount,
+      nonCapstoneCount,
+      groups: archivedProfiles,
+      departmentAveragePos,
+    });
+
+    // 3. Upload Static Archive to ECE Project Committee Google Drive (15 GB Free Storage)
+    const uploadRes = await uploadFileToGoogleDrive({
+      fileName: `Batch_${batchId}_Comprehensive_Academic_Archive.html`,
+      size: Buffer.byteLength(reportHtml, 'utf-8'),
+      mimeType: 'text/html;charset=utf-8',
+      dataUrlOrBase64: Buffer.from(reportHtml, 'utf-8').toString('base64'),
+      folderName: 'ECE_Capstone_Academic_Archives',
+      subFolder: `Batch_${batchId}`,
+      uploaderEmail: session.user.email || OFFICIAL_DRIVE_ACCOUNT,
+    });
+
+    // 4. Permanent Student Account Deletion (Credentials Suspended)
+    // NOTE: Faculty accounts (role === 'FACULTY' or 'ADMIN') are strictly preserved!
+    const uniqueStudentUserIds = Array.from(new Set(studentUserIds));
+    if (uniqueStudentUserIds.length > 0) {
+      await prisma.forumReaction.deleteMany({ where: { userId: { in: uniqueStudentUserIds } } });
+      await prisma.forumMarkupVote.deleteMany({
+        where: { targetUserId: { in: uniqueStudentUserIds } },
+      });
+      await prisma.forumReply.deleteMany({ where: { authorId: { in: uniqueStudentUserIds } } });
+      await prisma.forumPost.deleteMany({ where: { authorId: { in: uniqueStudentUserIds } } });
+
+      await prisma.student.updateMany({
+        where: { userId: { in: uniqueStudentUserIds } },
+        data: { userId: null },
+      });
+
+      await prisma.user.deleteMany({
+        where: {
+          id: { in: uniqueStudentUserIds },
+          role: 'STUDENT',
+        },
+      });
+    }
+
+    // 5. Database Operational Rows Optimization
+    // Capstones are preserved permanent; non-capstone granular rows are deleted to reclaim DB space.
+    const nonCapstoneGroupIds: string[] = [];
 
     for (const g of groups) {
       const isCapstone =
@@ -709,8 +928,6 @@ export async function archiveBatchAction(batchId: string): Promise<{
         g.topic?.decisions?.some((d) => d.isCapstone && d.status === 'CONFIRMED');
 
       if (isCapstone) {
-        capstoneCount += 1;
-        // Capstone: permanent preservation forever under Capstone Catalogue
         await prisma.group.update({
           where: { id: g.id },
           data: {
@@ -720,7 +937,6 @@ export async function archiveBatchAction(batchId: string): Promise<{
           },
         });
 
-        // Ensure decisionYear is set
         const confirmedDecision = g.topic?.decisions?.find((d) => d.isCapstone && d.status === 'CONFIRMED');
         if (confirmedDecision && !confirmedDecision.decisionYear) {
           await prisma.capstoneDecision.update({
@@ -729,36 +945,61 @@ export async function archiveBatchAction(batchId: string): Promise<{
           });
         }
       } else {
-        archivedCount += 1;
-        // Non-Capstone: archived with 4-year retention schedule
-        await prisma.group.update({
-          where: { id: g.id },
-          data: {
-            isArchived: true,
-            isCapstonePermanent: false,
-            purgeAt: fourYearsFromNow,
-          },
-        });
+        nonCapstoneGroupIds.push(g.id);
       }
     }
 
-    // Mark batch as archived and locked
+    if (nonCapstoneGroupIds.length > 0) {
+      // Purge granular rows to free up PostgreSQL database storage immediately
+      await prisma.markEntry.deleteMany({ where: { groupId: { in: nonCapstoneGroupIds } } });
+      await prisma.attainmentSnapshot.deleteMany({ where: { groupId: { in: nonCapstoneGroupIds } } });
+      await prisma.forumPost.deleteMany({ where: { groupId: { in: nonCapstoneGroupIds } } });
+      await prisma.groupMember.deleteMany({ where: { groupId: { in: nonCapstoneGroupIds } } });
+
+      await prisma.group.updateMany({
+        where: { id: { in: nonCapstoneGroupIds } },
+        data: {
+          isArchived: true,
+          isCapstonePermanent: false,
+          purgeAt: new Date(Date.now() + 4 * 365.25 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    // 6. Update Batch record with Google Drive reference and compact metadata
+    const driveUrl = uploadRes.viewUrl || null;
     await prisma.batch.update({
       where: { id: batchId },
       data: {
         isArchived: true,
         archivedAt: new Date(),
         isLocked: true,
+        active: false,
+        archiveDriveFileUrl: driveUrl,
+        archiveDriveFileId: uploadRes.fileId || null,
+        archiveReportSummary: {
+          archivedAt: new Date().toISOString(),
+          totalGroups: groups.length,
+          totalStudents,
+          capstoneCount,
+          nonCapstoneCount,
+          purgedStudentsCount: uniqueStudentUserIds.length,
+          driveViewUrl: driveUrl,
+        },
       },
     });
 
     revalidatePath('/admin/capstone');
     revalidatePath('/admin/reports');
+    revalidatePath('/admin/allocation');
+
     return {
       success: true,
       capstoneCount,
-      archivedCount,
-      message: `Batch ${batchId} archived successfully. ${capstoneCount} Capstone project(s) permanently catalogued. ${archivedCount} non-capstone project(s) scheduled for 4-year retention purge.`,
+      archivedCount: nonCapstoneCount,
+      purgedStudentsCount: uniqueStudentUserIds.length,
+      driveUrl: driveUrl || undefined,
+      message: `Batch ${batchId} archived successfully. Static Academic Report saved to ECE Committee Google Drive. ${uniqueStudentUserIds.length} student account(s) deleted permanently. Database storage reclaimed.`,
     };
   } catch (err) {
     return { success: false, error: (err as Error).message };

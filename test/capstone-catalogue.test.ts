@@ -19,6 +19,19 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
+vi.mock('@/lib/google-drive', () => ({
+  uploadFileToGoogleDrive: vi.fn().mockResolvedValue({
+    success: true,
+    fileId: 'mock-drive-file-id-123',
+    viewUrl: 'https://drive.google.com/file/d/mock-drive-file-id-123/view',
+    fileName: 'archive.html',
+    size: 1024,
+    mimeType: 'text/html',
+    hostedOn: 'GOOGLE_DRIVE',
+  }),
+  OFFICIAL_DRIVE_ACCOUNT: 'ece.project.committee@heritageit.edu',
+}));
+
 let mockBatches: any[] = [];
 let mockGroups: any[] = [];
 let mockUsers: any[] = [];
@@ -60,6 +73,15 @@ vi.mock('@/lib/prisma', () => ({
       findUnique: vi.fn().mockImplementation(({ where }: any) => {
         return mockUsers.find((u) => u.id === where.id) || null;
       }),
+      deleteMany: vi.fn().mockImplementation(({ where }: any) => {
+        if (where?.id?.in) {
+          mockUsers = mockUsers.filter((u) => !where.id.in.includes(u.id));
+        }
+        return { count: 1 };
+      }),
+    },
+    student: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     group: {
       findMany: vi.fn().mockImplementation(({ where }: any) => {
@@ -94,7 +116,13 @@ vi.mock('@/lib/prisma', () => ({
             decisions: mockDecisions.filter((d) => d.topicId === g.topicId),
           },
           supervisor: mockUsers.find((u) => u.id === g.supervisorId) || null,
-          members: g.members || [],
+          members: (g.members || []).map((m: any) => ({
+            ...m,
+            student: {
+              ...(m.student || {}),
+              user: mockUsers.find((u) => u.id === m.student?.userId) || null,
+            },
+          })),
           markEntries: g.markEntries || [],
         }));
       }),
@@ -102,6 +130,12 @@ vi.mock('@/lib/prisma', () => ({
         const g = mockGroups.find((item) => item.id === where.id);
         if (g) Object.assign(g, data);
         return g;
+      }),
+      updateMany: vi.fn().mockImplementation(({ where, data }: any) => {
+        if (where?.id?.in) {
+          mockGroups.filter((g) => where.id.in.includes(g.id)).forEach((g) => Object.assign(g, data));
+        }
+        return { count: 1 };
       }),
       deleteMany: vi.fn().mockImplementation(({ where }: any) => {
         const before = mockGroups.length;
@@ -149,6 +183,13 @@ vi.mock('@/lib/prisma', () => ({
     },
     forumMarkupVote: {
       findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    forumReaction: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    forumReply: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   },
 }));
@@ -169,6 +210,9 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     mockUsers = [
       { id: adminId, name: 'Committee Admin', email: 'admin@heritageit.edu', role: 'ADMIN', passwordHash: hashedAdminPass },
       { id: 'sup-1', name: 'Dr. Debanjan', email: 'debanjan@heritageit.edu', role: 'FACULTY' },
+      { id: 'u-s-1', name: 'Aarav Sharma', email: 'aarav@heritageit.edu', role: 'STUDENT' },
+      { id: 'u-s-2', name: 'Diya Sen', email: 'diya@heritageit.edu', role: 'STUDENT' },
+      { id: 'u-s-3', name: 'Rohan Roy', email: 'rohan@heritageit.edu', role: 'STUDENT' },
     ];
 
     mockBatches = [
@@ -341,6 +385,14 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     expect(res.success).toBe(true);
     expect(res.capstoneCount).toBe(1);
     expect(res.archivedCount).toBe(1);
+    expect(res.driveUrl).toBeDefined();
+
+    // Verify student accounts were deleted permanently, while faculty account is retained
+    expect(mockUsers.some((u) => u.id === 'u-s-1')).toBe(false);
+    expect(mockUsers.some((u) => u.id === 'u-s-2')).toBe(false);
+    expect(mockUsers.some((u) => u.id === 'u-s-3')).toBe(false);
+    expect(mockUsers.some((u) => u.id === 'sup-1')).toBe(true);
+    expect(mockUsers.some((u) => u.id === adminId)).toBe(true);
 
     // Group 1 (Capstone)
     const g1 = mockGroups.find((g) => g.id === 'group-1');
@@ -357,8 +409,9 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     const nowYears = new Date().getFullYear();
     expect(g2.purgeAt.getFullYear()).toBeGreaterThanOrEqual(nowYears + 3);
 
-    // Batch itself is marked archived
+    // Batch itself is marked archived with Drive File URL
     expect(mockBatches[0].isArchived).toBe(true);
+    expect(mockBatches[0].archiveDriveFileUrl).toBeDefined();
   });
 
   it('5. purgeExpiredArchivedProjectsAction cleans only eligible expired non-capstones', async () => {

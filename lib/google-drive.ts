@@ -264,6 +264,8 @@ export async function uploadFileToGoogleDrive(params: {
   batchId?: string;
   groupNumber?: number;
   uploaderEmail?: string;
+  folderName?: string;
+  subFolder?: string;
 }): Promise<GoogleDriveUploadResult> {
   const { fileName, size, mimeType, dataUrlOrBase64, batchId, groupNumber, uploaderEmail } = params;
 
@@ -288,11 +290,14 @@ export async function uploadFileToGoogleDrive(params: {
     };
   }
 
-  let subFolder = 'General_Discussions';
-  if (batchId === 'Committee') {
-    subFolder = 'Committee_Discussions';
-  } else if (batchId && groupNumber !== undefined) {
-    subFolder = `Batch_${batchId}_Group_${groupNumber}`;
+  let folderName = params.folderName || 'ECE_Capstone_Forum_Attachments';
+  let subFolder = params.subFolder || 'General_Discussions';
+  if (!params.subFolder) {
+    if (batchId === 'Committee') {
+      subFolder = 'Committee_Discussions';
+    } else if (batchId && groupNumber !== undefined) {
+      subFolder = `Batch_${batchId}_Group_${groupNumber}`;
+    }
   }
 
   try {
@@ -300,7 +305,7 @@ export async function uploadFileToGoogleDrive(params: {
       fileName,
       mimeType: mimeType || 'application/octet-stream',
       base64,
-      folderName: 'ECE_Capstone_Forum_Attachments',
+      folderName,
       subFolder,
       uploader: uploaderEmail || OFFICIAL_DRIVE_ACCOUNT,
     });
