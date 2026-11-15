@@ -39,6 +39,7 @@ export interface SupervisorUserItem {
 export interface StudentGroupItem {
   studentId: string;
   roll: string;
+  universityRoll: string | null;
   name: string;
   email: string | null;
   phone: string | null;
@@ -189,6 +190,7 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
           studentRows.push({
             studentId: st.id,
             roll: st.roll,
+            universityRoll: st.universityRoll || null,
             name: st.name,
             email: st.email,
             phone: st.phone,
@@ -210,6 +212,7 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
           studentRows.push({
             studentId: st.id,
             roll: st.roll,
+            universityRoll: st.universityRoll || null,
             name: st.name,
             email: st.email,
             phone: st.phone,

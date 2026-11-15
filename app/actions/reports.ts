@@ -83,6 +83,7 @@ export interface GroupReportStudentMember {
   id: string;
   name: string;
   roll: string;
+  universityRoll?: string | null;
   // NOTE: Strictly ONLY badges, NOT markup score
   badges: {
     diamonds: number;
@@ -225,6 +226,7 @@ export async function generateSemesterGroupReportAction(
           id: gm.student.id,
           name: gm.student.name,
           roll: gm.student.roll,
+          universityRoll: gm.student.universityRoll || null,
           badges: {
             diamonds,
             gold,

@@ -328,7 +328,10 @@ export default function AdminCapstoneClient() {
     const domainMatch = item.domain.toLowerCase().includes(q);
     const supMatch = item.supervisor.name.toLowerCase().includes(q);
     const studentMatch = item.students.some(
-      (s) => s.name.toLowerCase().includes(q) || s.roll.toLowerCase().includes(q)
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.roll.toLowerCase().includes(q) ||
+        (s.universityRoll && s.universityRoll.toLowerCase().includes(q))
     );
     return titleMatch || codeMatch || domainMatch || supMatch || studentMatch;
   });
@@ -736,7 +739,7 @@ export default function AdminCapstoneClient() {
                           key={s.roll}
                           className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md text-[11px] font-medium"
                         >
-                          {s.name} ({s.roll})
+                          {s.name} ({s.roll}{s.universityRoll ? ` / Univ: ${s.universityRoll}` : ''})
                         </span>
                       ))}
                     </div>
@@ -1395,7 +1398,7 @@ export default function AdminCapstoneClient() {
                   {detailReport.students.map((st) => (
                     <div key={st.id} className="flex justify-between items-center text-xs">
                       <span className="font-medium text-slate-800">
-                        {st.name} <span className="text-slate-400">({st.roll})</span>
+                        {st.name} <span className="text-slate-500">({st.roll}{st.universityRoll ? ` / Univ: ${st.universityRoll}` : ''})</span>
                       </span>
                       <div className="flex items-center gap-1">
                         {st.badges.diamonds > 0 && <span title="Diamond Badges">💎×{st.badges.diamonds}</span>}

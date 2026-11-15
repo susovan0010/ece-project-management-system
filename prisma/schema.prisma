@@ -87,19 +87,21 @@ model User {
 }
 
 model Student {
-  id        String        @id @default(cuid())
-  name      String
-  roll      String        @unique
-  phone     String?
-  email     String?
-  userId    String?       @unique
-  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt DateTime      @default(now())
+  id             String        @id @default(cuid())
+  name           String
+  roll           String        @unique // College Roll Number (primary database identifier/reference)
+  universityRoll String?       // University Roll Number
+  phone          String?
+  email          String?
+  userId         String?       @unique
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
 
-  groups    GroupMember[]
-  marks     MarkEntry[]
+  groups         GroupMember[]
+  marks          MarkEntry[]
 
   @@index([roll])
+  @@index([universityRoll])
   @@index([email])
 }
 

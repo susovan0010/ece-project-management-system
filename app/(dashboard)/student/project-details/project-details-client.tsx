@@ -61,7 +61,7 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
               )}
             </div>
             <p className="text-xs font-mono text-slate-500 mt-1">
-              Roll: <strong>{student.roll}</strong> • {student.email || 'No email registered'}
+              College Roll: <strong>{student.roll}</strong> • Univ Roll: <strong>{student.universityRoll || '-'}</strong> • {student.email || 'No email registered'}
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
             </div>
 
             <p className="text-xs text-white/80 font-mono mt-0.5">
-              Roll: <strong className="text-white">{student.roll}</strong> • {student.email}
+              College Roll: <strong className="text-white">{student.roll}</strong> • Univ Roll: <strong className="text-white">{student.universityRoll || '-'}</strong> • {student.email}
               {student.phone ? ` • ${student.phone}` : ''}
             </p>
           </div>
@@ -454,7 +454,12 @@ export default function StudentProjectDetailsClient({ initialData, error: initia
                         </span>
                       )}
                     </div>
-                    <span className="font-mono text-[11px] font-bold text-slate-700">{member.roll}</span>
+                    <div className="text-right">
+                      <div className="font-mono text-[11px] font-bold text-slate-700">{member.roll}</div>
+                      {member.universityRoll && (
+                        <div className="font-mono text-[10px] text-slate-500">Univ: {member.universityRoll}</div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-slate-500 font-mono">

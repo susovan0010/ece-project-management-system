@@ -177,11 +177,12 @@ export default function AdminAllocationPage() {
 
       // Standardize headers
       const normalizedRows: RawAllocationRow[] = rawData.map((row) => {
-        // Find fields case-insensitively
-        const findField = (keys: string[]) => {
+        // Find fields case-insensitively with optional exclusions
+        const findField = (keys: string[], exclude: string[] = []) => {
           for (const k of Object.keys(row)) {
             const clean = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (keys.some((target) => clean.includes(target))) {
+            if (exclude.some((ex) => clean.includes(ex))) continue;
+            if (keys.some((target) => clean === target || clean.includes(target))) {
               return String(row[k] || '').trim();
             }
           }
@@ -192,7 +193,14 @@ export default function AdminAllocationPage() {
         const batchVal = findField(['batch', 'session', 'batchid']) || '2023-2027';
         const topicVal = findField(['topic', 'topiccode', 'projectcode', 'code']);
         const supVal = findField(['supervisor', 'faculty', 'guide', 'supervisoremail']);
-        const rollVal = findField(['roll', 'rollno', 'studentroll', 'univroll']);
+        
+        // Distinct University Roll and College Roll
+        const univRollVal = findField(['universityroll', 'univroll', 'universityrollno', 'univrollno', 'uroll']);
+        const collegeRollVal =
+          findField(['collegeroll', 'collegerollno'], ['university', 'univ']) ||
+          findField(['studentroll'], ['university', 'univ']) ||
+          findField(['roll', 'rollno'], ['university', 'univ']);
+
         const nameVal = findField(['name', 'studentname', 'candidate']);
         const emailVal = findField(['email', 'studentemail', 'mail']);
         const phoneVal = findField(['phone', 'mobile', 'contact', 'whatsapp']);
@@ -202,7 +210,9 @@ export default function AdminAllocationPage() {
           batchId: batchVal,
           topicCode: topicVal,
           supervisorEmail: supVal,
-          studentRoll: rollVal,
+          studentRoll: collegeRollVal,
+          collegeRoll: collegeRollVal,
+          universityRoll: univRollVal || undefined,
           studentName: nameVal,
           studentEmail: emailVal || undefined,
           studentPhone: phoneVal || undefined,
@@ -278,10 +288,10 @@ export default function AdminAllocationPage() {
 
   // Sample CSV generator for admin convenience
   function handleDownloadTemplate() {
-    const sample = `Group Number,Batch ID,Topic Code,Supervisor Email,Student Roll,Student Name,Student Email,Student Phone
-1,2023-2027,SIH26001,soumyo.chatterjee@heritageit.edu,12623001001,Arijit Sen,arijit.sen@gmail.com,+919876543210
-1,2023-2027,SIH26001,soumyo.chatterjee@heritageit.edu,12623001002,Priyanka Ghosh,priyanka.g@gmail.com,+919876543211
-2,2023-2027,UGR-002,arindam.ray@heritageit.edu,12623001003,Debayan Das,debayan.das@gmail.com,+919876543212`;
+    const sample = `Group Number,Batch ID,Topic Code,Supervisor Email,College Roll,University Roll,Student Name,Student Email,Student Phone
+1,2023-2027,SIH26001,soumyo.chatterjee@heritageit.edu,12623001001,12623001001U,Arijit Sen,arijit.sen@gmail.com,+919876543210
+1,2023-2027,SIH26001,soumyo.chatterjee@heritageit.edu,12623001002,12623001002U,Priyanka Ghosh,priyanka.g@gmail.com,+919876543211
+2,2023-2027,UGR-002,arindam.ray@heritageit.edu,12623001003,12623001003U,Debayan Das,debayan.das@gmail.com,+919876543212`;
 
     const blob = new Blob([sample], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -442,7 +452,8 @@ export default function AdminAllocationPage() {
                   <th className="px-4 py-2">Batch</th>
                   <th className="px-4 py-2">Topic Code</th>
                   <th className="px-4 py-2">Supervisor Email</th>
-                  <th className="px-4 py-2">Roll</th>
+                  <th className="px-4 py-2">College Roll</th>
+                  <th className="px-4 py-2">Univ Roll</th>
                   <th className="px-4 py-2">Student Name</th>
                   <th className="px-4 py-2">Contact</th>
                 </tr>
@@ -454,7 +465,8 @@ export default function AdminAllocationPage() {
                     <td className="px-4 py-2">{r.batchId}</td>
                     <td className="px-4 py-2 text-blue-700 font-bold">{r.topicCode}</td>
                     <td className="px-4 py-2 font-sans">{r.supervisorEmail}</td>
-                    <td className="px-4 py-2">{r.studentRoll}</td>
+                    <td className="px-4 py-2 font-bold text-slate-900">{r.collegeRoll || r.studentRoll}</td>
+                    <td className="px-4 py-2 text-blue-700">{r.universityRoll || '-'}</td>
                     <td className="px-4 py-2 font-sans font-semibold text-slate-800">{r.studentName}</td>
                     <td className="px-4 py-2 font-sans text-slate-400">{r.studentPhone || r.studentEmail || '-'}</td>
                   </tr>
@@ -526,7 +538,8 @@ export default function AdminAllocationPage() {
                       <th className="px-4 py-2">Row</th>
                       <th className="px-4 py-2">Topic Code</th>
                       <th className="px-4 py-2">Supervisor</th>
-                      <th className="px-4 py-2">Student Roll</th>
+                      <th className="px-4 py-2">College Roll</th>
+                      <th className="px-4 py-2">Univ Roll</th>
                       <th className="px-4 py-2">Error Reason</th>
                     </tr>
                   </thead>
@@ -536,7 +549,8 @@ export default function AdminAllocationPage() {
                         <td className="px-4 py-2 font-mono font-bold text-red-600">Row {inv.rowNumber}</td>
                         <td className="px-4 py-2 font-mono">{inv.data.topicCode}</td>
                         <td className="px-4 py-2">{inv.data.supervisorEmail}</td>
-                        <td className="px-4 py-2 font-mono">{inv.data.studentRoll}</td>
+                        <td className="px-4 py-2 font-mono">{inv.data.collegeRoll || inv.data.studentRoll}</td>
+                        <td className="px-4 py-2 font-mono text-slate-500">{inv.data.universityRoll || '-'}</td>
                         <td className="px-4 py-2 text-red-700 font-semibold">{inv.error}</td>
                       </tr>
                     ))}
@@ -811,7 +825,8 @@ export default function AdminAllocationPage() {
               <tr>
                 <th className="px-4 py-3">Group</th>
                 <th className="px-4 py-3">Batch</th>
-                <th className="px-4 py-3">Roll Number</th>
+                <th className="px-4 py-3">College Roll</th>
+                <th className="px-4 py-3">Univ Roll</th>
                 <th className="px-4 py-3">Student Name</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Phone</th>
@@ -824,7 +839,7 @@ export default function AdminAllocationPage() {
             <tbody className="divide-y divide-slate-200">
               {rosterLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-10 text-center text-slate-400">
+                  <td colSpan={11} className="px-6 py-10 text-center text-slate-400">
                     Loading student-group roster...
                   </td>
                 </tr>
@@ -836,6 +851,7 @@ export default function AdminAllocationPage() {
                     return (
                       s.name.toLowerCase().includes(q) ||
                       s.roll.toLowerCase().includes(q) ||
+                      (s.universityRoll && s.universityRoll.toLowerCase().includes(q)) ||
                       (s.email && s.email.toLowerCase().includes(q)) ||
                       (s.phone && s.phone.toLowerCase().includes(q)) ||
                       (s.batchId && s.batchId.toLowerCase().includes(q)) ||
@@ -849,7 +865,7 @@ export default function AdminAllocationPage() {
                   if (filtered.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={10} className="px-6 py-10 text-center text-slate-400">
+                        <td colSpan={11} className="px-6 py-10 text-center text-slate-400">
                           No allocated students found matching the criteria.
                         </td>
                       </tr>
@@ -879,6 +895,9 @@ export default function AdminAllocationPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">{st.roll}</td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-blue-700 whitespace-nowrap">
+                          {st.universityRoll || <span className="text-slate-400 italic font-sans">-</span>}
+                        </td>
                         <td className="px-4 py-3.5 font-semibold text-slate-900 whitespace-nowrap">{st.name}</td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           {st.email ? (

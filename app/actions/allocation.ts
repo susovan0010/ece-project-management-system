@@ -10,7 +10,9 @@ export interface RawAllocationRow {
   batchId: string;
   topicCode: string;
   supervisorEmail: string;
-  studentRoll: string;
+  studentRoll: string; // College Roll (kept as primary roll mapping)
+  collegeRoll?: string; // Explicit College Roll
+  universityRoll?: string; // University Roll Number
   studentName: string;
   studentEmail?: string;
   studentPhone?: string;
@@ -88,8 +90,9 @@ export async function validateAllocationDataAction(rows: RawAllocationRow[]): Pr
       if (!row.batchId?.trim()) {
         errors.push('Batch ID is missing.');
       }
-      if (!row.studentRoll?.trim() || !row.studentName?.trim()) {
-        errors.push('Student Roll or Name is missing.');
+      const cRoll = (row.collegeRoll || row.studentRoll)?.trim();
+      if (!cRoll || !row.studentName?.trim()) {
+        errors.push('College Roll or Student Name is missing.');
       }
       if (!validTopicSet.has(tCode)) {
         errors.push(`Topic Code "${tCode}" does not exist in Topic Bank.`);
@@ -153,7 +156,8 @@ export async function commitAllocationChunkAction(chunk: RawAllocationRow[]) {
           const batchId = row.batchId.trim();
           const topicCode = row.topicCode.trim().toUpperCase();
           const supervisorEmail = row.supervisorEmail.trim().toLowerCase();
-          const studentRoll = row.studentRoll.trim();
+          const studentRoll = (row.collegeRoll || row.studentRoll).trim();
+          const universityRoll = row.universityRoll?.trim() || null;
           const studentName = row.studentName.trim();
 
           // 1. Ensure Batch exists
@@ -171,16 +175,18 @@ export async function commitAllocationChunkAction(chunk: RawAllocationRow[]) {
             continue; // Skip invalid records during chunking
           }
 
-          // 3. Upsert Student
+          // 3. Upsert Student (College Roll is the primary unique identifier)
           const student = await tx.student.upsert({
             where: { roll: studentRoll },
             update: {
               name: studentName,
+              universityRoll,
               email: row.studentEmail?.trim() || null,
               phone: row.studentPhone?.trim() || null,
             },
             create: {
               roll: studentRoll,
+              universityRoll,
               name: studentName,
               email: row.studentEmail?.trim() || null,
               phone: row.studentPhone?.trim() || null,

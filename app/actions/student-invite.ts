@@ -242,9 +242,14 @@ export async function sendBulkStudentInvitationsAction(
             </div>
             <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
               <tr>
-                <td style="padding: 4px 0; color: #64748b; width: 140px;">Roll Number:</td>
+                <td style="padding: 4px 0; color: #64748b; width: 140px;">College Roll:</td>
                 <td style="padding: 4px 0; font-weight: 700; font-family: monospace; color: #0f172a;">${student.roll}</td>
               </tr>
+              ${student.universityRoll ? `
+              <tr>
+                <td style="padding: 4px 0; color: #64748b;">University Roll:</td>
+                <td style="padding: 4px 0; font-weight: 700; font-family: monospace; color: #0f172a;">${student.universityRoll}</td>
+              </tr>` : ''}
               <tr>
                 <td style="padding: 4px 0; color: #64748b;">Allotted Group:</td>
                 <td style="padding: 4px 0; font-weight: 700; color: #1985A1;">Group #${groupNum} (Batch ${batchCode})</td>
@@ -463,9 +468,14 @@ export async function sendSingleStudentInviteAction(
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin-bottom: 22px;">
           <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
             <tr>
-              <td style="padding: 4px 0; color: #64748b; width: 140px;">Roll Number:</td>
+              <td style="padding: 4px 0; color: #64748b; width: 140px;">College Roll:</td>
               <td style="padding: 4px 0; font-weight: 700; font-family: monospace; color: #0f172a;">${student.roll}</td>
             </tr>
+            ${student.universityRoll ? `
+            <tr>
+              <td style="padding: 4px 0; color: #64748b;">University Roll:</td>
+              <td style="padding: 4px 0; font-weight: 700; font-family: monospace; color: #0f172a;">${student.universityRoll}</td>
+            </tr>` : ''}
             <tr>
               <td style="padding: 4px 0; color: #64748b;">Project Topic:</td>
               <td style="padding: 4px 0; font-weight: 600; color: #0f172a;">${primaryGroup.topic.title} (${primaryGroup.topic.code})</td>

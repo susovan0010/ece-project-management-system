@@ -9,6 +9,7 @@ export interface StudentProjectDetails {
     id: string;
     name: string;
     roll: string;
+    universityRoll: string | null;
     email: string | null;
     phone: string | null;
     badges: StudentBadgeSummary;
@@ -51,6 +52,7 @@ export interface StudentProjectDetails {
   members: Array<{
     id: string;
     roll: string;
+    universityRoll: string | null;
     name: string;
     email: string | null;
     phone: string | null;
@@ -144,6 +146,7 @@ export async function getStudentProjectDetailsAction(): Promise<{
             id: student.id,
             name: student.name,
             roll: student.roll,
+            universityRoll: student.universityRoll || null,
             email: student.email,
             phone: student.phone,
             badges: calculateStudentBadges(0),
@@ -173,6 +176,7 @@ export async function getStudentProjectDetailsAction(): Promise<{
         return {
           id: gm.student.id,
           roll: gm.student.roll,
+          universityRoll: gm.student.universityRoll || null,
           name: gm.student.name,
           email: gm.student.email,
           phone: gm.student.phone,
@@ -192,6 +196,7 @@ export async function getStudentProjectDetailsAction(): Promise<{
           id: student.id,
           name: student.name,
           roll: student.roll,
+          universityRoll: student.universityRoll || null,
           email: student.email,
           phone: student.phone,
           badges: studentBadges,

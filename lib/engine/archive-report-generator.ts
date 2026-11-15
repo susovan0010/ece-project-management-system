@@ -22,6 +22,7 @@ export interface ArchivedGroupProfile {
   students: Array<{
     name: string;
     roll: string;
+    universityRoll?: string | null;
     badges: {
       diamonds: number;
       gold: number;
@@ -128,7 +129,7 @@ export function generateBatchStaticArchiveHtml(data: BatchArchiveReportPayload):
           return `
           <div class="student-item">
             <strong>${escapeHtml(s.name)}</strong>
-            <span class="roll">(${escapeHtml(s.roll)})</span>
+            <span class="roll">(${escapeHtml(s.roll)}${s.universityRoll ? ` / Univ: ${escapeHtml(s.universityRoll)}` : ''})</span>
             ${badgeText}
           </div>
         `;

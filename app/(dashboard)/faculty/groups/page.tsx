@@ -8,6 +8,7 @@ interface StudentMember {
   id: string;
   name: string;
   roll: string;
+  universityRoll?: string | null;
   email: string | null;
   phone: string | null;
 }
@@ -173,7 +174,8 @@ export default function FacultyGroupsPage() {
                     <table className="w-full text-left text-xs text-slate-600">
                       <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-500 border-b border-slate-200">
                         <tr>
-                          <th className="px-3 py-1.5">Roll No</th>
+                          <th className="px-3 py-1.5">College Roll</th>
+                          <th className="px-3 py-1.5">Univ Roll</th>
                           <th className="px-3 py-1.5">Student Name</th>
                           <th className="px-3 py-1.5">Contact</th>
                         </tr>
@@ -182,6 +184,7 @@ export default function FacultyGroupsPage() {
                         {g.students.map((s) => (
                           <tr key={s.id} className="hover:bg-slate-50/50">
                             <td className="px-3 py-1.5 font-mono font-semibold text-blue-700">{s.roll}</td>
+                            <td className="px-3 py-1.5 font-mono text-slate-700">{s.universityRoll || '-'}</td>
                             <td className="px-3 py-1.5 font-semibold text-slate-800">{s.name}</td>
                             <td className="px-3 py-1.5 text-slate-400">
                               {s.phone || s.email || '-'}

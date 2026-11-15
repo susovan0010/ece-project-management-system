@@ -218,6 +218,7 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string, seme
           studentId: m.studentId,
           name: m.student?.name || '',
           roll: m.student?.roll || '',
+          universityRoll: m.student?.universityRoll || null,
           email: m.student?.email || '',
           attainments: studentAttainments,
         };

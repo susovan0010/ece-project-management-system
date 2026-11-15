@@ -10,6 +10,7 @@ interface StudentItem {
   id: string;
   name: string;
   roll: string;
+  universityRoll?: string | null;
 }
 
 interface CriterionItem {
@@ -552,7 +553,12 @@ export default function MarksClient() {
                             className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200 text-xs"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-blue-700">{s.roll}</span>
+                              <div className="flex flex-col">
+                                <span className="font-mono font-bold text-blue-700">{s.roll}</span>
+                                {s.universityRoll && (
+                                  <span className="text-[10px] font-mono text-slate-400">Univ: {s.universityRoll}</span>
+                                )}
+                              </div>
                               <span className="font-semibold text-slate-900">{s.name}</span>
                             </div>
 
@@ -597,7 +603,8 @@ export default function MarksClient() {
                   <table className="w-full text-left text-xs text-slate-700">
                     <thead className="bg-slate-50 text-[11px] uppercase font-semibold text-slate-500 border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-2">Roll</th>
+                        <th className="px-4 py-2">College Roll</th>
+                        <th className="px-4 py-2">Univ Roll</th>
                         <th className="px-4 py-2">Student Name</th>
                         <th className="px-4 py-2 text-right">Computed Total</th>
                         <th className="px-4 py-2 text-right">Percentage</th>
@@ -611,6 +618,7 @@ export default function MarksClient() {
                         return (
                           <tr key={s.id} className="hover:bg-slate-50 font-semibold">
                             <td className="px-4 py-2 font-mono text-blue-700">{s.roll}</td>
+                            <td className="px-4 py-2 font-mono text-xs text-slate-600">{s.universityRoll || '-'}</td>
                             <td className="px-4 py-2 text-slate-900">{s.name}</td>
                             <td className="px-4 py-2 text-right font-mono text-sm font-bold text-slate-900">
                               {total} / {rubric?.maxMarks}

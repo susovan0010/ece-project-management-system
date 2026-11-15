@@ -10,6 +10,10 @@ vi.mock('@/auth', () => ({
   auth: vi.fn(),
 }));
 
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import {
   validateAllocationDataAction,
   commitAllocationChunkAction,
@@ -86,6 +90,84 @@ describe('Allocation Engine: Pre-flight Foreign Key Validation', () => {
       expect(report.missingTopics).toContain('UGR-999');
       expect(report.missingSupervisors).toContain('unknown@heritageit.edu');
     }
+  });
+
+  it('accepts rows with both college roll and university roll and commits them with college roll mapping', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN', email: 'admin@heritageit.edu' },
+    } as any);
+
+    vi.spyOn(prisma.topic, 'findMany').mockResolvedValue([
+      { code: 'SIH26001' } as any,
+    ]);
+
+    vi.spyOn(prisma.user, 'findMany').mockResolvedValue([
+      { email: 'soumyo@heritageit.edu' } as any,
+    ]);
+
+    const rows: RawAllocationRow[] = [
+      {
+        groupNumber: 1,
+        batchId: '2023-2027',
+        topicCode: 'SIH26001',
+        supervisorEmail: 'soumyo@heritageit.edu',
+        studentRoll: '23ECE001',
+        collegeRoll: '23ECE001',
+        universityRoll: '12623001001',
+        studentName: 'Arijit Sen',
+        studentEmail: 'arijit@heritageit.edu',
+      },
+    ];
+
+    const report = await validateAllocationDataAction(rows);
+    expect('error' in report).toBe(false);
+    if (!('error' in report)) {
+      expect(report.validRowsCount).toBe(1);
+    }
+
+    // Mock transaction for commit
+    const mockStudentUpsert = vi.fn().mockResolvedValue({
+      id: 'student-1',
+      roll: '23ECE001',
+      universityRoll: '12623001001',
+      name: 'Arijit Sen',
+    });
+    const mockGroupUpsert = vi.fn().mockResolvedValue({ id: 'group-1' });
+    const mockMemberUpsert = vi.fn().mockResolvedValue({});
+    const mockBatchUpsert = vi.fn().mockResolvedValue({});
+    const mockTopicUpdate = vi.fn().mockResolvedValue({});
+    const mockAuditCreate = vi.fn().mockResolvedValue({});
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) => {
+      const tx = {
+        batch: { upsert: mockBatchUpsert },
+        topic: {
+          findUnique: vi.fn().mockResolvedValue({ id: 'top-1', code: 'SIH26001' }),
+          update: mockTopicUpdate,
+        },
+        user: {
+          findUnique: vi.fn().mockResolvedValue({ id: 'user-1', email: 'soumyo@heritageit.edu' }),
+        },
+        student: { upsert: mockStudentUpsert },
+        group: { upsert: mockGroupUpsert },
+        groupMember: { upsert: mockMemberUpsert },
+        auditLog: { create: mockAuditCreate },
+      };
+      return callback(tx);
+    });
+
+    const commitRes = await commitAllocationChunkAction(rows);
+    expect(commitRes).toEqual({ success: true, count: 1 });
+    expect(mockStudentUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { roll: '23ECE001' },
+        create: expect.objectContaining({
+          roll: '23ECE001',
+          universityRoll: '12623001001',
+          name: 'Arijit Sen',
+        }),
+      })
+    );
   });
 });
 

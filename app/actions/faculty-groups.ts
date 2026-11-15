@@ -46,6 +46,7 @@ export async function getMyFacultyGroupsAction(batchId?: string) {
                   id: true,
                   name: true,
                   roll: true,
+                  universityRoll: true,
                   email: true,
                   phone: true,
                 },

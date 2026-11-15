@@ -428,6 +428,7 @@ export interface CapstoneCatalogueItem {
   students: Array<{
     name: string;
     roll: string;
+    universityRoll?: string | null;
   }>;
   proposalAttributes: Array<{
     code: string;
@@ -481,6 +482,7 @@ export interface CapstoneDetailReport {
     id: string;
     name: string;
     roll: string;
+    universityRoll?: string | null;
     badges: {
       diamonds: number;
       gold: number;
@@ -1198,7 +1200,7 @@ export async function getCapstoneCatalogueAction(): Promise<{
         supervisor: { select: { name: true, email: true } },
         members: {
           include: {
-            student: { select: { name: true, roll: true } },
+            student: { select: { name: true, roll: true, universityRoll: true } },
           },
         },
       },
@@ -1231,6 +1233,7 @@ export async function getCapstoneCatalogueAction(): Promise<{
         students: g.members.map((m) => ({
           name: m.student.name,
           roll: m.student.roll,
+          universityRoll: m.student.universityRoll || null,
         })),
         proposalAttributes: topic.attributes.map((a) => ({
           code: a.attribute.code,
@@ -1279,7 +1282,7 @@ export async function getCapstoneProjectDetailReportAction(topicId: string): Pro
             supervisor: { select: { name: true, email: true } },
             members: {
               include: {
-                student: { select: { id: true, name: true, roll: true, userId: true } },
+                student: { select: { id: true, name: true, roll: true, universityRoll: true, userId: true } },
               },
             },
             markEntries: {
@@ -1335,6 +1338,7 @@ export async function getCapstoneProjectDetailReportAction(topicId: string): Pro
           id: gm.student.id,
           name: gm.student.name,
           roll: gm.student.roll,
+          universityRoll: gm.student.universityRoll || null,
           badges: {
             diamonds,
             gold,
@@ -1626,6 +1630,7 @@ export interface ArchivedProjectListItem {
   students: Array<{
     name: string;
     roll: string;
+    universityRoll?: string | null;
     badges?: {
       diamonds: number;
       gold: number;
@@ -1740,7 +1745,7 @@ export async function getArchivedProjectsAction(): Promise<{
             },
             members: {
               include: {
-                student: { select: { name: true, roll: true } },
+                student: { select: { name: true, roll: true, universityRoll: true } },
               },
             },
           },
@@ -1768,6 +1773,7 @@ export async function getArchivedProjectsAction(): Promise<{
             students: g.members.map((m) => ({
               name: m.student.name,
               roll: m.student.roll,
+              universityRoll: m.student.universityRoll || null,
             })),
             isCapstone: !!isCapstone,
             decisionYear: decision?.decisionYear || graduatingYear,

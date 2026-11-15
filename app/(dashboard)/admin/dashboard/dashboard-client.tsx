@@ -93,6 +93,7 @@ export default function AdminDashboardClient() {
     return (
       s.name.toLowerCase().includes(q) ||
       s.roll.toLowerCase().includes(q) ||
+      (s.universityRoll && s.universityRoll.toLowerCase().includes(q)) ||
       (s.topicCode && s.topicCode.toLowerCase().includes(q)) ||
       (s.topicTitle && s.topicTitle.toLowerCase().includes(q)) ||
       (s.supervisorName && s.supervisorName.toLowerCase().includes(q)) ||
@@ -307,7 +308,8 @@ export default function AdminDashboardClient() {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
                 <tr>
                   <th className="px-5 py-3">Group & Batch</th>
-                  <th className="px-5 py-3">Student Roll No</th>
+                  <th className="px-5 py-3">College Roll</th>
+                  <th className="px-5 py-3">Univ Roll</th>
                   <th className="px-5 py-3">Student Name</th>
                   <th className="px-5 py-3">Contact</th>
                   <th className="px-5 py-3">Assigned Project Topic</th>
@@ -318,7 +320,7 @@ export default function AdminDashboardClient() {
               <tbody className="divide-y divide-slate-200">
                 {filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={8} className="px-6 py-10 text-center text-slate-400">
                       No students found. Upload a student allocation sheet in{' '}
                       <Link href="/admin/allocation" className="text-blue-600 underline font-semibold">
                         Student Allocation
@@ -343,7 +345,10 @@ export default function AdminDashboardClient() {
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 font-mono font-bold text-slate-900">{st.roll}</td>
+                      <td className="px-5 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap">{st.roll}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-blue-700 whitespace-nowrap">
+                        {st.universityRoll || <span className="text-slate-400 italic font-sans">-</span>}
+                      </td>
                       <td className="px-5 py-3.5 font-semibold text-slate-900">{st.name}</td>
                       <td className="px-5 py-3.5 text-slate-500">
                         <div>{st.email || '-'}</div>

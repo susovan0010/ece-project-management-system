@@ -330,7 +330,10 @@ export function ReportsClient({ initialOptions }: ReportsClientProps) {
                   >
                     <div>
                       <div className="font-bold text-xs text-slate-900">{st.name}</div>
-                      <div className="text-[11px] text-slate-500 font-mono">Roll: {st.roll}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        College Roll: <span className="font-semibold text-slate-800">{st.roll}</span>
+                        {st.universityRoll ? ` • Univ Roll: ${st.universityRoll}` : ''}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1.5">
