@@ -214,6 +214,10 @@ describe('Faculty Proposal: AI Abstract Drafting with Extended Context', () => {
 describe('Faculty Proposal: Project Editing, SIH Title Lock & Mandatory Abstract', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue({
+      key: 'INVITE_PROJECTS_FROM_SUPERVISORS',
+      value: { enabled: true },
+    } as any);
   });
 
   it('rejects topic proposal or edit if project abstract is blank', async () => {

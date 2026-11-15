@@ -64,6 +64,11 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
       user: { id: 'fac-1', role: 'FACULTY' },
     });
 
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      key: 'INVITE_PROJECTS_FROM_SUPERVISORS',
+      value: { enabled: true },
+    });
+
     (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'topic-1',
       code: 'UGR-015',
@@ -116,6 +121,11 @@ describe('Phase 16: Topic Lifecycle, Active Confirmation & Comprehensive Archive
     vi.mocked(auth).mockResolvedValue({
       user: { id: 'fac-1', role: 'FACULTY', email: 'fac1@heritageit.edu' },
     } as any);
+
+    (prisma.setting.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      key: 'INVITE_PROJECTS_FROM_SUPERVISORS',
+      value: { enabled: true },
+    });
 
     (prisma.topic.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'topic-empty-desc',

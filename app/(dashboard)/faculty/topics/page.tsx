@@ -13,6 +13,7 @@ import {
   finalDeleteApprovedTopicAction,
   TopicDeleteRequestRecord,
 } from '@/app/actions/project-lifecycle';
+import { getProjectInvitationStatusAction } from '@/app/actions/project-invitation';
 import { deriveMappedPoCodes } from '@/lib/engine';
 import { evaluateRules } from '@/lib/rules';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
@@ -57,6 +58,14 @@ export default function FacultyTopicsSearchPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deleteRequests, setDeleteRequests] = useState<TopicDeleteRequestRecord[]>([]);
+  // Admin-controlled "Invite Project from Supervisors" window
+  const [invitationOpen, setInvitationOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    getProjectInvitationStatusAction().then((res) => {
+      if (res.success && res.state) setInvitationOpen(res.state.enabled);
+    });
+  }, []);
 
   // Filters
   const [query, setQuery] = useState('');
@@ -227,6 +236,21 @@ export default function FacultyTopicsSearchPage() {
           Propose Original Topic
         </Link>
       </div>
+
+      {/* Supervisor Project Invitation Status */}
+      {!invitationOpen && (
+        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs flex items-start gap-3">
+          <span className="text-base leading-none">🔒</span>
+          <div>
+            <div className="font-bold text-sm">Project confirmation is currently closed</div>
+            <p className="mt-0.5">
+              The Project Committee Admin has not enabled <strong>&quot;Invite Project from Supervisors&quot;</strong>.
+              You can still add, customize and edit projects in the Topic Bank, but{' '}
+              <strong>&quot;Confirm as Active&quot;</strong> stays disabled until the invitation opens.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Supervisor AI Picker Choice Widget */}
       <SupervisorAiPicker />
@@ -573,9 +597,14 @@ export default function FacultyTopicsSearchPage() {
                           )}
                           <button
                             type="button"
-                            disabled={confirmingId === t.id}
+                            disabled={confirmingId === t.id || (!isActive && !invitationOpen)}
                             onClick={() => handleConfirmBankTopic(t.id)}
-                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition disabled:opacity-50"
+                            title={
+                              !isActive && !invitationOpen
+                                ? 'Disabled until Admin opens "Invite Project from Supervisors"'
+                                : undefined
+                            }
+                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {confirmingId === t.id
                               ? 'Confirming...'
@@ -781,9 +810,17 @@ export default function FacultyTopicsSearchPage() {
                   {detailTopic.status !== 'ARCHIVED' && (
                     <button
                       type="button"
-                      disabled={confirmingId === detailTopic.id}
+                      disabled={
+                        confirmingId === detailTopic.id ||
+                        (!(detailTopic.status === 'CONFIRMED' || detailTopic.status === 'ALLOTTED') && !invitationOpen)
+                      }
                       onClick={() => handleConfirmBankTopic(detailTopic.id)}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                      title={
+                        !(detailTopic.status === 'CONFIRMED' || detailTopic.status === 'ALLOTTED') && !invitationOpen
+                          ? 'Disabled until Admin opens "Invite Project from Supervisors"'
+                          : undefined
+                      }
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {confirmingId === detailTopic.id
                         ? 'Confirming...'

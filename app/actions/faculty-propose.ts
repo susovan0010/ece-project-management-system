@@ -16,6 +16,7 @@ import { qualifies, Levels } from '@/lib/engine';
 import { Origin, TopicSource, TopicStatus } from '@prisma/client';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { isProjectInvitationOpen } from '@/lib/project-invitation';
 
 // Helper to get active AI providers formatted for lib/ai
 async function getActiveAiProviders(): Promise<ProviderConfig[]> {
@@ -384,6 +385,19 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
       where: { code },
       include: { attributes: true, sdgs: true },
     });
+
+    // Offering (confirming) a project requires Admin's "Invite Project from Supervisors" window.
+    // Saving as DRAFT into the Topic Bank is always allowed; edits to already-active topics are allowed.
+    if (status === 'CONFIRMED') {
+      const alreadyActive =
+        existing?.status === TopicStatus.CONFIRMED || existing?.status === TopicStatus.ALLOTTED;
+      if (!alreadyActive && !(await isProjectInvitationOpen())) {
+        return {
+          error:
+            "Cannot confirm topic: 'Invite Project from Supervisors' is currently closed by the Admin. You can save your project to the Topic Bank as a Draft.",
+        };
+      }
+    }
 
     if (existing) {
       // 1. Authorization: Cannot edit if already claimed by another supervisor

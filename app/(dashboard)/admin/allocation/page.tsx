@@ -22,8 +22,44 @@ import {
   StudentInviteStats,
   StudentAccountStatus,
 } from '@/app/actions/student-invite';
+import {
+  getProjectInvitationStatusAction,
+  toggleProjectInvitationAction,
+} from '@/app/actions/project-invitation';
+import type { ProjectInvitationState } from '@/lib/project-invitation';
 
 export default function AdminAllocationPage() {
+  const [projectInvitation, setProjectInvitation] = useState<ProjectInvitationState | null>(null);
+  const [togglingInvitation, setTogglingInvitation] = useState(false);
+
+  useEffect(() => {
+    getProjectInvitationStatusAction().then((res) => {
+      if (res.success && res.state) setProjectInvitation(res.state);
+    });
+  }, []);
+
+  async function handleToggleProjectInvitation() {
+    const next = !(projectInvitation?.enabled ?? false);
+    const msg = next
+      ? 'Open "Invite Project from Supervisors"?\n\nFaculty supervisors will be able to use "Confirm as Active" to offer their projects to students.'
+      : 'Close "Invite Project from Supervisors"?\n\nFaculty will no longer be able to "Confirm as Active". They can still add and edit projects in the Topic Bank as drafts.';
+    if (!window.confirm(msg)) return;
+    setTogglingInvitation(true);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await toggleProjectInvitationAction(next);
+    setTogglingInvitation(false);
+    if (!res.success || !res.state) {
+      setError(res.error || 'Failed to update supervisor project invitation.');
+      return;
+    }
+    setProjectInvitation(res.state);
+    setSuccessMsg(
+      next
+        ? 'Project invitation opened. Supervisors can now confirm their projects as Active.'
+        : 'Project invitation closed. "Confirm as Active" is now disabled for supervisors.'
+    );
+  }
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [fileName, setFileName] = useState('');
   const [parsedRows, setParsedRows] = useState<RawAllocationRow[]>([]);
@@ -332,6 +368,62 @@ export default function AdminAllocationPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
           Download CSV Template
+        </button>
+      </div>
+
+      {/* Invite Project from Supervisors (controls Faculty "Confirm as Active") */}
+      <div
+        className={`p-4 rounded-xl border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+          projectInvitation?.enabled ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+        }`}
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                projectInvitation?.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+              }`}
+            />
+            <h3 className="font-bold text-sm text-slate-900">Invite Project from Supervisors</h3>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                projectInvitation?.enabled
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-slate-200 text-slate-600 border border-slate-300'
+              }`}
+            >
+              {projectInvitation === null ? 'Loading…' : projectInvitation.enabled ? 'Open' : 'Closed'}
+            </span>
+          </div>
+          <p className="text-xs text-slate-600 max-w-2xl">
+            {projectInvitation?.enabled
+              ? 'Supervisors can now offer projects to students using "Confirm as Active".'
+              : 'Supervisors can add and edit projects in the Topic Bank, but "Confirm as Active" stays disabled until you open the invitation.'}
+          </p>
+          {projectInvitation?.updatedAt && (
+            <p className="text-[10px] text-slate-400">
+              Last changed {new Date(projectInvitation.updatedAt).toLocaleString()}
+              {projectInvitation.updatedByName ? ` by ${projectInvitation.updatedByName}` : ''}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={projectInvitation?.enabled ?? false}
+          disabled={togglingInvitation || projectInvitation === null}
+          onClick={handleToggleProjectInvitation}
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50 self-start md:self-auto ${
+            projectInvitation?.enabled
+              ? 'bg-white text-red-700 border border-red-300 hover:bg-red-50'
+              : 'bg-emerald-600 text-white hover:bg-emerald-700'
+          }`}
+        >
+          {togglingInvitation
+            ? 'Updating…'
+            : projectInvitation?.enabled
+            ? 'Close Invitation'
+            : 'Open Invitation'}
         </button>
       </div>
 

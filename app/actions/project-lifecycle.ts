@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { TopicStatus } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
+import { isProjectInvitationOpen, PROJECT_INVITATION_CLOSED_MESSAGE } from '@/lib/project-invitation';
 
 export interface ArchivedStudentMarksSummary {
   studentId: string;
@@ -72,6 +73,13 @@ export async function claimAndConfirmBankTopicAction(topicId: string) {
 
     if (!existing) {
       return { error: 'Topic not found.' };
+    }
+
+    // Offering a project is only allowed while Admin has opened "Invite Project from Supervisors"
+    const alreadyActive =
+      existing.status === TopicStatus.CONFIRMED || existing.status === TopicStatus.ALLOTTED;
+    if (!alreadyActive && !(await isProjectInvitationOpen())) {
+      return { error: PROJECT_INVITATION_CLOSED_MESSAGE };
     }
 
     if (existing.proposerId && existing.proposerId !== user.id) {

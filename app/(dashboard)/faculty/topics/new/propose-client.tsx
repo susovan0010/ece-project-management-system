@@ -13,6 +13,7 @@ import {
   checkCapstoneQualificationAction,
 } from '@/app/actions/faculty-propose';
 import { getFacultyTopicDetailAction } from '@/app/actions/faculty-topics';
+import { getProjectInvitationStatusAction } from '@/app/actions/project-invitation';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
 import { ATTRIBUTE_METADATA, SDG_METADATA } from '@/lib/attributes-metadata';
 import { deriveMappedPoCodes } from '@/lib/engine';
@@ -99,6 +100,15 @@ export default function ProposeTopicClient() {
 
   // Accreditation Matrix & Capstone Preview Visibility Toggle (Default: false)
   const [showAccreditationDetails, setShowAccreditationDetails] = useState(false);
+
+  // Admin-controlled "Invite Project from Supervisors" window
+  const [invitationOpen, setInvitationOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    getProjectInvitationStatusAction().then((res) => {
+      if (res.success && res.state) setInvitationOpen(res.state.enabled);
+    });
+  }, []);
 
   // Active Tab for mapping
   const [activeTab, setActiveTab] = useState<'WP' | 'WK' | 'EA'>('WP');
@@ -1530,13 +1540,24 @@ export default function ProposeTopicClient() {
               </div>
             )}
 
-            {/* Actions: Always available */}
+            {/* Actions */}
             <div className="pt-4 border-t border-slate-100 space-y-2">
+              {!invitationOpen && (
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                  <strong>Invitation Closed:</strong> Confirming/offering projects is disabled until Admin enables{' '}
+                  <em>&quot;Invite Project from Supervisors&quot;</em>. You can still add/edit this project in the Topic Bank as a Draft.
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => handleSave('CONFIRMED')}
-                disabled={submitting || isOverWordLimit}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
+                disabled={submitting || isOverWordLimit || !invitationOpen}
+                title={
+                  !invitationOpen
+                    ? 'Disabled until Admin opens "Invite Project from Supervisors"'
+                    : undefined
+                }
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {submitting ? 'Submitting Proposal...' : 'Submit & Confirm Proposal'}
               </button>
@@ -1547,7 +1568,7 @@ export default function ProposeTopicClient() {
                 disabled={submitting || isOverWordLimit}
                 className="w-full py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition disabled:opacity-50"
               >
-                Save as Draft
+                Save to Topic Bank (Draft)
               </button>
             </div>
           </div>
