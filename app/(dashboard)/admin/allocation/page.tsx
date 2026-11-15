@@ -617,6 +617,25 @@ export default function AdminAllocationPage() {
             </div>
           </div>
 
+          {/* Supervisor Group-Load Cap Alert */}
+          {validationReport.supervisorLoadWarnings && validationReport.supervisorLoadWarnings.length > 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider">
+                <span>⚠️ Supervisor Group-Load Cap Alerts ({validationReport.supervisorLoadWarnings.length})</span>
+              </div>
+              <p className="text-xs text-amber-800">
+                The following supervisors will exceed their configured active group-load cap (default 2, adjustable in Admin → Faculty &amp; Admins). You may still proceed if approved by the Project Committee:
+              </p>
+              <ul className="space-y-1 text-xs text-amber-900 list-disc pl-5">
+                {validationReport.supervisorLoadWarnings.map((w) => (
+                  <li key={w.email}>
+                    <strong>{w.name}</strong> ({w.email}): currently <strong>{w.currentActiveGroups}</strong> active + <strong>{w.incomingNewGroups}</strong> new = <strong>{w.currentActiveGroups + w.incomingNewGroups}</strong> groups (Cap: <strong>{w.maxGroupLoad}</strong>)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Discrepancies Breakdown */}
           {validationReport.invalidRowsCount > 0 ? (
             <div className="space-y-3">

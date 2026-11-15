@@ -68,6 +68,7 @@ model User {
   mustChangePassword Boolean @default(true)
   domainExpertise String[] @default([])
   preferredAiProvider String? // "Google Gemini" | "Groq" | "ChatGPT"
+  maxGroupLoad Int         @default(2)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -280,6 +281,7 @@ model Batch {
   archiveDriveFileUrl String?
   archiveDriveFileId  String?
   archiveReportSummary Json?
+  deadlines           Json?
   groups              Group[]
 }
 

@@ -7,6 +7,8 @@ import { StudentChangePasswordModal } from '@/components/student-change-password
 import { resolveUserAuthority, getOrCreateDepartmentAuthority } from '@/lib/authority-service';
 import { HodConsentBanner } from '@/components/hod-consent-banner';
 import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-engine';
+import BatchDeadlineBanner from '@/components/batch-deadline-banner';
+import { getActiveBatchDeadlinesAction } from '@/app/actions/system-health';
 
 export default async function DashboardLayout({
   children,
@@ -64,6 +66,11 @@ export default async function DashboardLayout({
     const netMarks = markupVotes.reduce((sum, v) => sum + (v.value || 0), 0);
     studentBadges = calculateStudentBadges(netMarks);
   }
+
+  const activeBatchDeadlines =
+    role === 'FACULTY' || role === 'STUDENT'
+      ? await getActiveBatchDeadlinesAction()
+      : { batchId: null, deadlines: null };
 
   return (
     <div className="flex min-h-screen bg-slate-50 print:block print:min-h-0 print:bg-white">
@@ -143,6 +150,13 @@ export default async function DashboardLayout({
             </span>
           </div>
         </header>
+
+        {(role === 'FACULTY' || role === 'STUDENT') && (
+          <BatchDeadlineBanner
+            batchId={activeBatchDeadlines.batchId}
+            deadlines={activeBatchDeadlines.deadlines}
+          />
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto print:p-0 print:overflow-visible">{children}</main>

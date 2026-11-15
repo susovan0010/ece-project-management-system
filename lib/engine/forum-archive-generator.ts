@@ -238,9 +238,19 @@ export async function buildForumArchiveZipBuffer(params: {
     const folderSegment = groupNumber !== null ? `Group_${groupNumber}` : 'Committee';
     const prefix = replyId ? `reply_${replyId.slice(-6)}` : `post_${postId.slice(-6)}`;
 
-    for (const att of list) {
+    // Resolve attachments in bounded parallel batches (concurrency = 5) for Vercel execution speed
+    const CONCURRENCY = 5;
+    const resolvedList: Array<Awaited<ReturnType<typeof resolveAttachmentBinary>>> = [];
+    for (let i = 0; i < list.length; i += CONCURRENCY) {
+      const chunk = list.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(chunk.map((att) => resolveAttachmentBinary(att)));
+      resolvedList.push(...chunkResults);
+    }
+
+    for (let idx = 0; idx < list.length; idx++) {
+      const att = list[idx];
       const safeName = sanitizeFileName(att.name);
-      const resolved = await resolveAttachmentBinary(att);
+      const resolved = resolvedList[idx];
 
       if (resolved.buffer && resolved.buffer.length > 0) {
         const archivePath = uniqueZipPath(`attachments/${folderSegment}/${prefix}_${safeName}`);

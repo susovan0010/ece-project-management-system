@@ -992,6 +992,13 @@ export async function archiveBatchAction(
       uploaderEmail: session.user.email || OFFICIAL_DRIVE_ACCOUNT,
     });
 
+    if (uploadRes.error) {
+      return {
+        success: false,
+        error: `Academic archive HTML upload to Google Drive failed (${uploadRes.error}). Student accounts were NOT deleted.`,
+      };
+    }
+
     // 3b. Compress & Archive ALL Forum Communications + Corresponding Documents/Images/PDFs to Google Drive
     // MUST execute BEFORE deleting student accounts and non-capstone forum rows.
     const batchGroupIds = groups.map((g) => g.id);
@@ -1763,7 +1770,14 @@ export interface ArchivedProjectListItem {
 export async function getArchivedProjectsAction(): Promise<{
   success: boolean;
   projects?: ArchivedProjectListItem[];
-  batches?: Array<{ id: string; archivedAt: string | null; driveUrl?: string | null }>;
+  batches?: Array<{
+    id: string;
+    archivedAt: string | null;
+    driveUrl?: string | null;
+    forumDriveUrl?: string | null;
+    forumPostsArchivedCount?: number;
+    forumAttachmentsArchivedCount?: number;
+  }>;
   error?: string;
 }> {
   const session = await auth();
@@ -1778,13 +1792,24 @@ export async function getArchivedProjectsAction(): Promise<{
     });
 
     const projectList: ArchivedProjectListItem[] = [];
-    const batchList: Array<{ id: string; archivedAt: string | null; driveUrl?: string | null }> = [];
+    const batchList: Array<{
+      id: string;
+      archivedAt: string | null;
+      driveUrl?: string | null;
+      forumDriveUrl?: string | null;
+      forumPostsArchivedCount?: number;
+      forumAttachmentsArchivedCount?: number;
+    }> = [];
 
     for (const b of archivedBatches) {
+      const summary = b.archiveReportSummary as any;
       batchList.push({
         id: b.id,
         archivedAt: b.archivedAt ? b.archivedAt.toISOString() : null,
         driveUrl: b.archiveDriveFileUrl,
+        forumDriveUrl: summary?.forumArchiveDriveUrl || null,
+        forumPostsArchivedCount: summary?.forumPostsArchivedCount ?? 0,
+        forumAttachmentsArchivedCount: summary?.forumAttachmentsArchivedCount ?? 0,
       });
 
       // Extract year from batch ID e.g. "2023-2027" -> 2027
@@ -1795,7 +1820,6 @@ export async function getArchivedProjectsAction(): Promise<{
         if (!isNaN(parsedYear)) graduatingYear = parsedYear;
       }
 
-      const summary = b.archiveReportSummary as any;
       if (summary?.groups && Array.isArray(summary.groups) && summary.groups.length > 0) {
         // Fast path: load directly from the compiled archive summary
         for (const g of summary.groups as ArchivedGroupProfile[]) {
@@ -1892,6 +1916,251 @@ export async function getArchivedProjectsAction(): Promise<{
       success: true,
       projects: projectList,
       batches: batchList,
+    };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+// ----------------------------------------------------
+// 11. One-Click Local Archive Download Fallback (HTML / Forum ZIP)
+// ----------------------------------------------------
+export async function downloadLocalBatchArchiveAction(
+  batchId: string,
+  type: 'html' | 'zip'
+): Promise<{
+  success: boolean;
+  fileName?: string;
+  mimeType?: string;
+  base64?: string;
+  error?: string;
+}> {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { success: false, error: 'Unauthorized: Admin access required.' };
+  }
+
+  if (!batchId) {
+    return { success: false, error: 'Batch ID is required.' };
+  }
+
+  try {
+    const batch = await prisma.batch.findUnique({ where: { id: batchId } });
+    if (!batch) {
+      return { success: false, error: `Batch "${batchId}" not found.` };
+    }
+
+    const archivedAtFormatted = new Date().toLocaleDateString('en-IN', { dateStyle: 'full' });
+    const archivedByAdminName =
+      (session.user as any).name || session.user.email || 'Project Committee Admin';
+
+    if (type === 'zip') {
+      const groups = await prisma.group.findMany({
+        where: { batchId },
+        select: { id: true },
+      });
+      const groupIds = groups.map((g) => g.id);
+
+      const posts = groupIds.length
+        ? await prisma.forumPost.findMany({
+            where: { groupId: { in: groupIds } },
+            include: {
+              group: {
+                select: {
+                  number: true,
+                  topic: { select: { code: true, title: true } },
+                },
+              },
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  student: { select: { roll: true, universityRoll: true } },
+                },
+              },
+              reactions: { select: { userId: true, type: true } },
+              markupVotes: {
+                select: {
+                  value: true,
+                  reason: true,
+                  supervisor: { select: { name: true, email: true } },
+                },
+              },
+              replies: {
+                orderBy: { createdAt: 'asc' },
+                include: {
+                  author: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      role: true,
+                      student: { select: { roll: true, universityRoll: true } },
+                    },
+                  },
+                  reactions: { select: { userId: true, type: true } },
+                  markupVotes: {
+                    select: {
+                      value: true,
+                      reason: true,
+                      supervisor: { select: { name: true, email: true } },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          })
+        : [];
+
+      const zipRes = await buildForumArchiveZipBuffer({
+        batchId,
+        archivedAt: archivedAtFormatted,
+        archivedByAdmin: archivedByAdminName,
+        posts: posts as any,
+      });
+
+      return {
+        success: true,
+        fileName: `Batch_${batchId}_Forum_Archive.zip`,
+        mimeType: 'application/zip',
+        base64: zipRes.zipBuffer.toString('base64'),
+      };
+    }
+
+    // type === 'html'
+    const summary = batch.archiveReportSummary as any;
+    const poCodes = Array.from({ length: 11 }, (_, i) => `PO${i + 1}`);
+    let profiles: ArchivedGroupProfile[] = [];
+    let totalStudents = 0;
+    let capstoneCount = 0;
+    let nonCapstoneCount = 0;
+
+    if (summary?.groups && Array.isArray(summary.groups) && summary.groups.length > 0) {
+      profiles = summary.groups as ArchivedGroupProfile[];
+      totalStudents = summary.totalStudents ?? profiles.reduce((s, p) => s + p.students.length, 0);
+      capstoneCount = summary.capstoneCount ?? profiles.filter((p) => p.isCapstone).length;
+      nonCapstoneCount = summary.nonCapstoneCount ?? profiles.filter((p) => !p.isCapstone).length;
+    } else {
+      const groups = await prisma.group.findMany({
+        where: { batchId },
+        include: {
+          supervisor: { select: { id: true, name: true, email: true } },
+          topic: {
+            include: {
+              attributes: { include: { attribute: true } },
+              sdgs: { include: { sdg: true } },
+              decisions: true,
+            },
+          },
+          members: {
+            include: {
+              student: { select: { name: true, roll: true } },
+            },
+          },
+          markEntries: {
+            include: {
+              criterion: { include: { maps: true } },
+            },
+          },
+        },
+        orderBy: { number: 'asc' },
+      });
+
+      const currentYear = new Date().getFullYear();
+      profiles = groups.map((g) => {
+        const isCapstone =
+          g.isCapstonePermanent ||
+          !!g.topic?.decisions?.some((d) => d.isCapstone && d.status === 'CONFIRMED');
+        if (isCapstone) capstoneCount++;
+        else nonCapstoneCount++;
+        totalStudents += g.members.length;
+
+        const map = new Map<number, { sum: number; count: number; max: number; maps: string[] }>();
+        for (const e of g.markEntries) {
+          const maps = (e.criterion?.maps || []).map((m) => m.code);
+          if (!map.has(e.criterionId)) {
+            map.set(e.criterionId, { sum: e.marks, count: 1, max: e.criterion?.maxMarks || 10, maps });
+          } else {
+            const cur = map.get(e.criterionId)!;
+            cur.sum += e.marks;
+            cur.count += 1;
+          }
+        }
+        const inputs: MarkEntryInput[] = Array.from(map.values()).map((v) => ({
+          marks: v.sum / v.count,
+          max: v.max,
+          maps: v.maps,
+        }));
+
+        const poAttainments = poCodes.map((code) => {
+          const att = attainment(inputs, code);
+          const percentage = att !== null ? Number((att * 100).toFixed(1)) : 0;
+          const level = att !== null ? getAttainmentLevel(att) : 0;
+          return { code, percentage, level, isAttained: level >= 1 || percentage >= 65 };
+        });
+
+        const decision = g.topic?.decisions?.find((d) => d.isCapstone && d.status === 'CONFIRMED') || g.topic?.decisions?.[0];
+        return {
+          groupId: g.id,
+          groupNumber: g.number,
+          batchId: g.batchId,
+          topicCode: g.topic?.code || 'N/A',
+          topicTitle: g.topic?.title || `Group ${g.number}`,
+          domain: g.topic?.domain || 'General',
+          category: g.topic?.category || 'Standard',
+          supervisorName: g.supervisor?.name || 'Unassigned',
+          supervisorEmail: g.supervisor?.email || '',
+          students: g.members.map((m) => ({
+            name: m.student.name,
+            roll: m.student.roll,
+            badges: { diamonds: 0, gold: 0, silver: 0, copper: 0, iron: 0, total: 0 },
+          })),
+          attributes: (g.topic?.attributes || []).map((a) => ({
+            code: a.attribute.code,
+            title: a.attribute.title,
+            level: a.level,
+            reason: a.reason,
+          })),
+          sdgs: (g.topic?.sdgs || []).map((s) => ({
+            code: `SDG ${s.sdg.id}`,
+            title: s.sdg.title,
+            target: s.target || 'General',
+          })),
+          semesterMarks: {},
+          poAttainments,
+          isCapstone,
+          decisionYear: decision?.decisionYear || currentYear,
+          decisionNotes: decision?.notes || null,
+        };
+      });
+    }
+
+    const departmentAveragePos = poCodes.map((code) => {
+      const pcts = profiles.map((p) => p.poAttainments.find((x) => x.code === code)?.percentage || 0);
+      const avg = Number((pcts.reduce((a, b) => a + b, 0) / (pcts.length || 1)).toFixed(1));
+      return { code, avgPercentage: avg, level: getAttainmentLevel(avg) };
+    });
+
+    const html = generateBatchStaticArchiveHtml({
+      batchId,
+      archivedAt: archivedAtFormatted,
+      archivedByAdmin: archivedByAdminName,
+      totalGroups: profiles.length,
+      totalStudents,
+      capstoneCount,
+      nonCapstoneCount,
+      groups: profiles,
+      departmentAveragePos,
+    });
+
+    return {
+      success: true,
+      fileName: `Batch_${batchId}_Comprehensive_Academic_Archive.html`,
+      mimeType: 'text/html;charset=utf-8',
+      base64: Buffer.from(html, 'utf-8').toString('base64'),
     };
   } catch (err) {
     return { success: false, error: (err as Error).message };

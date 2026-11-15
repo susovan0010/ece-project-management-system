@@ -18,12 +18,21 @@ export interface RawAllocationRow {
   studentPhone?: string;
 }
 
+export interface SupervisorLoadWarning {
+  email: string;
+  name: string;
+  currentActiveGroups: number;
+  incomingNewGroups: number;
+  maxGroupLoad: number;
+}
+
 export interface ValidationReport {
   totalRows: number;
   validRowsCount: number;
   invalidRowsCount: number;
   missingTopics: string[];
   missingSupervisors: string[];
+  supervisorLoadWarnings?: SupervisorLoadWarning[];
   invalidRows: Array<{
     rowNumber: number;
     error: string;
@@ -67,12 +76,56 @@ export async function validateAllocationDataAction(rows: RawAllocationRow[]): Pr
           email: { in: supervisorEmails },
           active: true,
         },
-        select: { email: true },
+        select: {
+          email: true,
+          name: true,
+          maxGroupLoad: true,
+          groups: {
+            where: { isArchived: false },
+            select: { batchId: true, number: true },
+          },
+        },
       }),
     ]);
 
     const validTopicSet = new Set(existingTopics.map((t) => t.code.toUpperCase()));
     const validSupervisorSet = new Set(existingSupervisors.map((s) => s.email.toLowerCase()));
+
+    // Compute Supervisor Group-Load Cap warnings (default cap = 2, configurable per faculty)
+    const incomingGroupsBySupervisor = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const sEmail = row.supervisorEmail?.trim().toLowerCase();
+      const bId = row.batchId?.trim();
+      if (sEmail && bId && row.groupNumber >= 1) {
+        if (!incomingGroupsBySupervisor.has(sEmail)) {
+          incomingGroupsBySupervisor.set(sEmail, new Set());
+        }
+        incomingGroupsBySupervisor.get(sEmail)!.add(`${bId}::${row.groupNumber}`);
+      }
+    }
+
+    const supervisorLoadWarnings: SupervisorLoadWarning[] = [];
+    for (const sup of existingSupervisors as any[]) {
+      const emailLower = sup.email.toLowerCase();
+      const existingKeys = new Set(
+        Array.isArray(sup.groups) ? sup.groups.map((g: any) => `${g.batchId}::${g.number}`) : []
+      );
+      const incomingKeys = incomingGroupsBySupervisor.get(emailLower) || new Set<string>();
+      let incomingNewGroups = 0;
+      for (const k of Array.from(incomingKeys)) {
+        if (!existingKeys.has(k)) incomingNewGroups++;
+      }
+      const maxGroupLoad = typeof sup.maxGroupLoad === 'number' ? sup.maxGroupLoad : 2;
+      if (existingKeys.size + incomingNewGroups > maxGroupLoad) {
+        supervisorLoadWarnings.push({
+          email: sup.email,
+          name: sup.name || sup.email,
+          currentActiveGroups: existingKeys.size,
+          incomingNewGroups,
+          maxGroupLoad,
+        });
+      }
+    }
 
     const missingTopics: string[] = [];
     const missingSupervisors: string[] = [];
@@ -120,6 +173,7 @@ export async function validateAllocationDataAction(rows: RawAllocationRow[]): Pr
       invalidRowsCount: invalidRows.length,
       missingTopics,
       missingSupervisors,
+      supervisorLoadWarnings,
       invalidRows,
     };
   } catch (err) {

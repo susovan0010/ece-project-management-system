@@ -25,6 +25,8 @@ export interface SupervisorUserItem {
   active: boolean;
   mustChangePassword: boolean;
   domainExpertise: string[];
+  maxGroupLoad: number;
+  activeGroupCount: number;
   proposedTopicsCount: number;
   groups: Array<{
     id: string;
@@ -32,6 +34,7 @@ export interface SupervisorUserItem {
     batchId: string;
     topicCode: string;
     topicTitle: string;
+    isArchived?: boolean;
   }>;
   createdAt: string;
 }
@@ -164,23 +167,29 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
       return a.name.localeCompare(b.name);
     });
 
-    const supervisors: SupervisorUserItem[] = supervisorsRaw.map((s) => ({
-      id: s.id,
-      name: s.name,
-      email: s.email,
-      active: s.active,
-      mustChangePassword: s.mustChangePassword,
-      domainExpertise: s.domainExpertise || [],
-      proposedTopicsCount: s._count?.topics ?? 0,
-      groups: (s.groups || []).map((g) => ({
+    const supervisors: SupervisorUserItem[] = supervisorsRaw.map((s: any) => {
+      const mappedGroups = (s.groups || []).map((g: any) => ({
         id: g.id,
         number: g.number,
         batchId: g.batchId,
         topicCode: g.topic.code,
         topicTitle: g.topic.title,
-      })),
-      createdAt: s.createdAt.toISOString(),
-    }));
+        isArchived: !!g.isArchived,
+      }));
+      return {
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        active: s.active,
+        mustChangePassword: s.mustChangePassword,
+        domainExpertise: s.domainExpertise || [],
+        maxGroupLoad: s.maxGroupLoad ?? 2,
+        activeGroupCount: mappedGroups.filter((g: any) => !g.isArchived).length,
+        proposedTopicsCount: s._count?.topics ?? 0,
+        groups: mappedGroups,
+        createdAt: s.createdAt.toISOString(),
+      };
+    });
 
     const studentRows: StudentGroupItem[] = [];
 
@@ -688,5 +697,61 @@ export async function updateUserInformationAction(payload: {
     };
   } catch (err) {
     return { error: `Failed to update user information: ${(err as Error).message}` };
+  }
+}
+
+const GroupLoadSchema = z.object({
+  facultyId: z.string().min(1),
+  maxGroupLoad: z.number().int().min(0, 'Group load cap cannot be negative').max(20, 'Maximum group load cap is 20'),
+});
+
+export async function updateFacultyGroupLoadAction(facultyId: string, maxGroupLoad: number) {
+  const session = await auth();
+  if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can adjust supervisor group-load caps.' };
+  }
+
+  const parsed = GroupLoadSchema.safeParse({ facultyId, maxGroupLoad });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message || 'Invalid group load value.' };
+  }
+
+  try {
+    const target = await prisma.user.findUnique({
+      where: { id: parsed.data.facultyId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    if (!target || target.role !== 'FACULTY') {
+      return { error: 'Faculty supervisor account not found.' };
+    }
+
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { maxGroupLoad: parsed.data.maxGroupLoad },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: (session.user as any).id,
+        action: 'FACULTY_GROUP_LOAD_UPDATED',
+        entity: 'User',
+        entityId: target.id,
+        payload: {
+          facultyEmail: target.email,
+          maxGroupLoad: parsed.data.maxGroupLoad,
+        },
+      },
+    });
+
+    revalidatePath('/admin/faculty');
+    revalidatePath('/admin/allocation');
+
+    return {
+      success: true,
+      message: `Updated group-load cap for ${target.name} to ${parsed.data.maxGroupLoad} group(s).`,
+    };
+  } catch (err) {
+    return { error: `Failed to update group-load cap: ${(err as Error).message}` };
   }
 }

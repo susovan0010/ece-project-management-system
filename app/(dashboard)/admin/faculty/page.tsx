@@ -8,6 +8,7 @@ import {
   removeAdminAction,
   transferUserRoleAction,
   updateUserInformationAction,
+  updateFacultyGroupLoadAction,
   AdminUserItem,
   SupervisorUserItem,
 } from '@/app/actions/admin-directory';
@@ -20,6 +21,7 @@ export default function AdminFacultyPage() {
   const [loadingDirectory, setLoadingDirectory] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [transferringId, setTransferringId] = useState<string | null>(null);
+  const [updatingLoadId, setUpdatingLoadId] = useState<string | null>(null);
 
   // Current Logged-in Admin Identity
   const [currentUserPriority, setCurrentUserPriority] = useState<'HOD' | 'A' | 'B'>('B');
@@ -107,6 +109,21 @@ export default function AdminFacultyPage() {
       await loadAccounts();
     }
     setRemovingId(null);
+  }
+
+  async function handleUpdateGroupLoad(facultyId: string, nextCap: number) {
+    if (nextCap < 0 || nextCap > 20) return;
+    setUpdatingLoadId(facultyId);
+    setDirectError(null);
+    setDirectSuccess(null);
+    const res = await updateFacultyGroupLoadAction(facultyId, nextCap);
+    if (res.error) {
+      setDirectError(res.error);
+    } else {
+      setDirectSuccess(res.message || 'Supervisor group-load cap updated.');
+      await loadAccounts();
+    }
+    setUpdatingLoadId(null);
   }
 
   async function handleTransferRole(userId: string, targetRole: 'ADMIN' | 'FACULTY', name: string) {
@@ -658,6 +675,7 @@ export default function AdminFacultyPage() {
                 <th className="px-6 py-3">Login Email</th>
                 <th className="px-6 py-3 text-center">Proposed Topics</th>
                 <th className="px-6 py-3">Allotted Groups</th>
+                <th className="px-6 py-3 text-center">Load / Cap</th>
                 <th className="px-6 py-3 text-center">Password Status</th>
                 <th className="px-6 py-3 text-right">Actions</th>
               </tr>
@@ -665,13 +683,13 @@ export default function AdminFacultyPage() {
             <tbody className="divide-y divide-slate-200">
               {loadingDirectory ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-400">
                     Loading supervisors...
                   </td>
                 </tr>
               ) : supervisors.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-400">
                     No faculty supervisors registered yet.
                   </td>
                 </tr>
@@ -723,6 +741,44 @@ export default function AdminFacultyPage() {
                           ))}
                         </div>
                       )}
+                    </td>
+                    <td className="px-6 py-3.5 text-center">
+                      <div className="inline-flex flex-col items-center gap-1">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateGroupLoad(sup.id, sup.maxGroupLoad - 1)}
+                            disabled={updatingLoadId === sup.id || sup.maxGroupLoad <= 0}
+                            className="w-5 h-5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs disabled:opacity-40"
+                            title="Decrease group-load cap"
+                          >
+                            -
+                          </button>
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-bold font-mono ${
+                              sup.activeGroupCount > sup.maxGroupLoad
+                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                : sup.activeGroupCount === sup.maxGroupLoad
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}
+                          >
+                            {sup.activeGroupCount} / {sup.maxGroupLoad}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateGroupLoad(sup.id, sup.maxGroupLoad + 1)}
+                            disabled={updatingLoadId === sup.id || sup.maxGroupLoad >= 20}
+                            className="w-5 h-5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs disabled:opacity-40"
+                            title="Increase group-load cap"
+                          >
+                            +
+                          </button>
+                        </div>
+                        {sup.activeGroupCount > sup.maxGroupLoad && (
+                          <span className="text-[10px] font-bold text-red-600">Over Cap!</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-3.5 text-center">
                       <span

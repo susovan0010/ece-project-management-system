@@ -9,6 +9,7 @@ import {
   closeBatchSessionAction,
   unlockBatchSessionAction,
   archiveBatchAction,
+  downloadLocalBatchArchiveAction,
   getCapstoneCatalogueAction,
   getCapstoneProjectDetailReportAction,
   AdminGroupCapstoneEvaluation,
@@ -314,6 +315,33 @@ export default function AdminCapstoneClient() {
       loadData(selectedBatch);
       setTimeout(() => setSuccessMsg(null), 5000);
     }
+  }
+
+  const [downloadingLocal, setDownloadingLocal] = useState<'html' | 'zip' | null>(null);
+
+  async function handleDownloadLocalArchive(type: 'html' | 'zip') {
+    setDownloadingLocal(type);
+    setError(null);
+    const res = await downloadLocalBatchArchiveAction(closeSessionBatch, type);
+    setDownloadingLocal(null);
+    if (!res.success || !res.base64 || !res.fileName) {
+      setError(res.error || 'Failed to generate local archive download.');
+      return;
+    }
+    const byteChars = atob(res.base64);
+    const byteNumbers = new Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      byteNumbers[i] = byteChars.charCodeAt(i);
+    }
+    const blob = new Blob([new Uint8Array(byteNumbers)], { type: res.mimeType || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   // Filter catalogue items
@@ -1054,7 +1082,7 @@ export default function AdminCapstoneClient() {
                   {sem8Status.archiveDriveFileUrl && (
                     <div className="p-3 bg-white rounded-xl border border-purple-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
                       <div className="text-purple-900">
-                        <strong className="block text-[11px] text-purple-700 uppercase tracking-wider">Permanent Cold Storage Link:</strong>
+                        <strong className="block text-[11px] text-purple-700 uppercase tracking-wider">Permanent Cold Storage Link (Academic HTML):</strong>
                         <span className="text-[11px] font-mono text-slate-600 truncate max-w-md block">
                           {sem8Status.archiveDriveFileUrl}
                         </span>
@@ -1069,6 +1097,51 @@ export default function AdminCapstoneClient() {
                       </a>
                     </div>
                   )}
+
+                  {sem8Status.archiveReportSummary?.forumArchiveDriveUrl && (
+                    <div className="p-3 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
+                      <div className="text-indigo-900">
+                        <strong className="block text-[11px] text-indigo-700 uppercase tracking-wider">
+                          Forum Communications &amp; Attachments ZIP ({sem8Status.archiveReportSummary?.forumPostsArchivedCount ?? 0} posts, {sem8Status.archiveReportSummary?.forumAttachmentsArchivedCount ?? 0} files):
+                        </strong>
+                        <span className="text-[11px] font-mono text-slate-600 truncate max-w-md block">
+                          {sem8Status.archiveReportSummary.forumArchiveDriveUrl}
+                        </span>
+                      </div>
+                      <a
+                        href={sem8Status.archiveReportSummary.forumArchiveDriveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline whitespace-nowrap"
+                      >
+                        Open Forum ZIP in Drive ↗
+                      </a>
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-white/80 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-slate-600 font-medium">
+                      One-Click Local Backup Fallback (download directly to your computer):
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadLocalArchive('html')}
+                        disabled={downloadingLocal !== null}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                      >
+                        {downloadingLocal === 'html' ? 'Generating HTML...' : '⬇ Download Academic HTML'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadLocalArchive('zip')}
+                        disabled={downloadingLocal !== null}
+                        className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                      >
+                        {downloadingLocal === 'zip' ? 'Compressing ZIP...' : '⬇ Download Forum & Attachments ZIP'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
