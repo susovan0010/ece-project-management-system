@@ -23,6 +23,7 @@ import {
   getBatchArchiveConfirmationSentence,
   ArchivedGroupProfile,
 } from '@/lib/engine/archive-report-generator';
+import { buildForumArchiveZipBuffer } from '@/lib/engine/forum-archive-generator';
 import { uploadFileToGoogleDrive, OFFICIAL_DRIVE_ACCOUNT } from '@/lib/google-drive';
 import { revalidatePath } from 'next/cache';
 
@@ -702,6 +703,7 @@ export async function archiveBatchAction(
   archivedCount?: number;
   purgedStudentsCount?: number;
   driveUrl?: string;
+  forumDriveUrl?: string;
   error?: string;
 }> {
   const session = await auth();
@@ -976,6 +978,10 @@ export async function archiveBatchAction(
     });
 
     // 3. Upload Static Archive to ECE Project Committee Google Drive (15 GB Free Storage)
+    const archivedAtFormatted = new Date().toLocaleDateString('en-IN', { dateStyle: 'full' });
+    const archivedByAdminName =
+      (session.user as any).name || session.user.email || 'Project Committee Admin';
+
     const uploadRes = await uploadFileToGoogleDrive({
       fileName: `Batch_${batchId}_Comprehensive_Academic_Archive.html`,
       size: Buffer.byteLength(reportHtml, 'utf-8'),
@@ -985,6 +991,85 @@ export async function archiveBatchAction(
       subFolder: `Batch_${batchId}`,
       uploaderEmail: session.user.email || OFFICIAL_DRIVE_ACCOUNT,
     });
+
+    // 3b. Compress & Archive ALL Forum Communications + Corresponding Documents/Images/PDFs to Google Drive
+    // MUST execute BEFORE deleting student accounts and non-capstone forum rows.
+    const batchGroupIds = groups.map((g) => g.id);
+    const batchForumPosts = await prisma.forumPost.findMany({
+      where: { groupId: { in: batchGroupIds } },
+      include: {
+        group: {
+          select: {
+            number: true,
+            topic: { select: { code: true, title: true } },
+          },
+        },
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            student: { select: { roll: true, universityRoll: true } },
+          },
+        },
+        reactions: { select: { userId: true, type: true } },
+        markupVotes: {
+          select: {
+            value: true,
+            reason: true,
+            supervisor: { select: { name: true, email: true } },
+          },
+        },
+        replies: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                student: { select: { roll: true, universityRoll: true } },
+              },
+            },
+            reactions: { select: { userId: true, type: true } },
+            markupVotes: {
+              select: {
+                value: true,
+                reason: true,
+                supervisor: { select: { name: true, email: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const forumArchiveResult = await buildForumArchiveZipBuffer({
+      batchId,
+      archivedAt: archivedAtFormatted,
+      archivedByAdmin: archivedByAdminName,
+      posts: batchForumPosts as any,
+    });
+
+    const forumZipUploadRes = await uploadFileToGoogleDrive({
+      fileName: `Batch_${batchId}_Forum_Archive.zip`,
+      size: forumArchiveResult.zipBuffer.length,
+      mimeType: 'application/zip',
+      dataUrlOrBase64: forumArchiveResult.zipBuffer.toString('base64'),
+      folderName: 'ECE_Capstone_Academic_Archives',
+      subFolder: `Batch_${batchId}`,
+      uploaderEmail: session.user.email || OFFICIAL_DRIVE_ACCOUNT,
+    });
+
+    if (forumZipUploadRes.error) {
+      return {
+        success: false,
+        error: `Forum & attachments archive upload to Google Drive failed (${forumZipUploadRes.error}). Student accounts were NOT deleted.`,
+      };
+    }
 
     // 4. Permanent Student Account Deletion (Credentials Suspended)
     // NOTE: Faculty accounts (role === 'FACULTY' or 'ADMIN') are strictly preserved!
@@ -1072,6 +1157,7 @@ export async function archiveBatchAction(
 
     // 7. Update Batch record with Google Drive reference and compact metadata
     const driveUrl = uploadRes.viewUrl || null;
+    const forumDriveUrl = forumZipUploadRes.viewUrl || null;
     await prisma.batch.update({
       where: { id: batchId },
       data: {
@@ -1089,6 +1175,11 @@ export async function archiveBatchAction(
           nonCapstoneCount,
           purgedStudentsCount: uniqueStudentUserIds.length,
           driveViewUrl: driveUrl,
+          forumArchiveDriveUrl: forumDriveUrl,
+          forumArchiveDriveFileId: forumZipUploadRes.fileId || null,
+          forumPostsArchivedCount: forumArchiveResult.postsCount,
+          forumRepliesArchivedCount: forumArchiveResult.repliesCount,
+          forumAttachmentsArchivedCount: forumArchiveResult.attachmentsArchivedCount,
           groups: archivedProfiles,
         } as any,
       },
@@ -1107,7 +1198,8 @@ export async function archiveBatchAction(
       archivedCount: nonCapstoneCount,
       purgedStudentsCount: uniqueStudentUserIds.length,
       driveUrl: driveUrl || undefined,
-      message: `Batch ${batchId} archived permanently. Static Academic Report saved to ECE Committee Google Drive. ${uniqueStudentUserIds.length} student account(s) purged. All project records retained permanently with database storage optimized.`,
+      forumDriveUrl: forumDriveUrl || undefined,
+      message: `Batch ${batchId} archived permanently. Static Academic Report and compressed Forum & Attachments ZIP (${forumArchiveResult.postsCount} post(s), ${forumArchiveResult.attachmentsArchivedCount} attachment(s)) saved to ECE Committee Google Drive. ${uniqueStudentUserIds.length} student account(s) purged. All project records retained permanently with database storage optimized.`,
     };
   } catch (err) {
     return { success: false, error: (err as Error).message };

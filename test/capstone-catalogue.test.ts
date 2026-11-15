@@ -40,6 +40,7 @@ let mockUsers: any[] = [];
 let mockTopics: any[] = [];
 let mockDecisions: any[] = [];
 let mockComplexityDeclarations: any[] = [];
+let mockForumPosts: any[] = [];
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -161,6 +162,10 @@ vi.mock('@/lib/prisma', () => ({
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     forumPost: {
+      findMany: vi.fn().mockImplementation(({ where }: any) => {
+        const groupIds = where?.groupId?.in || [];
+        return mockForumPosts.filter((p) => groupIds.includes(p.groupId));
+      }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     capstoneDecision: {
@@ -232,6 +237,7 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     mockBatches = [
       { id: '2023-2027', active: true, isLocked: false, isArchived: false },
     ];
+    mockForumPosts = [];
 
     mockTopics = [
       {
@@ -485,6 +491,87 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     // Topics associated with groups in this batch are transitioned to ARCHIVED
     expect(mockTopics.find((t) => t.id === 'topic-1')?.status).toBe('ARCHIVED');
     expect(mockTopics.find((t) => t.id === 'topic-2')?.status).toBe('ARCHIVED');
+  });
+
+  it('4b. archiveBatchAction compresses all forum communications & attachments to ZIP on Drive BEFORE deleting student accounts', async () => {
+    const { uploadFileToGoogleDrive } = await import('@/lib/google-drive');
+    const { prisma } = await import('@/lib/prisma');
+    (uploadFileToGoogleDrive as any).mockClear();
+    (prisma.user.deleteMany as any).mockClear();
+
+    mockBatches[0].isLocked = true;
+    mockGroups[1].markEntries.push({
+      criterionId: 104,
+      marks: 75,
+      criterion: {
+        semester: 8,
+        maxMarks: 100,
+        maps: [{ code: 'PO1', kind: 'PO' }],
+      },
+    });
+    const validSentence = getBatchArchiveConfirmationSentence('2023-2027');
+
+    const pdfBase64 = Buffer.from('%PDF-1.4\nStudent Thesis Draft').toString('base64');
+    mockForumPosts = [
+      {
+        id: 'fp-1',
+        groupId: 'group-1',
+        channel: 'GROUP',
+        title: 'Thesis Draft v1',
+        content: 'Uploading our draft PDF and circuit diagram.',
+        createdAt: new Date('2026-10-10T09:00:00Z'),
+        group: { number: 1, topic: { code: 'ECE-23-01', title: 'Smart IoT Precision Agriculture' } },
+        author: {
+          id: 'u-s-1',
+          name: 'Aarav Sharma',
+          email: 'aarav@heritageit.edu',
+          role: 'STUDENT',
+          student: { roll: '2355001', universityRoll: '12600323001' },
+        },
+        attachments: [
+          {
+            name: 'thesis_draft.pdf',
+            type: 'application/pdf',
+            size: 27,
+            url: `data:application/pdf;base64,${pdfBase64}`,
+          },
+        ],
+        reactions: [],
+        markupVotes: [],
+        replies: [],
+      },
+    ];
+
+    const res = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'AdminSecret123!',
+      confirmationSentence: validSentence,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.forumDriveUrl).toBeDefined();
+
+    // Verify Google Drive was called with both the HTML report and the Forum ZIP
+    const calls = (uploadFileToGoogleDrive as any).mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    const zipCall = calls.find((c: any[]) => c[0]?.fileName === 'Batch_2023-2027_Forum_Archive.zip');
+    expect(zipCall).toBeDefined();
+    expect(zipCall[0].mimeType).toBe('application/zip');
+    expect(zipCall[0].folderName).toBe('ECE_Capstone_Academic_Archives');
+    expect(zipCall[0].subFolder).toBe('Batch_2023-2027');
+
+    // Verify the uploaded ZIP starts with PKZIP magic bytes (PK\x03\x04)
+    const decodedZip = Buffer.from(zipCall[0].dataUrlOrBase64, 'base64');
+    expect(decodedZip.readUInt32LE(0)).toBe(0x04034b50);
+
+    // Verify ZIP upload happened BEFORE prisma.user.deleteMany
+    const zipOrder = (uploadFileToGoogleDrive as any).mock.invocationCallOrder[calls.indexOf(zipCall)];
+    const deleteOrder = (prisma.user.deleteMany as any).mock.invocationCallOrder[0];
+    expect(zipOrder).toBeLessThan(deleteOrder);
+
+    // Verify batch summary records forum archive counts
+    expect(mockBatches[0].archiveReportSummary.forumPostsArchivedCount).toBe(1);
+    expect(mockBatches[0].archiveReportSummary.forumAttachmentsArchivedCount).toBe(1);
   });
 
   it('5. purgeExpiredArchivedProjectsAction cleans only eligible expired non-capstones', async () => {
