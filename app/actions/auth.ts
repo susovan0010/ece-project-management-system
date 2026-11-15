@@ -506,6 +506,10 @@ export async function completeFirstLoginAction(prevState: unknown, formData: For
     };
   }
 
+  if (user.role === 'STUDENT') {
+    return { error: 'Forbidden: Please use the Student Change Password option.' };
+  }
+
   // ADMIN role: Can change user name (name and/or login email) + password
   const updatedName = requestedName ? requestedName : user.name;
   const updatedEmail = requestedEmail ? requestedEmail : user.email;
@@ -688,5 +692,80 @@ export async function createFacultyAccountAction(prevState: unknown, formData: F
     message: `Account created for ${name} (${email}). They will be prompted to change their password on first login.`,
   };
 }
+
+// ----------------------------------------------------
+// 7. Student Self-Service Password Change Action
+// ----------------------------------------------------
+export async function changeStudentPasswordAction(
+  prevState: unknown,
+  formData: FormData
+): Promise<{ success?: boolean; message?: string; error?: string }> {
+  const session = await auth();
+  const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+  if (!sessionUser?.id) {
+    return { error: 'Unauthorized: You must be signed in.' };
+  }
+
+  if (sessionUser.role !== 'STUDENT') {
+    return { error: 'Forbidden: Only student accounts can use this password change action.' };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: sessionUser.id } });
+  if (!user || !user.passwordHash || user.role !== 'STUDENT') {
+    return { error: 'Student account not found.' };
+  }
+
+  const currentPassword = (formData.get('currentPassword') as string) || '';
+  const newPassword = (formData.get('newPassword') as string) || '';
+  const confirmPassword = (formData.get('confirmPassword') as string) || '';
+
+  if (!currentPassword) {
+    return { error: 'Please enter your current password.' };
+  }
+
+  const isCurrentValid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!isCurrentValid) {
+    return { error: 'Current password is incorrect.' };
+  }
+
+  if (newPassword.length < 6) {
+    return { error: 'New password must be at least 6 characters long.' };
+  }
+
+  if (newPassword !== confirmPassword) {
+    return { error: 'New password and confirmation do not match.' };
+  }
+
+  if (newPassword === currentPassword) {
+    return { error: 'New password must be different from your current password.' };
+  }
+
+  const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newPasswordHash,
+      mustChangePassword: false,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: 'STUDENT_PASSWORD_CHANGED',
+      entity: 'User',
+      entityId: user.id,
+      payload: { role: 'STUDENT' },
+    },
+  });
+
+  revalidatePath('/', 'layout');
+  return {
+    success: true,
+    message: 'Your password has been updated successfully.',
+  };
+}
+
 
 

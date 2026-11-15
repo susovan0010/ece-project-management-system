@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { Sidebar } from '@/components/sidebar';
 import { FirstLoginModal } from '@/components/first-login-modal';
+import { StudentChangePasswordModal } from '@/components/student-change-password-modal';
 import { resolveUserAuthority, getOrCreateDepartmentAuthority } from '@/lib/authority-service';
 import { HodConsentBanner } from '@/components/hod-consent-banner';
 import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-engine';
@@ -102,6 +103,9 @@ export default async function DashboardLayout({
                 mustChangePassword={mustChangePassword}
                 userDomains={dbUser?.domainExpertise || []}
               />
+            )}
+            {role === 'STUDENT' && (
+              <StudentChangePasswordModal userName={userName} userEmail={userEmail} />
             )}
             {role === 'STUDENT' && studentBadges && (
               <div
