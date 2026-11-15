@@ -29,6 +29,7 @@ export default function MyTopicsClient() {
   const [archivedProjects, setArchivedProjects] = useState<ArchivedProjectRecord[]>([]);
   const [pendingDeleteRequests, setPendingDeleteRequests] = useState<TopicDeleteRequestRecord[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [supervisorLoad, setSupervisorLoad] = useState<{ activeGroupCount: number; maxGroupLoad: number } | null>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -43,6 +44,9 @@ export default function MyTopicsClient() {
       setError(topicsRes.error);
     } else {
       setTopics(topicsRes.topics || []);
+      if (topicsRes.supervisorLoad) {
+        setSupervisorLoad(topicsRes.supervisorLoad);
+      }
     }
 
     if (!archiveRes.error && archiveRes.archivedProjects) {
@@ -205,10 +209,29 @@ export default function MyTopicsClient() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
               Supervisor Portfolio &amp; Project Archive
             </span>
+            {supervisorLoad && (
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                  supervisorLoad.activeGroupCount > supervisorLoad.maxGroupLoad
+                    ? 'bg-red-100 text-red-800 border-red-300'
+                    : supervisorLoad.activeGroupCount === supervisorLoad.maxGroupLoad
+                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                    : 'bg-blue-50 text-blue-800 border-blue-200'
+                }`}
+                title="Active supervised groups vs your committee-assigned group-load cap"
+              >
+                Group Load: {supervisorLoad.activeGroupCount} / {supervisorLoad.maxGroupLoad}
+                {supervisorLoad.activeGroupCount > supervisorLoad.maxGroupLoad
+                  ? ' (Over Cap)'
+                  : supervisorLoad.activeGroupCount === supervisorLoad.maxGroupLoad
+                  ? ' (At Capacity)'
+                  : ''}
+              </span>
+            )}
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mt-2">
             My Active &amp; Completed Projects

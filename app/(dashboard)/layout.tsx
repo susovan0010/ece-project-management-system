@@ -112,7 +112,11 @@ export default async function DashboardLayout({
               />
             )}
             {role === 'STUDENT' && (
-              <StudentChangePasswordModal userName={userName} userEmail={userEmail} />
+              <StudentChangePasswordModal
+                userName={userName}
+                userEmail={userEmail}
+                mustChangePassword={mustChangePassword}
+              />
             )}
             {role === 'STUDENT' && studentBadges && (
               <div

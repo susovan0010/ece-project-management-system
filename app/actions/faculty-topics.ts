@@ -286,7 +286,22 @@ export async function getMyConfirmedTopicsAction() {
       },
     });
 
-    return { topics };
+    const [userRecord, activeGroupCount] = await Promise.all([
+      prisma.user
+        .findUnique({ where: { id: userId }, select: { maxGroupLoad: true } })
+        .catch(() => null),
+      prisma.group
+        .count({ where: { supervisorId: userId, isArchived: false } })
+        .catch(() => 0),
+    ]);
+
+    return {
+      topics,
+      supervisorLoad: {
+        activeGroupCount: activeGroupCount ?? 0,
+        maxGroupLoad: userRecord?.maxGroupLoad ?? 2,
+      },
+    };
   } catch (err) {
     return { error: `Failed to load confirmed topics: ${(err as Error).message}` };
   }

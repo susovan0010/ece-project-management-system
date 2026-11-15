@@ -7,14 +7,16 @@ import { changeStudentPasswordAction } from '@/app/actions/auth';
 interface StudentChangePasswordModalProps {
   userName: string;
   userEmail: string;
+  mustChangePassword?: boolean;
 }
 
 export function StudentChangePasswordModal({
   userName,
   userEmail,
+  mustChangePassword = false,
 }: StudentChangePasswordModalProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(mustChangePassword);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -90,10 +92,23 @@ export function StudentChangePasswordModal({
           resetForm();
           setOpen(true);
         }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-xs transition"
-        title="Change your account password"
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-xs transition ${
+          mustChangePassword
+            ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+        }`}
+        title={
+          mustChangePassword
+            ? 'Action recommended: Change your default initial password'
+            : 'Change your account password'
+        }
       >
-        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          className={`w-3.5 h-3.5 ${mustChangePassword ? 'text-amber-600' : 'text-slate-500'}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -101,7 +116,7 @@ export function StudentChangePasswordModal({
             d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
           />
         </svg>
-        Change Password
+        {mustChangePassword ? 'Change Default Password' : 'Change Password'}
       </button>
 
       {open && (
@@ -126,6 +141,12 @@ export function StudentChangePasswordModal({
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {mustChangePassword && !successMsg && (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 font-medium">
+                  You are currently using the default initial password. Please set a personal password to secure your account (or close to remind later).
+                </div>
+              )}
+
               {error && (
                 <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
                   {error}
