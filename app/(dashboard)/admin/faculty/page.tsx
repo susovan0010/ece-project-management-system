@@ -512,6 +512,7 @@ export default function AdminFacultyPage() {
                 <th className="px-6 py-3">Admin Name</th>
                 <th className="px-6 py-3">Login Email</th>
                 <th className="px-6 py-3 text-center">Priority</th>
+                <th className="px-6 py-3 text-center">Load / Cap</th>
                 <th className="px-6 py-3 text-center">Security Status</th>
                 <th className="px-6 py-3 text-right">Created On</th>
                 <th className="px-6 py-3 text-right">Actions</th>
@@ -520,13 +521,13 @@ export default function AdminFacultyPage() {
             <tbody className="divide-y divide-slate-200">
               {loadingDirectory ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-400">
                     Loading admins...
                   </td>
                 </tr>
               ) : admins.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-400">
                     No admins found.
                   </td>
                 </tr>
@@ -586,6 +587,44 @@ export default function AdminFacultyPage() {
                             <span>🛡️</span> Priority Type B (Admin)
                           </span>
                         )}
+                      </td>
+                      <td className="px-6 py-3.5 text-center">
+                        <div className="inline-flex flex-col items-center gap-1">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateGroupLoad(adm.id, adm.maxGroupLoad - 1)}
+                              disabled={updatingLoadId === adm.id || adm.maxGroupLoad <= 0}
+                              className="w-5 h-5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs disabled:opacity-40"
+                              title="Decrease supervisor group-load cap"
+                            >
+                              -
+                            </button>
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-bold font-mono ${
+                                adm.activeGroupCount > adm.maxGroupLoad
+                                  ? 'bg-red-100 text-red-800 border border-red-300'
+                                  : adm.activeGroupCount === adm.maxGroupLoad
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              }`}
+                            >
+                              {adm.activeGroupCount} / {adm.maxGroupLoad}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateGroupLoad(adm.id, adm.maxGroupLoad + 1)}
+                              disabled={updatingLoadId === adm.id || adm.maxGroupLoad >= 20}
+                              className="w-5 h-5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs disabled:opacity-40"
+                              title="Increase supervisor group-load cap"
+                            >
+                              +
+                            </button>
+                          </div>
+                          {adm.activeGroupCount > adm.maxGroupLoad && (
+                            <span className="text-[10px] font-bold text-red-600">Over Cap!</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-3.5 text-center">
                         <span

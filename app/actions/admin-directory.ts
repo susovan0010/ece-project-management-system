@@ -14,6 +14,8 @@ export interface AdminUserItem {
   active: boolean;
   mustChangePassword: boolean;
   domainExpertise: string[];
+  maxGroupLoad: number;
+  activeGroupCount: number;
   priority: 'HOD' | 'A' | 'B';
   createdAt: string;
 }
@@ -85,6 +87,10 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
           active: true,
           mustChangePassword: true,
           domainExpertise: true,
+          maxGroupLoad: true,
+          groups: {
+            select: { id: true, isArchived: true },
+          },
           createdAt: true,
         },
       }),
@@ -153,6 +159,10 @@ export async function getAdminDirectoryDataAction(batchFilter?: string) {
         active: a.active,
         mustChangePassword: a.mustChangePassword,
         domainExpertise: a.domainExpertise || [],
+        maxGroupLoad: (a as any).maxGroupLoad ?? 2,
+        activeGroupCount: Array.isArray((a as any).groups)
+          ? (a as any).groups.filter((g: any) => !g.isArchived).length
+          : 0,
         priority,
         createdAt: a.createdAt.toISOString(),
       };
@@ -722,8 +732,8 @@ export async function updateFacultyGroupLoadAction(facultyId: string, maxGroupLo
       select: { id: true, name: true, email: true, role: true },
     });
 
-    if (!target || target.role !== 'FACULTY') {
-      return { error: 'Faculty supervisor account not found.' };
+    if (!target || (target.role !== 'FACULTY' && target.role !== 'ADMIN')) {
+      return { error: 'Supervisor account (Faculty, Admin, or HOD) not found.' };
     }
 
     await prisma.user.update({

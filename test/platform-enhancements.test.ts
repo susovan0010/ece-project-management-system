@@ -167,6 +167,11 @@ describe('Phase 71: Platform Enhancements & Supervisor Group-Load Cap', () => {
     expect(ok.success).toBe(true);
     expect(state.users.find((u) => u.id === 'fac-1')?.maxGroupLoad).toBe(5);
     expect(state.auditLogs.some((l) => l.action === 'FACULTY_GROUP_LOAD_UPDATED')).toBe(true);
+
+    // Also supports Admin / HOD accounts who act as supervisors
+    const okAdmin = await updateFacultyGroupLoadAction('admin-1', 1);
+    expect(okAdmin.success).toBe(true);
+    expect(state.users.find((u) => u.id === 'admin-1')?.maxGroupLoad).toBe(1);
   });
 
   it('triggers supervisorLoadWarnings in validateAllocationDataAction when cap is exceeded, but respects custom higher cap', async () => {
