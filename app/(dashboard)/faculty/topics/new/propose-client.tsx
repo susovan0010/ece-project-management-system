@@ -384,6 +384,7 @@ export default function ProposeTopicClient() {
 
     const res = await generateAiDescriptionDraftAction({
       title,
+      subtitle: topicSource === 'SIH' ? subtitle.trim() || undefined : undefined,
       category,
       theme: domain,
       keywords: tags.length > 0 ? tags : [title],
@@ -398,7 +399,12 @@ export default function ProposeTopicClient() {
       setError(res.error);
     } else if (res.description) {
       setDescription(res.description);
-      setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words) — WP1 Level 2+ satisfied with statement grounding`);
+      if (res.isAi) {
+        setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words) — Supervisor notes prioritized & statement-grounded`);
+      } else {
+        const errHint = (res as any).providerErrors?.[0] ? ` (${(res as any).providerErrors[0]})` : '';
+        setAiDraftResult(`⚠️ AI providers unavailable${errHint}. Drafted via offline rule engine (${res.wordCount} words) preserving your notes.`);
+      }
     }
   }
 

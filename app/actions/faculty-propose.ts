@@ -97,6 +97,7 @@ export async function getFacultyProposalMetadataAction() {
 // ----------------------------------------------------
 export interface GenerateAiDraftParams {
   title: string;
+  subtitle?: string;
   category: string;
   theme?: string;
   keywords?: string[];
@@ -133,18 +134,18 @@ export async function generateAiDescriptionDraftAction(input: GenerateAiDraftPar
     );
     const latencyMs = Date.now() - start;
 
-    // Log telemetry
-    if (res.isAi) {
-      await prisma.aiCallLog.create({
+    // Log telemetry (both successes and failures)
+    await prisma.aiCallLog
+      .create({
         data: {
-          providerName: res.providerUsed,
+          providerName: res.isAi ? res.providerUsed : res.providerErrors?.join(' | ').slice(0, 120) || 'AI_OFFLINE_FALLBACK',
           userId: session.user.id,
           promptType: 'DRAFT',
           latencyMs,
-          success: true,
+          success: res.isAi,
         },
-      });
-    }
+      })
+      .catch(() => {});
 
     const wordCount = res.description.trim().split(/\s+/).length;
 
@@ -153,6 +154,7 @@ export async function generateAiDescriptionDraftAction(input: GenerateAiDraftPar
       providerUsed: res.providerUsed,
       wordCount,
       isAi: res.isAi,
+      providerErrors: res.providerErrors,
     };
   } catch (err) {
     return { error: `Failed to draft abstract: ${(err as Error).message}` };

@@ -105,9 +105,9 @@ export interface ProviderConfig {
 export const AI_PRESETS = [
   {
     name: 'Google Gemini',
-    description: 'Google AI Studio Free Tier (Gemini 1.5 Flash)',
+    description: 'Google AI Studio Free Tier (Gemini 2.5 Flash)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
   },
   {
     name: 'Groq',
@@ -163,10 +163,12 @@ export async function callAiProvider(
   provider: ProviderConfig,
   messages: Array<{ role: 'system' | 'user'; content: string }>,
   responseFormatJson = false,
-  timeoutMs = 12000
+  timeoutMs = 12000,
+  temperature = 0.2
 ): Promise<{ text: string; latencyMs: number }> {
   const apiKey = decryptApiKey(provider.encryptedKey);
   const startTime = Date.now();
+  let activeModel = provider.model;
 
   let lastError: Error | null = null;
   // Try up to 2 attempts (initial + 1 retry)
@@ -182,9 +184,9 @@ export async function callAiProvider(
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: provider.model,
+          model: activeModel,
           messages,
-          temperature: 0.2,
+          temperature,
           ...(responseFormatJson ? { response_format: { type: 'json_object' } } : {}),
         }),
         signal: controller.signal,
@@ -194,6 +196,14 @@ export async function callAiProvider(
 
       if (!response.ok) {
         const errText = await response.text();
+        // Auto-upgrade retired Gemini 1.5 model IDs on HTTP 404
+        if (
+          response.status === 404 &&
+          provider.baseUrl.includes('generativelanguage.googleapis.com') &&
+          activeModel.includes('1.5')
+        ) {
+          activeModel = 'gemini-2.5-flash';
+        }
         throw new Error(`AI Provider ${provider.name} returned HTTP ${response.status}: ${errText}`);
       }
 
@@ -265,6 +275,7 @@ export interface DraftSdgInput {
 
 export interface DraftDescriptionInput {
   title: string;
+  subtitle?: string;
   category: string;
   theme?: string;
   keywords?: string[];
@@ -291,30 +302,26 @@ export async function draftDescription(
   providers: ProviderConfig[],
   input: DraftDescriptionInput,
   preferredProviderName?: string
-): Promise<{ description: string; providerUsed: string; isAi: boolean }> {
+): Promise<{ description: string; providerUsed: string; isAi: boolean; providerErrors?: string[] }> {
   const ordered = orderProvidersByPreference(providers, preferredProviderName);
+  const hasSupervisorNotes = Boolean(input.existingAbstract && input.existingAbstract.trim().length > 0);
+  const variationToken = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
   const systemPrompt = `You are a distinguished university professor and academic mentor in Electronics and Communication Engineering (ECE).
 Your task is to draft or rewrite a compelling, professional, publication-grade project abstract (strictly at most 500 words) for an undergraduate capstone engineering project.
-The abstract is primarily read by prospective senior engineering students to understand the project's technical scope, mathematical depth, conflicting design challenges, toolchains, and deliverables so they can evaluate whether the project matches their interests and career goals.
+The abstract is primarily read by prospective senior engineering students to understand the project's technical scope, methodology, design trade-offs, toolchains, and deliverables.
 
-CRITICAL PEDAGOGICAL & ACCREDITATION WRITING RULES:
-1. NATURAL, PROFESSIONAL ENGINEERING PROSE (ZERO ACRONYMS):
-   - You MUST NOT write accreditation codes, bureaucratic abbreviations, or regulatory labels anywhere in the text.
-   - STRICTLY FORBIDDEN: Do NOT write "WP1", "WP2", "WP7", "WK1", "WK3", "WK5", "EA1", "EA2", "SDG", "UN SDG", "Target 7.2", "Level 2", "Washington Accord", or similar codes.
-   - The abstract must read like a polished IEEE, ACM, or Springer engineering paper abstract.
-2. INHERENT SUBSTANTIATION OF TECHNICAL CRITERIA:
-   The prose itself must naturally and inherently satisfy the underlying technical criteria provided:
-   - Depth of Engineering Knowledge: Ground the work in deep theoretical foundations, mathematical formulation, electromagnetics, signal processing algorithms, circuit physics, or communication theory appropriate for senior undergraduate engineers.
-   - Conflicting Engineering Trade-offs: Clearly articulate real-world design conflicts that students will resolve (e.g., bandwidth vs. insertion loss, computational latency vs. energy consumption, sensitivity vs. noise margin, silicon area vs. throughput, fabrication tolerances).
-   - Original Analytical Modeling: Explain the analytical modeling and mathematical formulation required to solve non-obvious engineering challenges (e.g., numerical electromagnetics, state-space control, finite-difference methods, neural architectural design).
-   - Toolchains & Modern Engineering Resources: Specifically name the simulation tools, CAD/EDA packages, compilers, hardware platforms, or test instruments students will use (e.g., CST Studio, HFSS, MATLAB/Simulink, Cadence Virtuoso, Vivado FPGA, STM32, LabVIEW, spectrum analyzers).
-   - Tangible Deliverables: Clearly state the verifiable hardware prototype, synthesized digital core, fabricated PCB, or characterized software pipeline delivered at the end of the project.
-   - Real-World & Sustainable Impact: Naturally describe how the technology advances sustainable infrastructure, clean energy efficiency, smart urban systems, healthcare monitoring, or industrial automation without citing SDG numbers or target labels.
-3. INTEGRATION OF SUPERVISOR'S DRAFT:
-   If existing notes or a preliminary draft are provided, preserve, synthesize, and elevate the supervisor's core engineering concepts into cohesive academic paragraphs.
-4. WORD LIMIT & STYLE:
-   Strictly at most 500 words. Return only the clean abstract prose (no preambles, no bulleted lists of codes, no "Abstract:" prefix).`;
+CRITICAL WRITING RULES (STRICTLY ENFORCED):
+1. HIGHEST PRIORITY — SUPERVISOR'S CORE OBJECTIVE & WRITE-UP:
+   - If the supervisor has provided notes or a preliminary write-up, their exact problem statement, domain, technology stack, and objective are the HIGHEST PRIORITY anchor.
+   - NEVER discard, contradict, or replace the supervisor's domain (e.g., if the supervisor specifies a software project, AI agent, data collection, travel/booking optimization, etc., write strictly about that exact system—do NOT invent unrelated hardware/RF/signal-integrity jargon).
+2. SPECIFIC STATEMENTS OF TAGGED ATTRIBUTES & SDGs (ZERO ACRONYM CODES):
+   - You MUST weave the concrete technical concepts from every tagged Engineering Attribute statement and every tagged Sustainable Development Goal target statement into the prose.
+   - STRICTLY FORBIDDEN: Do NOT write raw accreditation codes or labels such as "WP1", "WP2", "WP7", "WK1", "WK3", "WK5", "EA1", "EA2", "SDG", "UN SDG", "Target 7.2", "Level 2", or "Washington Accord" anywhere in the output.
+3. DISTINCT ITERATION VARIATION:
+   - Each generation request includes a unique variation token. Produce a fresh, distinct sentence structure, opening hook, and technical phrasing on every iteration while keeping the supervisor's main objective unaltered.
+4. WORD LIMIT & CLEAN OUTPUT:
+   - Strictly at most 500 words. Return only the clean abstract prose (no preambles, no bulleted lists of codes, no "Abstract:" prefix).`;
 
   const kwList = (input.keywords || input.tags || []).join(', ');
 
@@ -325,7 +332,9 @@ CRITICAL PEDAGOGICAL & ACCREDITATION WRITING RULES:
         const meta = ATTRIBUTE_METADATA[a.code];
         const title = a.title || meta?.title || a.code;
         const statement = a.statement || meta?.statement || '';
-        technicalCriteriaList.push(`- ${title} (Level ${a.level} depth): ${statement}${a.reason ? ` - Context: ${a.reason}` : ''}`);
+        technicalCriteriaList.push(
+          `- ${title} (Depth Level ${a.level}): "${statement}"${a.reason ? ` — Supervisor Context: ${a.reason}` : ''}`
+        );
       }
     }
   }
@@ -337,68 +346,84 @@ CRITICAL PEDAGOGICAL & ACCREDITATION WRITING RULES:
       const targetItem = sdgMeta?.targets.find((t) => t.id === s.target);
       const title = s.title || sdgMeta?.title || '';
       const desc = s.targetDescription || targetItem?.description || '';
-      sustainabilityGoalsList.push(`- Goal: ${title}. Specific impact to reflect: "${desc}"${s.reason ? ` (${s.reason})` : ''}`);
+      sustainabilityGoalsList.push(
+        `- ${title}: "${desc}"${s.reason ? ` — Context: ${s.reason}` : ''}`
+      );
     }
   }
 
-  const userPrompt = `Project Title: ${input.title}
-Category: ${input.category}
-Project Theme: ${input.theme || 'Electronics and Communication Engineering'}
-Technical Keywords: ${kwList || 'Signal processing, hardware prototyping, system design'}
+  const userPrompt = `=== PRIORITY 1 (HIGHEST): SUPERVISOR'S PROJECT SPECIFICATION ===
+Project Main Title: ${input.title}${input.subtitle ? `\nSpecific Project Subtitle: ${input.subtitle}` : ''}
+Project Category: ${input.category}
+Project Theme / Domain: ${input.theme || 'Engineering & Applied Computing'}
+Technical Keywords: ${kwList || 'System architecture, data modeling, validation'}
+Supervisor's Own Write-Up / Objective (MUST BE PRESERVED AS CORE):
+${hasSupervisorNotes ? input.existingAbstract!.trim() : 'No prior notes provided; derive the core technical objective directly from the Project Title, Subtitle, Category, and Theme above.'}
 
-Technical Dimensions to Inherently Satisfy in Prose (DO NOT cite codes or abbreviations in output):
-${technicalCriteriaList.length > 0 ? technicalCriteriaList.join('\n') : '- Deep analytical engineering knowledge with rigorous mathematical and experimental validation.'}
+=== PRIORITY 2: TAGGED ENGINEERING ATTRIBUTE STATEMENTS TO SYNTHESIZE ===
+${technicalCriteriaList.length > 0 ? technicalCriteriaList.join('\n') : '- Deep analytical engineering knowledge with rigorous modeling, design trade-off resolution, and experimental validation.'}
 
-Real-World / Sustainable Impact Dimensions to Inherently Reflect:
-${sustainabilityGoalsList.length > 0 ? sustainabilityGoalsList.join('\n') : '- Advances modern technological infrastructure and efficient engineering design.'}
+=== PRIORITY 3: TAGGED SUSTAINABLE DEVELOPMENT TARGET STATEMENTS TO REFLECT ===
+${sustainabilityGoalsList.length > 0 ? sustainabilityGoalsList.join('\n') : '- Practical technological innovation supporting resilient, efficient, and sustainable real-world impact.'}
 
-Faculty Supervisor Notes / Preliminary Draft:
-${input.existingAbstract && input.existingAbstract.trim().length > 0 ? input.existingAbstract.trim() : 'Generate a comprehensive, engaging capstone engineering abstract for prospective students based on the title, domain, and technical dimensions above.'}
-
-REMINDER: Write fluent academic prose. Do NOT include any acronyms such as WP, WK, EA, SDG, or target numbers in the abstract. Prospective students must understand the project through clear technical explanations.`;
+=== ITERATION DIRECTIVE ===
+Variation Token: ${variationToken}
+Write a fresh, distinct, publication-grade abstract (max 500 words) that keeps the Supervisor's core objective unaltered while naturally integrating the Priority 2 and Priority 3 statements in fluent academic prose with ZERO raw codes (no WP/WK/EA/SDG labels).`;
 
   const messages = [
     { role: 'system' as const, content: systemPrompt },
     { role: 'user' as const, content: userPrompt },
   ];
 
+  const providerErrors: string[] = [];
   for (const provider of ordered) {
     try {
-      const res = await callAiProvider(provider, messages, false);
+      const res = await callAiProvider(provider, messages, false, 15000, 0.85);
       const cleaned = cleanAccreditationJargon(res.text);
       const words = cleaned.split(/\s+/);
       const capped = words.length > 500 ? words.slice(0, 500).join(' ') : cleaned;
       return { description: capped, providerUsed: provider.name, isAi: true };
-    } catch {
+    } catch (err) {
+      providerErrors.push(`${provider.name}: ${(err as Error).message.slice(0, 140)}`);
       continue; // Failover to next provider in sequence
     }
   }
 
-  // Fallback: If all AI providers fail, generate a professional, natural engineering abstract without acronym codes
-  const kwString = kwList || 'system modeling, numerical simulation, and hardware-in-the-loop prototyping';
+  // Fallback: If all AI providers fail, incorporate the supervisor's write-up and adapt to Software vs Hardware
+  const kwString = kwList || 'system modeling, data pipelines, and empirical validation';
   const themeString =
-    input.theme && input.theme.trim().length > 0 ? input.theme.trim() : 'Electronics and Communication Engineering';
+    input.theme && input.theme.trim().length > 0 ? input.theme.trim() : 'Engineering and Applied Computing';
+  const isSoftware = input.category.toLowerCase() === 'software';
 
   const activeWps = (input.targetAttributes || []).filter((a) => a.level > 0 && a.code.startsWith('WP'));
   const activeWks = (input.targetAttributes || []).filter((a) => a.level > 0 && a.code.startsWith('WK'));
   const activeEas = (input.targetAttributes || []).filter((a) => a.level > 0 && a.code.startsWith('EA'));
   const activeSdgs = input.targetSdgs || [];
 
-  const tradeOffText = activeWps.some((a) => a.code === 'WP2' || a.code === 'WP3')
+  const supervisorLead = hasSupervisorNotes
+    ? `Building directly upon the supervisor's specification—"${input.existingAbstract!.trim()}"—this ${input.category.toLowerCase()} capstone project focuses on ${input.subtitle ? `${input.subtitle} under ` : ''}${input.title} within ${themeString}.`
+    : `This ${input.category.toLowerCase()} capstone engineering project investigates the design, modeling, and practical implementation of ${input.subtitle ? `${input.subtitle} under ` : ''}${input.title} within the domain of ${themeString}.`;
+
+  const tradeOffText = isSoftware
+    ? 'A central design challenge lies in resolving coupled trade-offs between algorithmic accuracy, query latency, data consistency, scalability, and resource efficiency.'
+    : activeWps.some((a) => a.code === 'WP2' || a.code === 'WP3')
     ? 'A central design challenge lies in resolving coupled trade-offs between system throughput, power dissipation, signal integrity, and physical implementation constraints.'
-    : 'A primary focus is balancing operational performance, computational efficiency, and robust physical constraints under non-ideal operating conditions.';
+    : 'A primary focus is balancing operational performance, computational efficiency, and robust system constraints under real-world operating conditions.';
 
   const methodologyText =
     activeWks.length > 0
-      ? `The investigation is grounded in rigorous mathematical modeling and specialized domain principles within ${themeString}. Students will formulate analytical models, carry out extensive numerical simulations using industry-standard computational packages, and optimize parametric designs.`
+      ? `The investigation is grounded in rigorous mathematical modeling and specialized domain principles within ${themeString}, utilizing ${kwString} to formulate, simulate, and optimize the proposed architecture.`
       : `The project develops comprehensive analytical models and system architectures within ${themeString}, validated through multi-parameter computational simulation and empirical data analysis.`;
 
-  const toolsAndExecutionText =
-    activeEas.length > 0
-      ? `System implementation and testing utilize specialized laboratory equipment, simulation toolchains, and hardware prototyping platforms to validate theoretical predictions against measured benchmarks.`
-      : `Design synthesis and verification are carried out across modern engineering toolchains, emphasizing rigorous bench validation and reproducibility.`;
+  const toolsAndExecutionText = isSoftware
+    ? 'System implementation and testing utilize modern software engineering toolchains, curated datasets, automated test harnesses, and cloud or containerized deployment environments to validate performance against measured benchmarks.'
+    : activeEas.length > 0
+    ? 'System implementation and testing utilize specialized laboratory equipment, simulation toolchains, and prototyping platforms to validate theoretical predictions against measured benchmarks.'
+    : 'Design synthesis and verification are carried out across modern engineering toolchains, emphasizing rigorous validation and reproducibility.';
 
-  const deliverablesText = `Project deliverables include a fully characterized hardware or software prototype, complete architectural design documentation, and verified experimental performance metrics meeting departmental engineering standards.`;
+  const deliverablesText = isSoftware
+    ? 'Project deliverables include a fully characterized software application or intelligent agent pipeline, complete architectural design documentation, and verified experimental performance benchmarks.'
+    : 'Project deliverables include a fully characterized hardware or software prototype, complete architectural design documentation, and verified experimental performance metrics meeting departmental engineering standards.';
 
   const sustainabilityText =
     activeSdgs.length > 0
@@ -410,17 +435,22 @@ REMINDER: Write fluent academic prose. Do NOT include any acronyms such as WP, W
             return `By addressing key challenges in ${meta?.title || 'modern engineering'}, this work contributes to practical technological upgrades supporting ${focus}.`;
           })
           .join(' ')
-      : `The project outcomes contribute directly to domestic technological innovation and resilient infrastructure development.`;
+      : 'The project outcomes contribute directly to practical technological innovation and resilient real-world systems.';
 
-  const fallback = `This capstone engineering project investigates the design, modeling, and practical implementation of ${input.title}. Situated within the domain of ${themeString}, the research addresses critical engineering demands in modern ${input.category.toLowerCase()} systems.
+  const fallback = `${supervisorLead}
 
-${tradeOffText} ${methodologyText} Key techniques explored throughout the project span ${kwString}, enabling students to translate abstract theoretical formulations into concrete system realizations.
+${tradeOffText} ${methodologyText}
 
 ${toolsAndExecutionText} ${deliverablesText}
 
 ${sustainabilityText}`;
 
-  return { description: fallback.trim(), providerUsed: 'Keyword Rule Engine (AI Offline)', isAi: false };
+  return {
+    description: fallback.trim(),
+    providerUsed: 'Keyword Rule Engine (AI Offline)',
+    isAi: false,
+    providerErrors,
+  };
 }
 
 // --------------------------------------------------------
