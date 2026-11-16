@@ -492,6 +492,11 @@ export default function FacultyTopicsSearchPage() {
                       {t.title}
                     </Link>
                   </h3>
+                  {(t as any).subtitle && (
+                    <p className="text-xs font-semibold text-indigo-700 mt-0.5">
+                      Subtitle: {(t as any).subtitle}
+                    </p>
+                  )}
 
                   {/* Project Theme Badge */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

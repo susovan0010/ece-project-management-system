@@ -82,6 +82,13 @@ export async function claimAndConfirmBankTopicAction(topicId: string) {
       return { error: PROJECT_INVITATION_CLOSED_MESSAGE };
     }
 
+    if (existing.source === 'SIH' && (!existing.subtitle || existing.subtitle.trim().length < 3 || !existing.proposerId)) {
+      return {
+        error:
+          'SIH projects require a supervisor-specific Subtitle and Abstract so multiple supervisors can propose distinct solutions. Please click "Customize / Edit" to enter your mandatory Subtitle and Abstract.',
+      };
+    }
+
     if (existing.proposerId && existing.proposerId !== user.id) {
       return {
         error: `This topic has already been selected and confirmed by ${

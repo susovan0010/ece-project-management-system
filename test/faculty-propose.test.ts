@@ -386,4 +386,86 @@ describe('Faculty Proposal: Project Editing, SIH Title Lock & Mandatory Abstract
     expect(res.error).toBeDefined();
     expect(res.error).toContain('Project Abstract is mandatory');
   });
+
+  it('requires a mandatory subtitle for SIH projects and allows multiple supervisors to adopt the same SIH topic', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-2', role: 'FACULTY', email: 'faculty2@heritageit.edu' },
+    } as any);
+
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue({
+      key: 'project_invitation_state',
+      value: { enabled: true },
+    } as any);
+    vi.spyOn(prisma.attribute, 'findMany').mockResolvedValue([
+      { id: 1, code: 'WP1', kind: 'WP', title: 'Depth', text: '...' },
+    ] as any);
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'sih-bank-1',
+      code: 'SIH26001',
+      title: 'Smart Border Surveillance & Intrusion Detection System',
+      source: 'SIH',
+      category: 'Both',
+      domain: 'Embedded & AI',
+      organization: 'Ministry of Defence',
+      proposerId: null,
+      status: 'DRAFT',
+      attributes: [],
+      sdgs: [],
+    } as any);
+
+    // 1. Missing subtitle -> rejected
+    const missingSub = await saveFacultyTopicProposalAction({
+      code: 'SIH26001',
+      title: 'Smart Border Surveillance & Intrusion Detection System',
+      subtitle: '',
+      category: 'Both',
+      description: 'Radar + thermal camera edge fusion on Jetson.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+    expect(missingSub.error).toContain('Subtitle is mandatory for SIH');
+
+    // 2. Valid subtitle -> forks a supervisor-owned SIH adoption (SIH26001-2) keeping SIH26001 intact
+    vi.spyOn(prisma.topic, 'findMany').mockResolvedValue([{ code: 'SIH26001-1' }] as any);
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({ preferredAiProvider: null } as any);
+    vi.spyOn(prisma.aiProvider, 'findMany').mockResolvedValue([]);
+
+    let createdPayload: any = null;
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => {
+      return cb({
+        topic: {
+          create: vi.fn().mockImplementation(async ({ data }: any) => {
+            createdPayload = data;
+            return { id: 'sih-fork-2', ...data };
+          }),
+        },
+        topicAttribute: { create: vi.fn().mockResolvedValue({}) },
+        topicSdg: { create: vi.fn().mockResolvedValue({}) },
+        descriptionVersion: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      });
+    });
+
+    const adopted = await saveFacultyTopicProposalAction({
+      code: 'SIH26001',
+      title: 'Smart Border Surveillance & Intrusion Detection System',
+      subtitle: 'LoRaWAN Acoustic & Thermal Edge Sensor Array',
+      category: 'Both',
+      description: 'Specific implementation using LoRaWAN nodes and thermal edge inference.',
+      tags: ['LoRaWAN'],
+      status: 'CONFIRMED',
+      attributes: [{ code: 'WP1', level: 2, reason: 'Depth', origin: 'FACULTY' }],
+      sdgs: [{ sdgId: 9, target: '9.5', reason: 'Innovation' }],
+    });
+
+    expect(adopted.success).toBe(true);
+    expect(adopted.code).toBe('SIH26001-2');
+    expect(adopted.forkedFrom).toBe('SIH26001');
+    expect(createdPayload.title).toBe('Smart Border Surveillance & Intrusion Detection System');
+    expect(createdPayload.subtitle).toBe('LoRaWAN Acoustic & Thermal Edge Sensor Array');
+    expect(createdPayload.source).toBe('SIH');
+    expect(createdPayload.proposerId).toBe('faculty-2');
+  });
 });

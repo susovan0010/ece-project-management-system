@@ -396,6 +396,11 @@ export default function MyTopicsClient() {
 
                     <div>
                       <h3 className="font-bold text-slate-900 text-sm">{t.title}</h3>
+                      {t.subtitle && (
+                        <p className="text-xs font-semibold text-indigo-700 mt-0.5">
+                          Subtitle: {t.subtitle}
+                        </p>
+                      )}
                       <p className="text-xs text-slate-500 mt-1 line-clamp-3 leading-relaxed">
                         {t.description || 'No description provided.'}
                       </p>

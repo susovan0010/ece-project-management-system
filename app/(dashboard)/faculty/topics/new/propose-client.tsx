@@ -50,6 +50,7 @@ export default function ProposeTopicClient() {
   // Form State
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
+  const [subtitle, setSubtitle] = useState('');
   const [category, setCategory] = useState<'Custom' | 'Hardware' | 'Software' | 'Both'>('Custom');
   const [domain, setDomain] = useState('');
   const [organization, setOrganization] = useState('');
@@ -175,6 +176,7 @@ export default function ProposeTopicClient() {
           const t = detailRes.topic;
           setCode(t.code);
           setTitle(t.title);
+          setSubtitle((t as any).subtitle || '');
           setTopicSource(t.source);
 
           // Rule: SIH projects have locked titles; UG Research projects have editable titles
@@ -536,6 +538,10 @@ export default function ProposeTopicClient() {
       setError('Project Title is mandatory and cannot be blank.');
       return;
     }
+    if (topicSource === 'SIH' && subtitle.trim().length < 3) {
+      setError('Project Subtitle is mandatory for SIH projects (at least 3 characters) to specify your proposed solution.');
+      return;
+    }
     if (!description.trim()) {
       setError('Project Abstract is a mandatory field and cannot be blank. Both Title and Abstract are mandatory.');
       return;
@@ -568,6 +574,7 @@ export default function ProposeTopicClient() {
     const res = await saveFacultyTopicProposalAction({
       code,
       title: title.trim(),
+      subtitle: topicSource === 'SIH' ? subtitle.trim() : undefined,
       category,
       domain: domain.trim() || undefined,
       organization: organization.trim() || undefined,
@@ -659,31 +666,49 @@ export default function ProposeTopicClient() {
                   </span>
                 ) : null}
               </div>
-              <input
-                type="text"
-                required
-                disabled={isTitleLocked}
-                readOnly={isTitleLocked}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Design of Quad-Band Sub-6 GHz MIMO Antenna for 5G V2X Telemetry"
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900 transition ${
-                  isTitleLocked
-                    ? 'bg-slate-100 border-slate-300 cursor-not-allowed text-slate-700 font-medium'
-                    : 'bg-white border-slate-300'
-                }`}
-              />
               {isTitleLocked ? (
-                <p className="text-xs text-amber-800 mt-1.5 flex items-center gap-1.5 font-medium bg-amber-50 p-2 rounded border border-amber-200">
-                  <span>🔒</span>
-                  <span>
-                    Smart India Hackathon (SIH) titles are locked to preserve official problem statement specifications. You can edit and refine the abstract below (mandatory).
-                  </span>
-                </p>
+                <div
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-800 font-semibold whitespace-pre-wrap break-words leading-relaxed"
+                  aria-readonly="true"
+                >
+                  {title}
+                </div>
+              ) : (
+                <textarea
+                  rows={3}
+                  required
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Design of Quad-Band Sub-6 GHz MIMO Antenna for 5G V2X Telemetry"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900 bg-white resize-y leading-relaxed"
+                />
+              )}
+              {isTitleLocked ? (
+                <div className="space-y-3 mt-2">
+                  <p className="text-xs text-amber-800 flex items-center gap-1.5 font-medium bg-amber-50 p-2 rounded border border-amber-200">
+                    <span>🔒</span>
+                    <span>
+                      Smart India Hackathon (SIH) main titles are locked to preserve official problem statement specifications. Multiple supervisors may adopt this SIH problem by providing a specific subtitle and abstract below.
+                    </span>
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Specific Project Subtitle <span className="text-red-500">* (Mandatory for SIH)</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={subtitle}
+                      onChange={(e) => setSubtitle(e.target.value)}
+                      placeholder="e.g. LoRaWAN Edge-AI Node Implementation for Low-Power Rural Telemetry"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-900 bg-white"
+                    />
+                  </div>
+                </div>
               ) : topicSource === 'UG_RESEARCH' ? (
                 <p className="text-xs text-emerald-800 mt-1 flex items-center gap-1 font-medium">
                   <span>✓</span>
-                  <span>UG Research Project: Previous title and abstract prefilled. Title and abstract are fully customizable by supervisor.</span>
+                  <span>UG Research Project: Main title and abstract are fully customizable by supervisor (no subtitle required).</span>
                 </p>
               ) : (
                 <p className="text-xs text-slate-500 mt-1 font-medium">

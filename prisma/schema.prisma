@@ -195,6 +195,7 @@ model Topic {
   id            String               @id @default(cuid())
   code          String               @unique // SIH26001, UGR-017, FAC-2026-031
   title         String
+  subtitle      String?              // Mandatory specific subtitle for SIH projects
   source        TopicSource
   category      String               // "Software" | "Hardware" | "Both"
   domain        String?

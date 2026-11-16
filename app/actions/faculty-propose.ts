@@ -303,6 +303,7 @@ const SaveProposalSchema = z.object({
     .min(1, 'Project Title is mandatory and cannot be blank.')
     .refine((s) => s.trim().length > 0, 'Project Title is mandatory and cannot be blank.')
     .refine((s) => s.trim().length >= 3, 'Project Title is mandatory and must be at least 3 characters.'),
+  subtitle: z.string().optional(),
   category: z.enum(['Custom', 'Hardware', 'Software', 'Both']),
   domain: z.string().optional(),
   organization: z.string().optional(),
@@ -348,6 +349,7 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
   const {
     code,
     title,
+    subtitle,
     category,
     domain,
     organization,
@@ -386,12 +388,16 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
       include: { attributes: true, sdgs: true },
     });
 
+    const isForkingSihAdoption =
+      Boolean(existing && existing.source === TopicSource.SIH && existing.proposerId !== userId);
+
     // Offering (confirming) a project requires Admin's "Invite Project from Supervisors" window.
-    // Saving as DRAFT into the Topic Bank is always allowed; edits to already-active topics are allowed.
+    // Saving as DRAFT into the Topic Bank is always allowed; edits to already-active own topics are allowed.
     if (status === 'CONFIRMED') {
-      const alreadyActive =
-        existing?.status === TopicStatus.CONFIRMED || existing?.status === TopicStatus.ALLOTTED;
-      if (!alreadyActive && !(await isProjectInvitationOpen())) {
+      const alreadyActiveOwnTopic =
+        !isForkingSihAdoption &&
+        (existing?.status === TopicStatus.CONFIRMED || existing?.status === TopicStatus.ALLOTTED);
+      if (!alreadyActiveOwnTopic && !(await isProjectInvitationOpen())) {
         return {
           error:
             "Cannot confirm topic: 'Invite Project from Supervisors' is currently closed by the Admin. You can save your project to the Topic Bank as a Draft.",
@@ -400,24 +406,33 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
     }
 
     if (existing) {
-      // 1. Authorization: Cannot edit if already claimed by another supervisor
-      if (existing.proposerId && existing.proposerId !== userId) {
+      // 1. Authorization: Non-SIH topics cannot be edited if already claimed by another supervisor.
+      // SIH topics allow multiple supervisors to adopt the same problem statement with their own subtitle & abstract.
+      if (existing.source !== TopicSource.SIH && existing.proposerId && existing.proposerId !== userId) {
         return { error: 'This project has already been claimed and confirmed by another supervisor.' };
       }
 
-      // 2. Source-Based Title Lock Check:
-      // If source is SIH, title CANNOT be edited.
+      // 2. Source-Based Title Lock & Subtitle Rules:
+      // - SIH: Main title CANNOT be edited; specific subtitle IS mandatory.
+      // - UG_RESEARCH / FACULTY: Main title CAN be edited; no subtitle is required.
       let finalTitle = title.trim();
+      let finalSubtitle: string | null = null;
       if (existing.source === TopicSource.SIH) {
         if (finalTitle !== existing.title.trim()) {
           return {
             error:
-              'Modification rejected: Titles of SIH projects are locked and cannot be edited. You can edit and refine the abstract.',
+              'Modification rejected: Titles of SIH projects are locked and cannot be edited. Provide a specific subtitle and edit the abstract instead.',
+          };
+        }
+        if (!subtitle || subtitle.trim().length < 3) {
+          return {
+            error:
+              'Project Subtitle is mandatory for SIH projects (at least 3 characters) to specify your proposed solution under the broad SIH title.',
           };
         }
         finalTitle = existing.title;
+        finalSubtitle = subtitle.trim();
       }
-      // If source is UG_RESEARCH (or FACULTY), title can be edited freely.
 
       // 3. Dynamic AI Re-Tagging of Attributes, SDGs, and POs based on the updated abstract
       let finalAttributes = attributes;
@@ -463,13 +478,107 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
         }
       }
 
-      // 4. Update existing topic in transaction
+      // 4. Either fork a new supervisor-owned SIH adoption OR update existing topic in transaction
+      if (isForkingSihAdoption) {
+        const baseCode = existing.code;
+        const siblingTopics = await prisma.topic.findMany({
+          where: { code: { startsWith: `${baseCode}-` } },
+          select: { code: true },
+        });
+        const usedCodes = new Set(siblingTopics.map((s) => s.code));
+        let suffix = 1;
+        while (usedCodes.has(`${baseCode}-${suffix}`)) {
+          suffix++;
+        }
+        const forkedCode = `${baseCode}-${suffix}`;
+
+        const forkedTopic = await prisma.$transaction(async (tx) => {
+          const created = await tx.topic.create({
+            data: {
+              code: forkedCode,
+              title: finalTitle,
+              subtitle: finalSubtitle,
+              source: TopicSource.SIH,
+              category,
+              domain: domain || existing.domain || null,
+              organization: organization || existing.organization || null,
+              description: description.trim(),
+              tags,
+              status: status === 'CONFIRMED' ? TopicStatus.CONFIRMED : TopicStatus.DRAFT,
+              proposerId: userId,
+            },
+          });
+
+          for (const attr of finalAttributes) {
+            const attributeId = attrCodeToId.get(attr.code);
+            if (attributeId) {
+              await tx.topicAttribute.create({
+                data: {
+                  topicId: created.id,
+                  attributeId,
+                  level: attr.level,
+                  reason: attr.reason || `Evaluated via ${attr.origin}`,
+                  origin: attr.origin as Origin,
+                },
+              });
+            }
+          }
+
+          for (const s of finalSdgs) {
+            await tx.topicSdg.create({
+              data: {
+                topicId: created.id,
+                sdgId: s.sdgId,
+                target: s.target || null,
+                reason: s.reason || null,
+              },
+            });
+          }
+
+          await tx.descriptionVersion.create({
+            data: {
+              topicId: created.id,
+              description: description.trim(),
+              wordCount: words.length,
+              createdById: userId,
+            },
+          });
+
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'ADOPT_SIH_TOPIC_PROPOSAL',
+              entity: 'Topic',
+              entityId: created.id,
+              payload: {
+                parentCode: existing.code,
+                code: forkedCode,
+                title: finalTitle,
+                subtitle: finalSubtitle,
+                source: TopicSource.SIH,
+                category,
+                status: created.status,
+              },
+            },
+          });
+
+          return created;
+        });
+
+        revalidatePath('/faculty/topics');
+        revalidatePath('/faculty/my-topics');
+        revalidatePath('/admin/topics');
+        revalidatePath('/admin/confirmed');
+        return { success: true, topicId: forkedTopic.id, code: forkedTopic.code, forkedFrom: existing.code };
+      }
+
       const topic = await prisma.$transaction(async (tx) => {
         const nextStatus = status === 'CONFIRMED' ? TopicStatus.CONFIRMED : existing.status;
         const updated = await tx.topic.update({
           where: { id: existing.id },
           data: {
             title: finalTitle,
+            subtitle: finalSubtitle,
             category,
             domain: domain || null,
             organization: organization || null,
