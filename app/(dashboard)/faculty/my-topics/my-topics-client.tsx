@@ -675,15 +675,27 @@ export default function MyTopicsClient() {
                         </Link>
                       </div>
                     ) : (
-                      /* Confirmed (ACTIVE / ALLOTTED) Actions: Edit, Request Delete to Admin, or Complete/Archive */
+                      /* Confirmed (ACTIVE / ALLOTTED) Actions: Edit (Admin permission required), Request Delete to Admin, or Complete/Archive */
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/faculty/topics/new?edit=${t.code}`}
-                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1"
-                          >
-                            Edit Project
-                          </Link>
+                          {t.editUnlockedByAdmin ? (
+                            <Link
+                              href={`/faculty/topics/new?edit=${t.code}`}
+                              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1"
+                              title="Admin unlocked editing for this confirmed project"
+                            >
+                              ✏️ Edit Project
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              className="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-xs font-semibold cursor-not-allowed inline-flex items-center gap-1"
+                              title="Confirmed projects cannot be edited without Admin permission. Ask Admin to enable 'Editable' under Admin → Confirmed Topics."
+                            >
+                              🔒 Edit Project (Locked)
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={processingId === t.id}

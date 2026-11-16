@@ -468,4 +468,85 @@ describe('Faculty Proposal: Project Editing, SIH Title Lock & Mandatory Abstract
     expect(createdPayload.source).toBe('SIH');
     expect(createdPayload.proposerId).toBe('faculty-2');
   });
+
+  it('blocks editing a confirmed own project unless Admin has unlocked editUnlockedByAdmin', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY', email: 'faculty1@heritageit.edu' },
+    } as any);
+
+    vi.spyOn(prisma.attribute, 'findMany').mockResolvedValue([
+      { id: 1, code: 'WP1', kind: 'WP', title: 'Depth', text: '...' },
+    ] as any);
+
+    // 1. Locked by default (editUnlockedByAdmin: false)
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'fac-topic-1',
+      code: 'FAC-2026-001',
+      title: 'Original Confirmed Title',
+      source: 'FACULTY',
+      status: 'CONFIRMED',
+      proposerId: 'faculty-1',
+      editUnlockedByAdmin: false,
+      attributes: [],
+      sdgs: [],
+    } as any);
+
+    const lockedRes = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-001',
+      title: 'Modified Title',
+      category: 'Hardware',
+      description: 'Updated abstract text.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(lockedRes.error).toContain('locked for editing');
+
+    // 2. Unlocked by Admin (editUnlockedByAdmin: true) -> succeeds
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'fac-topic-1',
+      code: 'FAC-2026-001',
+      title: 'Original Confirmed Title',
+      source: 'FACULTY',
+      status: 'CONFIRMED',
+      proposerId: 'faculty-1',
+      editUnlockedByAdmin: true,
+      attributes: [],
+      sdgs: [],
+    } as any);
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({ preferredAiProvider: null } as any);
+    vi.spyOn(prisma.aiProvider, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => {
+      return cb({
+        topic: {
+          update: vi.fn().mockResolvedValue({
+            id: 'fac-topic-1',
+            code: 'FAC-2026-001',
+            title: 'Modified Title',
+            status: 'CONFIRMED',
+          }),
+        },
+        topicAttribute: { deleteMany: vi.fn(), create: vi.fn() },
+        topicSdg: { deleteMany: vi.fn(), create: vi.fn() },
+        descriptionVersion: { create: vi.fn() },
+        auditLog: { create: vi.fn() },
+      });
+    });
+
+    const unlockedRes = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-001',
+      title: 'Modified Title',
+      category: 'Hardware',
+      description: 'Updated abstract text.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+
+    expect(unlockedRes.success).toBe(true);
+    expect(unlockedRes.updated).toBe(true);
+  });
 });

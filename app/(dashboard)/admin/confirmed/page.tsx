@@ -7,6 +7,7 @@ import {
   getAdminConfirmedTopicsAction,
   updateTopicStatusAction,
   exportStudentTopicsDataAction,
+  toggleTopicEditableByAdminAction,
 } from '@/app/actions/admin-confirmed';
 import {
   getArchivedProjectsAction,
@@ -24,16 +25,22 @@ interface TopicRow {
   id: string;
   code: string;
   title: string;
+  subtitle?: string | null;
   source: string;
   category: string;
   domain: string | null;
   organization: string | null;
   status: 'DRAFT' | 'CONFIRMED' | 'ALLOTTED' | 'ARCHIVED';
+  editUnlockedByAdmin?: boolean;
   description: string | null;
   proposer: { id: string; name: string; email: string } | null;
   sdgs: Array<{ sdgId: number; target: string | null; sdg: { title: string } }>;
   attributes: Array<{ level: number; attribute: { code: string; kind: string; title: string } }>;
-  groups: Array<{ id: string; number: number }>;
+  groups: Array<{
+    id: string;
+    number: number;
+    supervisor?: { id: string; name: string; email: string } | null;
+  }>;
 }
 
 export default function AdminConfirmedTopicsPage() {
@@ -42,6 +49,7 @@ export default function AdminConfirmedTopicsPage() {
   const [archivedProjects, setArchivedProjects] = useState<ArchivedProjectRecord[]>([]);
   const [deleteRequests, setDeleteRequests] = useState<TopicDeleteRequestRecord[]>([]);
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
+  const [togglingEditId, setTogglingEditId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -664,7 +672,7 @@ export default function AdminConfirmedTopicsPage() {
                       <th className="px-6 py-3">Topic Code</th>
                       <th className="px-6 py-3">Title &amp; Theme</th>
                       <th className="px-6 py-3">Type &amp; Source</th>
-                      <th className="px-6 py-3">Supervisor Attribution</th>
+                      <th className="px-6 py-3">Supervisor</th>
                       <th className="px-6 py-3">WK, WP, EA, PO &amp; SDG Tags</th>
                       <th className="px-6 py-3">Status</th>
                       <th className="px-6 py-3 text-right">Actions</th>
@@ -728,12 +736,19 @@ export default function AdminConfirmedTopicsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-800">
-                              {t.proposer?.name || 'Department Committee'}
-                            </div>
-                            {t.proposer?.email && (
-                              <div className="text-[11px] text-slate-400">{t.proposer.email}</div>
-                            )}
+                            {(() => {
+                              const sup = t.proposer || t.groups?.[0]?.supervisor || null;
+                              return (
+                                <>
+                                  <div className="font-semibold text-slate-800">
+                                    {sup?.name || 'Department Committee'}
+                                  </div>
+                                  {sup?.email && (
+                                    <div className="text-[11px] text-slate-400">{sup.email}</div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-1 max-w-xs">
@@ -792,7 +807,45 @@ export default function AdminConfirmedTopicsPage() {
                             </select>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {isActive && (
+                                <button
+                                  type="button"
+                                  disabled={togglingEditId === t.id}
+                                  onClick={async () => {
+                                    setTogglingEditId(t.id);
+                                    setError(null);
+                                    const res = await toggleTopicEditableByAdminAction(
+                                      t.id,
+                                      !t.editUnlockedByAdmin
+                                    );
+                                    if (res.error) {
+                                      setError(res.error);
+                                    } else {
+                                      setSuccessMsg(res.message || 'Edit permission updated.');
+                                      await loadTopics(page);
+                                      setTimeout(() => setSuccessMsg(null), 4000);
+                                    }
+                                    setTogglingEditId(null);
+                                  }}
+                                  className={`px-2.5 py-1 text-xs font-semibold rounded border transition disabled:opacity-50 ${
+                                    t.editUnlockedByAdmin
+                                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                                      : 'bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border-slate-300'
+                                  }`}
+                                  title={
+                                    t.editUnlockedByAdmin
+                                      ? 'Editing is currently ENABLED for the supervisor. Click to lock.'
+                                      : 'Confirmed project is locked. Click to allow supervisor to edit.'
+                                  }
+                                >
+                                  {togglingEditId === t.id
+                                    ? 'Updating...'
+                                    : t.editUnlockedByAdmin
+                                    ? '✓ Editable (ON)'
+                                    : '🔒 Editable'}
+                                </button>
+                              )}
                               {t.status !== 'ARCHIVED' && (
                                 <button
                                   type="button"

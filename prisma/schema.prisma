@@ -203,6 +203,7 @@ model Topic {
   description   String?              @db.Text
   tags          String[]
   status        TopicStatus          @default(DRAFT)
+  editUnlockedByAdmin Boolean        @default(false)
   proposerId    String?
   proposer      User?                @relation("proposer", fields: [proposerId], references: [id])
   createdAt     DateTime             @default(now())

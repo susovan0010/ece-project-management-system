@@ -79,6 +79,7 @@ export async function getAdminConfirmedTopicsAction(params?: {
         { title: { contains: q, mode: 'insensitive' } },
         { domain: { contains: q, mode: 'insensitive' } },
         { proposer: { name: { contains: q, mode: 'insensitive' } } },
+        { groups: { some: { supervisor: { name: { contains: q, mode: 'insensitive' } } } } },
       ];
     }
 
@@ -103,7 +104,11 @@ export async function getAdminConfirmedTopicsAction(params?: {
             include: { attribute: true },
           },
           groups: {
-            select: { id: true, number: true },
+            select: {
+              id: true,
+              number: true,
+              supervisor: { select: { id: true, name: true, email: true } },
+            },
           },
         },
       }),
@@ -237,5 +242,59 @@ export async function exportStudentTopicsDataAction() {
     return { rows: sanitizedRows, count: sanitizedRows.length };
   } catch (err) {
     return { error: `Failed to generate export data: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 3. Toggle Confirmed Topic Editable Permission by Admin
+// ----------------------------------------------------
+export async function toggleTopicEditableByAdminAction(topicId: string, editable: boolean) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can grant or revoke topic edit permission.' };
+  }
+
+  try {
+    const existing = await prisma.topic.findUnique({
+      where: { id: topicId },
+      select: { id: true, code: true, title: true, status: true },
+    });
+
+    if (!existing) {
+      return { error: 'Topic not found.' };
+    }
+
+    const updated = await prisma.topic.update({
+      where: { id: topicId },
+      data: { editUnlockedByAdmin: editable },
+      select: { id: true, code: true, editUnlockedByAdmin: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'TOGGLE_CONFIRMED_TOPIC_EDITABLE',
+        entity: 'Topic',
+        entityId: existing.id,
+        payload: {
+          code: existing.code,
+          editable,
+        },
+      },
+    });
+
+    revalidatePath('/admin/confirmed');
+    revalidatePath('/faculty/my-topics');
+    revalidatePath('/faculty/topics');
+
+    return {
+      success: true,
+      topic: updated,
+      message: editable
+        ? `Editing unlocked for ${existing.code}. The supervisor can now edit this confirmed project.`
+        : `Editing locked for ${existing.code}.`,
+    };
+  } catch (err) {
+    return { error: `Failed to update edit permission: ${(err as Error).message}` };
   }
 }

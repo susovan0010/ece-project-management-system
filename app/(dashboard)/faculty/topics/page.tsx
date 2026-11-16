@@ -620,12 +620,23 @@ export default function FacultyTopicsSearchPage() {
                         </>
                       )
                     )}
-                    <Link
-                      href={`/faculty/topics/new?edit=${t.code}`}
-                      className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition"
-                    >
-                      Customize / Edit
-                    </Link>
+                    {isActive && !(t as any).editUnlockedByAdmin ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="px-2.5 py-1 rounded bg-slate-100 text-slate-400 border border-slate-200 text-xs font-semibold cursor-not-allowed"
+                        title="Confirmed projects cannot be edited without Admin permission. Ask Admin to enable 'Editable' under Admin → Confirmed Topics."
+                      >
+                        🔒 Edit Locked
+                      </button>
+                    ) : (
+                      <Link
+                        href={`/faculty/topics/new?edit=${t.code}`}
+                        className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition"
+                      >
+                        Customize / Edit
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

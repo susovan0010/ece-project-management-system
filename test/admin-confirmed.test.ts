@@ -10,10 +10,15 @@ vi.mock('@/auth', () => ({
   auth: vi.fn(),
 }));
 
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import {
   getAdminConfirmedTopicsAction,
   exportStudentTopicsDataAction,
   updateTopicStatusAction,
+  toggleTopicEditableByAdminAction,
 } from '../app/actions/admin-confirmed';
 import { sanitizeCellForCsv } from '../lib/csv-sanitize';
 import { prisma } from '../lib/prisma';
@@ -111,5 +116,33 @@ describe('Admin Confirmed Topics: Export Attribution & Zero-PII Compliance', () 
     expect(keys).not.toContain('roll');
     expect(keys).not.toContain('phone');
     expect(keys).not.toContain('studentEmail');
+  });
+
+  it('allows Admin to toggle editUnlockedByAdmin for confirmed topics and rejects non-Admins', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-1', role: 'FACULTY' },
+    } as any);
+    const denied = await toggleTopicEditableByAdminAction('topic-1', true);
+    expect(denied.error).toContain('Unauthorized');
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'topic-1',
+      code: 'SIH26015',
+      title: 'Geospatial Project',
+      status: 'CONFIRMED',
+    } as any);
+    vi.spyOn(prisma.topic, 'update').mockResolvedValue({
+      id: 'topic-1',
+      code: 'SIH26015',
+      editUnlockedByAdmin: true,
+    } as any);
+    vi.spyOn(prisma.auditLog, 'create').mockResolvedValue({} as any);
+
+    const res = await toggleTopicEditableByAdminAction('topic-1', true);
+    expect(res.success).toBe(true);
+    expect(res.topic?.editUnlockedByAdmin).toBe(true);
   });
 });

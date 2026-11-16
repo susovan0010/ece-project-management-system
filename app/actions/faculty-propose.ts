@@ -412,6 +412,19 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
         return { error: 'This project has already been claimed and confirmed by another supervisor.' };
       }
 
+      // 1b. Confirmed Project Edit Lock:
+      // Once confirmed/allotted by a supervisor, the project cannot be edited without Admin's "Editable" permission.
+      const isEditingOwnConfirmed =
+        !isForkingSihAdoption &&
+        existing.proposerId === userId &&
+        (existing.status === TopicStatus.CONFIRMED || existing.status === TopicStatus.ALLOTTED);
+      if (isEditingOwnConfirmed && !(existing as any).editUnlockedByAdmin) {
+        return {
+          error:
+            'This confirmed project is locked for editing. Please ask the Project Committee Admin to enable "Editable" under Admin → Confirmed Topics.',
+        };
+      }
+
       // 2. Source-Based Title Lock & Subtitle Rules:
       // - SIH: Main title CANNOT be edited; specific subtitle IS mandatory.
       // - UG_RESEARCH / FACULTY: Main title CAN be edited; no subtitle is required.
