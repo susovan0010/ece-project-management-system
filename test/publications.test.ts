@@ -217,33 +217,71 @@ describe('Publications Utilities & Actions', () => {
     expect(parsed[1].pubType).toBe('CONFERENCE');
   });
 
-  it('fetches and normalizes works from OpenAlex API by ORCID', async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        results: [
-          {
-            id: 'https://openalex.org/W999',
-            title: 'Hardware-Aware Quantization on FPGA',
-            publication_year: 2026,
-            type: 'article',
-            doi: 'https://doi.org/10.1000/xyz',
-            cited_by_count: 7,
-            authorships: [
-              { author: { display_name: 'Susovan Mandal' } },
-              { author: { display_name: 'Sourav Roy' } },
+  it('fetches verified works from ORCID Public API and enriches authors via OpenAlex DOI lookup', async () => {
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('pub.orcid.org') && url.endsWith('/works')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            group: [
+              {
+                'work-summary': [
+                  {
+                    title: { title: { value: 'Hardware-Aware Quantization on FPGA' } },
+                    'publication-date': { year: { value: '2026' } },
+                    'journal-title': { value: 'IEEE Transactions on Circuits' },
+                    type: 'journal-article',
+                    'external-ids': {
+                      'external-id': [
+                        { 'external-id-type': 'doi', 'external-id-value': '10.1000/xyz' },
+                      ],
+                    },
+                  },
+                ],
+              },
             ],
-            primary_location: {
-              source: { display_name: 'IEEE Transactions on Circuits' },
+          }),
+        });
+      }
+      if (url.includes('pub.orcid.org') && url.endsWith('/person')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            name: {
+              'given-names': { value: 'Susovan' },
+              'family-name': { value: 'Mandal' },
             },
-          },
-        ],
-      }),
+          }),
+        });
+      }
+      if (url.includes('api.openalex.org/works')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            results: [
+              {
+                id: 'https://openalex.org/W999',
+                doi: 'https://doi.org/10.1000/xyz',
+                cited_by_count: 7,
+                authorships: [
+                  { author: { display_name: 'Susovan Mandal' } },
+                  { author: { display_name: 'Sourav Roy' } },
+                ],
+                primary_location: {
+                  source: { display_name: 'IEEE Transactions on Circuits' },
+                },
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
     });
     vi.stubGlobal('fetch', mockFetch);
 
     const res = await fetchOpenAlexWorks({ orcidId: '0000-0001-2345-6789' });
     expect(res.error).toBeUndefined();
+    expect(res.matchedAuthorName).toBe('Susovan Mandal');
     expect(res.works).toHaveLength(1);
     expect(res.works[0]).toMatchObject({
       title: 'Hardware-Aware Quantization on FPGA',
@@ -251,6 +289,7 @@ describe('Publications Utilities & Actions', () => {
       venue: 'IEEE Transactions on Circuits',
       year: 2026,
       pubType: 'JOURNAL',
+      doiUrl: 'https://doi.org/10.1000/xyz',
       citationsCount: 7,
       openAlexId: 'https://openalex.org/W999',
     });

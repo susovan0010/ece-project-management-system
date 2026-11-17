@@ -141,8 +141,149 @@ export function parseBibtexEntries(bibtex: string): ParsedPublicationCandidate[]
   return results;
 }
 
+function mapOrcidType(orcidType: string): ParsedPublicationCandidate['pubType'] {
+  const t = (orcidType || '').toLowerCase();
+  if (t.includes('conference') || t.includes('proceeding')) return 'CONFERENCE';
+  if (t.includes('book')) return 'BOOK_CHAPTER';
+  if (t.includes('patent')) return 'PATENT';
+  return 'JOURNAL';
+}
+
+function normalizeDoi(raw: string): string {
+  return (raw || '')
+    .trim()
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+    .toLowerCase();
+}
+
+async function fetchOrcidVerifiedWorks(
+  cleanOrcid: string
+): Promise<{ works: ParsedPublicationCandidate[]; matchedAuthorName?: string; error?: string }> {
+  if (!/^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/i.test(cleanOrcid)) {
+    return { works: [], error: 'Invalid ORCID iD format. Expected 0000-0000-0000-0000.' };
+  }
+
+  const headers = { Accept: 'application/json' };
+  const [worksRes, personRes] = await Promise.all([
+    fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(cleanOrcid)}/works`, { headers }),
+    fetch(`https://pub.orcid.org/v3.0/${encodeURIComponent(cleanOrcid)}/person`, { headers }).catch(
+      () => null
+    ),
+  ]);
+
+  if (!worksRes.ok) {
+    return {
+      works: [],
+      error: `ORCID lookup failed for ${cleanOrcid} (HTTP ${worksRes.status}). Please verify the ORCID iD.`,
+    };
+  }
+
+  let matchedAuthorName: string | undefined;
+  if (personRes && personRes.ok) {
+    try {
+      const personJson = await personRes.json();
+      const credit = personJson?.name?.['credit-name']?.value;
+      const given = personJson?.name?.['given-names']?.value || '';
+      const family = personJson?.name?.['family-name']?.value || '';
+      const full = `${given} ${family}`.trim();
+      matchedAuthorName = (credit || full || undefined)?.trim();
+    } catch {
+      // ignore person metadata parse issues
+    }
+  }
+
+  const worksJson = await worksRes.json();
+  const groups: any[] = Array.isArray(worksJson?.group) ? worksJson.group : [];
+
+  const orcidItems = groups
+    .map((g) => (Array.isArray(g?.['work-summary']) ? g['work-summary'][0] : null))
+    .filter((s) => s?.title?.title?.value);
+
+  if (orcidItems.length === 0) {
+    return { works: [], matchedAuthorName };
+  }
+
+  // Extract DOIs to enrich author lists & citation counts from OpenAlex in one batch call
+  const getDoiFromSummary = (s: any): string => {
+    const extIds: any[] = Array.isArray(s?.['external-ids']?.['external-id'])
+      ? s['external-ids']['external-id']
+      : [];
+    const doiObj = extIds.find((e) => String(e?.['external-id-type']).toLowerCase() === 'doi');
+    return doiObj?.['external-id-value'] ? normalizeDoi(String(doiObj['external-id-value'])) : '';
+  };
+
+  const uniqueDois = Array.from(
+    new Set(orcidItems.map(getDoiFromSummary).filter(Boolean))
+  ).slice(0, 50);
+
+  const openAlexByDoi = new Map<string, any>();
+  if (uniqueDois.length > 0) {
+    try {
+      const doiFilter = uniqueDois.map((d) => `https://doi.org/${d}`).join('|');
+      const oaRes = await fetch(
+        `https://api.openalex.org/works?filter=doi:${encodeURIComponent(doiFilter)}&per-page=100`,
+        {
+          headers: {
+            'User-Agent': 'HITK-ECE-Capstone-Portal/1.0 (mailto:ece.project.committee@heritageit.edu)',
+          },
+        }
+      );
+      if (oaRes.ok) {
+        const oaJson = await oaRes.json();
+        const oaWorks: any[] = Array.isArray(oaJson?.results) ? oaJson.results : [];
+        for (const w of oaWorks) {
+          if (w?.doi) {
+            openAlexByDoi.set(normalizeDoi(String(w.doi)), w);
+          }
+        }
+      }
+    } catch {
+      // OpenAlex enrichment is optional; ORCID works still succeed
+    }
+  }
+
+  const works: ParsedPublicationCandidate[] = orcidItems.map((s) => {
+    const doi = getDoiFromSummary(s);
+    const oa = doi ? openAlexByDoi.get(doi) : undefined;
+
+    const oaAuthors = Array.isArray(oa?.authorships)
+      ? oa.authorships
+          .map((a: any) => a?.author?.display_name)
+          .filter(Boolean)
+          .join(', ')
+      : '';
+
+    const title = String(s.title.title.value).trim();
+    const venue =
+      String(s?.['journal-title']?.value || '').trim() ||
+      oa?.primary_location?.source?.display_name ||
+      oa?.host_venue?.display_name ||
+      'ORCID Indexed';
+    const year =
+      Number(s?.['publication-date']?.year?.value) ||
+      Number(oa?.publication_year) ||
+      new Date().getFullYear();
+
+    return {
+      title,
+      authors: oaAuthors || matchedAuthorName || 'ORCID Author',
+      venue,
+      year,
+      pubType: mapOrcidType(String(s?.type || '')),
+      doiUrl: doi ? `https://doi.org/${doi}` : String(s?.url?.value || ''),
+      openAlexId: oa?.id || undefined,
+      citationsCount: Number(oa?.cited_by_count) || 0,
+      source: 'OPENALEX',
+    };
+  });
+
+  works.sort((a, b) => b.year - a.year);
+  return { works, matchedAuthorName };
+}
+
 /**
- * Queries the free OpenAlex API (api.openalex.org) by ORCID iD or Author Name.
+ * Queries the official ORCID Public API when an ORCID iD is provided (preventing
+ * homonym/same-name papers from other researchers), or OpenAlex by Author Name.
  * No API key required.
  */
 export async function fetchOpenAlexWorks(params: {
@@ -156,14 +297,14 @@ export async function fetchOpenAlexWorks(params: {
     .trim();
 
   try {
+    if (cleanOrcid) {
+      return await fetchOrcidVerifiedWorks(cleanOrcid);
+    }
+
     let worksUrl = '';
     let matchedAuthorName = params.authorName?.trim();
 
-    if (cleanOrcid) {
-      worksUrl = `https://api.openalex.org/works?filter=authorships.author.orcid:${encodeURIComponent(
-        cleanOrcid
-      )}&sort=publication_year:desc&per-page=100`;
-    } else if (params.authorName && params.authorName.trim().length >= 3) {
+    if (params.authorName && params.authorName.trim().length >= 3) {
       const searchQuery = params.institutionHint
         ? `${params.authorName.trim()} ${params.institutionHint.trim()}`
         : params.authorName.trim();

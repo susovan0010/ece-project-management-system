@@ -458,9 +458,25 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
         {candidates.length > 0 && (
           <div className="border-t border-slate-200 pt-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                Preview Candidates ({selectedIdx.size} of {candidates.length} selected)
-              </h3>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 cursor-pointer text-xs font-semibold text-slate-700 select-none">
+                  <input
+                    type="checkbox"
+                    checked={selectedIdx.size === candidates.length && candidates.length > 0}
+                    onChange={() => {
+                      if (selectedIdx.size === candidates.length) {
+                        setSelectedIdx(new Set());
+                      } else {
+                        setSelectedIdx(new Set(candidates.map((_, i) => i)));
+                      }
+                    }}
+                  />
+                  {selectedIdx.size === candidates.length ? 'Uncheck All' : 'Check All'}
+                </label>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Preview Candidates ({selectedIdx.size} of {candidates.length} selected)
+                </h3>
+              </div>
               <div className="flex items-center gap-2">
                 {groups.length > 0 && (
                   <select
