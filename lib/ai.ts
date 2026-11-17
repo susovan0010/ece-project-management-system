@@ -105,9 +105,9 @@ export interface ProviderConfig {
 export const AI_PRESETS = [
   {
     name: 'Google Gemini',
-    description: 'Google AI Studio Free Tier (Gemini 2.5 Flash)',
+    description: 'Google AI Studio Free Tier (Gemini 3.8 Flash)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
   },
   {
     name: 'Groq',
@@ -196,13 +196,13 @@ export async function callAiProvider(
 
       if (!response.ok) {
         const errText = await response.text();
-        // Auto-upgrade retired Gemini 1.5 model IDs on HTTP 404
+        // Auto-upgrade retired Gemini 1.5 / 2.5 model IDs on HTTP 404
         if (
           response.status === 404 &&
           provider.baseUrl.includes('generativelanguage.googleapis.com') &&
-          activeModel.includes('1.5')
+          (activeModel.includes('1.5') || activeModel.includes('2.5'))
         ) {
-          activeModel = 'gemini-2.5-flash';
+          activeModel = 'gemini-3.8-flash';
         }
         throw new Error(`AI Provider ${provider.name} returned HTTP ${response.status}: ${errText}`);
       }
