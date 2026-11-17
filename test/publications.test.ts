@@ -8,6 +8,8 @@ import {
   getMyPublicationsAction,
   createManualPublicationAction,
   deletePublicationAction,
+  importPublicationsBatchAction,
+  linkPublicationToProjectAction,
 } from '@/app/actions/publications';
 import {
   getAdminShowcasePublicationsAction,
@@ -27,6 +29,7 @@ const db = {
   users: [] as any[],
   students: [] as any[],
   groups: [] as any[],
+  topics: [] as any[],
   publications: [] as any[],
   showcaseProducts: [] as any[],
   industryCollaborations: [] as any[],
@@ -57,6 +60,17 @@ vi.mock('@/lib/prisma', () => ({
         return db.groups.find((g) => g.id === where.id) || null;
       }),
     },
+    topic: {
+      findMany: vi.fn().mockImplementation(({ where }: any) => {
+        if (where?.proposerId) {
+          return db.topics.filter((t) => t.proposerId === where.proposerId);
+        }
+        return db.topics;
+      }),
+      findUnique: vi.fn().mockImplementation(({ where }: any) => {
+        return db.topics.find((t) => t.id === where.id) || null;
+      }),
+    },
     publication: {
       findMany: vi.fn().mockImplementation(() => db.publications),
       findUnique: vi.fn().mockImplementation(({ where }: any) => {
@@ -70,6 +84,11 @@ vi.mock('@/lib/prisma', () => ({
         };
         db.publications.push(row);
         return row;
+      }),
+      update: vi.fn().mockImplementation(({ where, data }: any) => {
+        const idx = db.publications.findIndex((p) => p.id === where.id);
+        if (idx >= 0) db.publications[idx] = { ...db.publications[idx], ...data };
+        return db.publications[idx];
       }),
       delete: vi.fn().mockImplementation(({ where }: any) => {
         db.publications = db.publications.filter((p) => p.id !== where.id);
@@ -173,6 +192,26 @@ describe('Publications Utilities & Actions', () => {
         name: 'Sourav Roy',
         roll: '2351001',
         groups: [{ group: db.groups[0] }],
+      },
+    ];
+    db.topics = [
+      {
+        id: 'topic-1',
+        code: 'ECE-CAP-01',
+        title: 'Low-Power Edge AI ECG Sensor',
+        status: 'CONFIRMED',
+        batchId: '2023-2027',
+        proposerId: 'fac-1',
+        groups: [{ id: 'grp-1' }],
+      },
+      {
+        id: 'topic-2',
+        code: 'ECE-PROP-09',
+        title: 'Photonic Crystal Optical Filter',
+        status: 'PROPOSED',
+        batchId: '2024-2028',
+        proposerId: 'fac-1',
+        groups: [],
       },
     ];
     db.publications = [];
@@ -388,5 +427,54 @@ describe('Publications Utilities & Actions', () => {
       groupId: 'grp-1',
     });
     expect(indRes.success).toBe(true);
+  });
+
+  it('restricts duplicate publications and supports linking publications to proposed projects', async () => {
+    (auth as any).mockResolvedValue({ user: { id: 'fac-1', role: 'FACULTY' } });
+    const first = await createManualPublicationAction({
+      title: 'Photonic Band-Gap Optical Filter',
+      authors: 'Dr. Susovan Mandal',
+      venue: 'Optik',
+      year: 2026,
+      pubType: 'JOURNAL',
+      doiUrl: 'https://doi.org/10.1016/j.ijleo.2026.01',
+    });
+    expect(first.success).toBe(true);
+
+    // Duplicate by manual add (same DOI / title) is blocked
+    const dupManual = await createManualPublicationAction({
+      title: 'Photonic Band-Gap Optical Filter!',
+      authors: 'Dr. Susovan Mandal',
+      year: 2026,
+      pubType: 'JOURNAL',
+      doiUrl: '10.1016/j.ijleo.2026.01',
+    });
+    expect(dupManual.error).toContain('Duplicate publication restricted');
+
+    // Duplicate by batch import (even from another user) is skipped
+    (auth as any).mockResolvedValue({ user: { id: 'stu-1', role: 'STUDENT' } });
+    const dupImport = await importPublicationsBatchAction([
+      {
+        title: 'Photonic Band-Gap Optical Filter',
+        authors: 'Susovan Mandal, Sourav Roy',
+        venue: 'Optik',
+        year: 2026,
+        pubType: 'JOURNAL',
+        doiUrl: 'https://doi.org/10.1016/j.ijleo.2026.01',
+        citationsCount: 2,
+        source: 'OPENALEX',
+      },
+    ]);
+    expect(dupImport.importedCount).toBe(0);
+    expect(dupImport.skippedDuplicates).toBe(1);
+
+    // Faculty links publication to one of their proposed projects (even unallotted PROPOSED topic)
+    (auth as any).mockResolvedValue({ user: { id: 'fac-1', role: 'FACULTY' } });
+    const linkRes = await linkPublicationToProjectAction(first.publication!.id, 'topic-2');
+    expect(linkRes.success).toBe(true);
+
+    const facView = await getMyPublicationsAction();
+    expect(facView.proposedTopics).toHaveLength(2);
+    expect(facView.publications![0].linkedTopicCode).toBe('ECE-PROP-09');
   });
 });

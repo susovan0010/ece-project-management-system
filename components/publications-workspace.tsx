@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Link2 } from 'lucide-react';
 import {
   getMyPublicationsAction,
   saveProfileScholarLinksAction,
@@ -10,6 +10,7 @@ import {
   importPublicationsBatchAction,
   createManualPublicationAction,
   deletePublicationAction,
+  linkPublicationToProjectAction,
 } from '@/app/actions/publications';
 import type { ParsedPublicationCandidate } from '@/lib/publications';
 
@@ -27,7 +28,13 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
     groupId: string | null;
   } | null>(null);
   const [groups, setGroups] = useState<Array<{ id: string; number: number; batchId: string; topicCode: string }>>([]);
+  const [proposedTopics, setProposedTopics] = useState<
+    Array<{ id: string; code: string; title: string; status: string; batchId: string }>
+  >([]);
   const [publications, setPublications] = useState<any[]>([]);
+  const [linkingPubId, setLinkingPubId] = useState<string | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<string>('');
+  const [savingLink, setSavingLink] = useState(false);
 
   // Import Mode Tabs
   const [importTab, setImportTab] = useState<'OPENALEX' | 'BIBTEX' | 'MANUAL'>('OPENALEX');
@@ -72,6 +79,7 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
       setAuthorSearch((prev) => prev || res.profile!.name);
       setMAuthors((prev) => prev || res.profile!.name);
       setGroups(res.groups || []);
+      setProposedTopics(res.proposedTopics || []);
       setPublications(res.publications || []);
     }
     setLoading(false);
@@ -597,8 +605,18 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
                     <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-semibold">
                       {p.source}
                     </span>
+                    {p.linkedTopicCode && (
+                      <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold">
+                        Project: {p.linkedTopicCode}
+                      </span>
+                    )}
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm">{p.title}</h3>
+                  {p.linkedTopicTitle && (
+                    <p className="text-[11px] text-amber-800 font-medium">
+                      Linked Project: {p.linkedTopicCode} &mdash; {p.linkedTopicTitle}
+                    </p>
+                  )}
                   <p className="text-xs text-slate-700">
                     <span className="font-semibold text-slate-500">Authors:</span> {p.authors}
                   </p>
@@ -626,34 +644,112 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 self-start">
-                  {p.doiUrl && (
-                    <a
-                      href={
-                        p.doiUrl.startsWith('http')
-                          ? p.doiUrl
-                          : `https://doi.org/${p.doiUrl.replace(/^doi:\s*/i, '')}`
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold whitespace-nowrap"
-                    >
-                      Open Paper ↗
-                    </a>
-                  )}
-                  {p.canDelete && (
+                <div className="flex flex-col items-end gap-2 self-start">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {p.doiUrl && (
+                      <a
+                        href={
+                          p.doiUrl.startsWith('http')
+                            ? p.doiUrl
+                            : `https://doi.org/${p.doiUrl.replace(/^doi:\s*/i, '')}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold whitespace-nowrap"
+                      >
+                        Open Paper ↗
+                      </a>
+                    )}
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!window.confirm(`Remove "${p.title}"?`)) return;
-                        const res = await deletePublicationAction(p.id);
-                        if (res.error) setError(res.error);
-                        else await loadData();
+                      onClick={() => {
+                        if (linkingPubId === p.id) {
+                          setLinkingPubId(null);
+                        } else {
+                          setLinkingPubId(p.id);
+                          setSelectedTopicId(p.linkedTopicId || '');
+                        }
                       }}
-                      className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold whitespace-nowrap"
                     >
-                      Delete
+                      <Link2 className="w-3.5 h-3.5" />
+                      Link to Project
                     </button>
+                    {p.canDelete && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Remove "${p.title}"?`)) return;
+                          const res = await deletePublicationAction(p.id);
+                          if (res.error) setError(res.error);
+                          else await loadData();
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+
+                  {linkingPubId === p.id && (
+                    <div className="w-full sm:w-80 rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-2 text-xs">
+                      <div className="font-bold text-amber-900">
+                        Tag with Proposed Project
+                      </div>
+                      {proposedTopics.length === 0 ? (
+                        <p className="text-[11px] text-amber-800">
+                          No proposed projects found for your account yet.
+                        </p>
+                      ) : (
+                        <>
+                          <select
+                            value={selectedTopicId}
+                            onChange={(e) => setSelectedTopicId(e.target.value)}
+                            className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                          >
+                            <option value="">-- Unlink / No Project --</option>
+                            {proposedTopics.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.code} ({t.batchId || t.status}) — {t.title}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setLinkingPubId(null)}
+                              className="px-2.5 py-1 rounded border border-slate-300 bg-white text-slate-700 font-medium"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingLink}
+                              onClick={async () => {
+                                setSavingLink(true);
+                                setError(null);
+                                setSuccessMsg(null);
+                                const res = await linkPublicationToProjectAction(
+                                  p.id,
+                                  selectedTopicId || null
+                                );
+                                setSavingLink(false);
+                                if (res.error) {
+                                  setError(res.error);
+                                } else {
+                                  setSuccessMsg(res.message || 'Project tag updated.');
+                                  setLinkingPubId(null);
+                                  await loadData();
+                                }
+                              }}
+                              className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold disabled:opacity-50"
+                            >
+                              {savingLink ? 'Saving...' : 'Save Tag'}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

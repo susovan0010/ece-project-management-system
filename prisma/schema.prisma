@@ -629,11 +629,13 @@ model Publication {
   source         String   @default("MANUAL") // "OPENALEX" | "BIBTEX" | "MANUAL"
   ownerUserId    String
   groupId        String?
+  topicId        String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([ownerUserId])
   @@index([groupId])
+  @@index([topicId])
   @@index([year])
 }
 

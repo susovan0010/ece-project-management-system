@@ -44,7 +44,7 @@ export async function getAdminShowcasePublicationsAction() {
   }
 
   try {
-    const [publications, groups, facultyAndAdmins] = await Promise.all([
+    const [publications, groups, facultyAndAdmins, topics] = await Promise.all([
       prisma.publication.findMany({
         orderBy: [{ year: 'desc' }, { createdAt: 'desc' }],
       }),
@@ -64,13 +64,18 @@ export async function getAdminShowcasePublicationsAction() {
         where: { role: { in: ['FACULTY', 'ADMIN'] } },
         select: { id: true, name: true, email: true },
       }),
+      prisma.topic?.findMany
+        ? prisma.topic.findMany({ select: { id: true, code: true, title: true } })
+        : Promise.resolve([]),
     ]);
 
     const userById = new Map(facultyAndAdmins.map((u) => [u.id, u]));
     const groupById = new Map(groups.map((g) => [g.id, g]));
+    const topicById = new Map(topics.map((t) => [t.id, t]));
 
     const rows = publications.map((pub) => {
       let linkedGroup = pub.groupId ? groupById.get(pub.groupId) || null : null;
+      const taggedTopic = pub.topicId ? topicById.get(pub.topicId) || null : null;
 
       if (!linkedGroup) {
         // Auto-match group via owner or student co-author names
@@ -113,8 +118,8 @@ export async function getAdminShowcasePublicationsAction() {
         source: pub.source,
         groupNumber: linkedGroup?.number ?? null,
         batchId: linkedGroup?.batchId ?? null,
-        topicCode: linkedGroup?.topic?.code ?? null,
-        topicTitle: linkedGroup?.topic?.title ?? null,
+        topicCode: taggedTopic?.code ?? linkedGroup?.topic?.code ?? null,
+        topicTitle: taggedTopic?.title ?? linkedGroup?.topic?.title ?? null,
         supervisorName: matchedFaculty?.name || 'Unassigned / External',
         supervisorEmail: matchedFaculty?.email || null,
         studentMembers,

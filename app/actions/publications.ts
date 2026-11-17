@@ -24,7 +24,52 @@ const ManualPubSchema = z.object({
   pubType: z.enum(['JOURNAL', 'CONFERENCE', 'BOOK_CHAPTER', 'PATENT']).default('JOURNAL'),
   doiUrl: z.string().max(400).optional(),
   groupId: z.string().optional(),
+  topicId: z.string().optional(),
 });
+
+function normalizePubTitle(title: string): string {
+  return (title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDoiForDedup(doiUrl?: string | null): string {
+  const raw = (doiUrl || '').trim().toLowerCase();
+  if (!raw) return '';
+  const stripped = raw
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+    .replace(/^doi:\s*/i, '')
+    .trim();
+  // Only treat actual DOIs (10.xxxx/...) or full URLs cleanly
+  return stripped;
+}
+
+function findDuplicatePublication<
+  T extends { title: string; year: number; doiUrl?: string | null; openAlexId?: string | null }
+>(
+  existingList: T[],
+  candidate: { title: string; year: number; doiUrl?: string | null; openAlexId?: string | null }
+): T | undefined {
+  const candTitle = normalizePubTitle(candidate.title);
+  const candDoi = normalizeDoiForDedup(candidate.doiUrl);
+  const candOa = (candidate.openAlexId || '').trim().toLowerCase();
+
+  return existingList.find((e) => {
+    if (candTitle && normalizePubTitle(e.title) === candTitle && e.year === candidate.year) {
+      return true;
+    }
+    if (candDoi && candDoi.length >= 6 && normalizeDoiForDedup(e.doiUrl) === candDoi) {
+      return true;
+    }
+    if (candOa && e.openAlexId && e.openAlexId.trim().toLowerCase() === candOa) {
+      return true;
+    }
+    return false;
+  });
+}
 
 export async function getMyPublicationsAction() {
   const session = await auth();
@@ -63,7 +108,7 @@ export async function getMyPublicationsAction() {
               group: {
                 include: {
                   supervisor: { select: { id: true, name: true } },
-                  topic: { select: { code: true, title: true } },
+                  topic: { select: { id: true, code: true, title: true, status: true } },
                 },
               },
             },
@@ -76,6 +121,16 @@ export async function getMyPublicationsAction() {
       const supervisorId = activeMembership?.group?.supervisorId || null;
       const supervisorName = activeMembership?.group?.supervisor?.name || '';
       const studentName = student?.name || user.name;
+
+      const studentProposedTopics = (student?.groups || [])
+        .map((gm) => gm.group?.topic)
+        .filter((t): t is NonNullable<typeof t> => Boolean(t?.id));
+      const topicById = new Map(studentProposedTopics.map((t) => [t.id, t]));
+      const groupTopicByGroupId = new Map(
+        (student?.groups || [])
+          .filter((gm) => gm.group?.id && gm.group?.topic)
+          .map((gm) => [gm.group.id, gm.group.topic!])
+      );
 
       const visible = allPubs
         .map((p) => {
@@ -93,10 +148,18 @@ export async function getMyPublicationsAction() {
             ? 'Matched by Author Name'
             : `Supervisor (${supervisorName})`;
 
+          const taggedTopic =
+            (p.topicId ? topicById.get(p.topicId) : null) ||
+            (p.groupId ? groupTopicByGroupId.get(p.groupId) : null) ||
+            null;
+
           return {
             ...p,
             canDelete: isOwner,
             matchTag,
+            linkedTopicId: p.topicId || taggedTopic?.id || null,
+            linkedTopicCode: taggedTopic?.code || null,
+            linkedTopicTitle: taggedTopic?.title || null,
             createdAt: p.createdAt.toISOString(),
           };
         })
@@ -123,16 +186,39 @@ export async function getMyPublicationsAction() {
               },
             ]
           : [],
+        proposedTopics: studentProposedTopics.map((t) => ({
+          id: t.id,
+          code: t.code,
+          title: t.title,
+          status: t.status || 'CONFIRMED',
+          batchId: activeMembership?.group?.batchId || '',
+        })),
         publications: visible,
       };
     }
 
     // FACULTY or ADMIN (acting as supervisor)
-    const supervisedGroups = await prisma.group.findMany({
-      where: { supervisorId: userId, isArchived: false },
-      include: { topic: { select: { code: true, title: true } } },
-      orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
-    });
+    const [supervisedGroups, proposedTopics] = await Promise.all([
+      prisma.group.findMany({
+        where: { supervisorId: userId, isArchived: false },
+        include: { topic: { select: { id: true, code: true, title: true } } },
+        orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
+      }),
+      prisma.topic?.findMany
+        ? prisma.topic.findMany({
+            where: { proposerId: userId },
+            select: { id: true, code: true, title: true, status: true },
+            orderBy: [{ code: 'asc' }],
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const topicById = new Map(proposedTopics.map((t) => [t.id, t]));
+    const groupTopicByGroupId = new Map(
+      supervisedGroups
+        .filter((g) => g.topic)
+        .map((g) => [g.id, g.topic!])
+    );
 
     const visible = allPubs
       .map((p) => {
@@ -140,10 +226,18 @@ export async function getMyPublicationsAction() {
         const isMatchedAuthor = doesAuthorListMatchName(p.authors, user.name);
         if (!isOwner && !isMatchedAuthor) return null;
 
+        const taggedTopic =
+          (p.topicId ? topicById.get(p.topicId) : null) ||
+          (p.groupId ? groupTopicByGroupId.get(p.groupId) : null) ||
+          null;
+
         return {
           ...p,
           canDelete: isOwner,
           matchTag: isOwner ? 'Your Portfolio' : 'Matched by Author Name (Student/Co-Author)',
+          linkedTopicId: p.topicId || taggedTopic?.id || null,
+          linkedTopicCode: taggedTopic?.code || null,
+          linkedTopicTitle: taggedTopic?.title || null,
           createdAt: p.createdAt.toISOString(),
         };
       })
@@ -165,6 +259,13 @@ export async function getMyPublicationsAction() {
         number: g.number,
         batchId: g.batchId,
         topicCode: g.topic?.code || 'N/A',
+      })),
+      proposedTopics: proposedTopics.map((t) => ({
+        id: t.id,
+        code: t.code,
+        title: t.title,
+        status: t.status,
+        batchId: '',
       })),
       publications: visible,
     };
@@ -264,10 +365,10 @@ export async function importPublicationsBatchAction(
   const role = (session.user as { role?: string }).role || 'FACULTY';
 
   try {
-    const existing = await prisma.publication.findMany({
-      where: { ownerUserId: userId },
+    const allExisting = await prisma.publication.findMany({
       select: {
         id: true,
+        ownerUserId: true,
         title: true,
         year: true,
         authors: true,
@@ -278,49 +379,51 @@ export async function importPublicationsBatchAction(
         groupId: true,
       },
     });
-    const existingByKey = new Map(
-      existing.map((e) => [`${e.title.trim().toLowerCase()}::${e.year}`, e])
-    );
 
     let importedCount = 0;
     let updatedCount = 0;
+    let skippedDuplicates = 0;
     for (const item of items) {
-      const key = `${item.title.trim().toLowerCase()}::${item.year}`;
-      const existingRow = existingByKey.get(key);
+      const existingRow = findDuplicatePublication(allExisting, item);
       if (existingRow) {
-        // Enrich existing publication if newly fetched metadata has more complete details
-        const nextAuthors =
-          item.authors.trim().length > existingRow.authors.trim().length
-            ? item.authors.trim()
-            : existingRow.authors;
-        const nextVenue = existingRow.venue || item.venue?.trim() || null;
-        const nextDoiUrl = item.doiUrl?.trim() || existingRow.doiUrl || null;
-        const nextOpenAlexId = item.openAlexId || existingRow.openAlexId || null;
-        const nextCitations = Math.max(existingRow.citationsCount || 0, item.citationsCount || 0);
-        const nextGroupId = existingRow.groupId || (await resolveDefaultGroupId(userId, role, nextAuthors, groupId));
+        if (existingRow.ownerUserId === userId) {
+          // Enrich existing publication if newly fetched metadata has more complete details
+          const nextAuthors =
+            item.authors.trim().length > existingRow.authors.trim().length
+              ? item.authors.trim()
+              : existingRow.authors;
+          const nextVenue = existingRow.venue || item.venue?.trim() || null;
+          const nextDoiUrl = item.doiUrl?.trim() || existingRow.doiUrl || null;
+          const nextOpenAlexId = item.openAlexId || existingRow.openAlexId || null;
+          const nextCitations = Math.max(existingRow.citationsCount || 0, item.citationsCount || 0);
+          const nextGroupId =
+            existingRow.groupId || (await resolveDefaultGroupId(userId, role, nextAuthors, groupId));
 
-        const hasChanges =
-          nextAuthors !== existingRow.authors ||
-          nextVenue !== existingRow.venue ||
-          nextDoiUrl !== existingRow.doiUrl ||
-          nextOpenAlexId !== existingRow.openAlexId ||
-          nextCitations !== existingRow.citationsCount ||
-          nextGroupId !== existingRow.groupId;
+          const hasChanges =
+            nextAuthors !== existingRow.authors ||
+            nextVenue !== existingRow.venue ||
+            nextDoiUrl !== existingRow.doiUrl ||
+            nextOpenAlexId !== existingRow.openAlexId ||
+            nextCitations !== existingRow.citationsCount ||
+            nextGroupId !== existingRow.groupId;
 
-        if (hasChanges) {
-          await prisma.publication.update({
-            where: { id: existingRow.id },
-            data: {
-              authors: nextAuthors,
-              venue: nextVenue,
-              doiUrl: nextDoiUrl,
-              openAlexId: nextOpenAlexId,
-              citationsCount: nextCitations,
-              groupId: nextGroupId,
-            },
-          });
-          updatedCount++;
+          if (hasChanges) {
+            await prisma.publication.update({
+              where: { id: existingRow.id },
+              data: {
+                authors: nextAuthors,
+                venue: nextVenue,
+                doiUrl: nextDoiUrl,
+                openAlexId: nextOpenAlexId,
+                citationsCount: nextCitations,
+                groupId: nextGroupId,
+              },
+            });
+            updatedCount++;
+            continue;
+          }
         }
+        skippedDuplicates++;
         continue;
       }
 
@@ -341,7 +444,7 @@ export async function importPublicationsBatchAction(
           groupId: resolvedGroupId,
         },
       });
-      existingByKey.set(key, created);
+      allExisting.push(created);
       importedCount++;
     }
 
@@ -354,9 +457,10 @@ export async function importPublicationsBatchAction(
       success: true,
       importedCount,
       updatedCount,
+      skippedDuplicates,
       message: `Imported ${importedCount} new publication(s)${
-        updatedCount > 0 ? `, updated ${updatedCount} existing record(s) with complete metadata` : ''
-      }.`,
+        updatedCount > 0 ? `, updated ${updatedCount} existing record(s)` : ''
+      }${skippedDuplicates > 0 ? `, skipped ${skippedDuplicates} duplicate(s)` : ''}.`,
     };
   } catch (err) {
     return { error: `Failed to import publications: ${(err as Error).message}` };
@@ -376,6 +480,20 @@ export async function createManualPublicationAction(input: z.infer<typeof Manual
   const role = (session.user as { role?: string }).role || 'FACULTY';
 
   try {
+    const allExisting = await prisma.publication.findMany({
+      select: { id: true, title: true, year: true, doiUrl: true, openAlexId: true },
+    });
+    const dup = findDuplicatePublication(allExisting, {
+      title: parsed.data.title,
+      year: parsed.data.year,
+      doiUrl: parsed.data.doiUrl,
+    });
+    if (dup) {
+      return {
+        error: `Duplicate publication restricted: "${dup.title}" (${dup.year}) already exists in the portal.`,
+      };
+    }
+
     const resolvedGroupId = await resolveDefaultGroupId(
       userId,
       role,
@@ -394,12 +512,14 @@ export async function createManualPublicationAction(input: z.infer<typeof Manual
         source: 'MANUAL',
         ownerUserId: userId,
         groupId: resolvedGroupId,
+        topicId: parsed.data.topicId || null,
       },
     });
 
     revalidatePath('/faculty/publications');
     revalidatePath('/student/publications');
     revalidatePath('/admin/showcase/publications');
+    revalidatePath('/admin/showcase');
 
     return {
       success: true,
@@ -408,6 +528,75 @@ export async function createManualPublicationAction(input: z.infer<typeof Manual
     };
   } catch (err) {
     return { error: `Failed to save publication: ${(err as Error).message}` };
+  }
+}
+
+export async function linkPublicationToProjectAction(
+  publicationId: string,
+  topicId: string | null
+) {
+  const session = await auth();
+  if (!session?.user?.id) return { error: 'Unauthorized.' };
+
+  const userId = session.user.id;
+  const role = (session.user as { role?: string }).role || 'FACULTY';
+
+  try {
+    const pub = await prisma.publication.findUnique({ where: { id: publicationId } });
+    if (!pub) return { error: 'Publication not found.' };
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true },
+    });
+
+    const isOwner = pub.ownerUserId === userId;
+    const isCoAuthor = Boolean(user?.name && doesAuthorListMatchName(pub.authors, user.name));
+    if (!isOwner && !isCoAuthor && role !== 'ADMIN') {
+      return { error: 'Forbidden: You can only tag publications in your portfolio.' };
+    }
+
+    if (!topicId) {
+      await prisma.publication.update({
+        where: { id: publicationId },
+        data: { topicId: null },
+      });
+      revalidatePath('/faculty/publications');
+      revalidatePath('/student/publications');
+      revalidatePath('/admin/showcase');
+      revalidatePath('/admin/showcase/publications');
+      return { success: true, message: 'Removed project tag from publication.' };
+    }
+
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      include: { groups: { select: { id: true } } },
+    });
+    if (!topic) return { error: 'Selected project topic not found.' };
+
+    if (role === 'FACULTY' && topic.proposerId !== userId) {
+      return { error: 'Forbidden: You can only link to your own proposed projects.' };
+    }
+
+    await prisma.publication.update({
+      where: { id: publicationId },
+      data: {
+        topicId: topic.id,
+        groupId: pub.groupId || topic.groups?.[0]?.id || null,
+      },
+    });
+
+    revalidatePath('/faculty/publications');
+    revalidatePath('/student/publications');
+    revalidatePath('/admin/showcase');
+    revalidatePath('/admin/showcase/publications');
+
+    return {
+      success: true,
+      message: `Linked publication to project ${topic.code}.`,
+    };
+  } catch (err) {
+    return { error: `Failed to link project: ${(err as Error).message}` };
   }
 }
 
