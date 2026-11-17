@@ -6,6 +6,9 @@ import {
   getFacultySubmissionsAction,
   reviewFacultySubmissionAction,
   getAdminCompletedSubmissionsAction,
+  requestAdminSubmissionDeleteAction,
+  respondToAdminSubmissionDeleteAction,
+  adminDeleteSubmissionAction,
 } from '@/app/actions/submission';
 
 vi.mock('@/auth', () => ({
@@ -277,6 +280,48 @@ describe('Phase 75: Student Semester Submissions Workflow', () => {
     db.submissions[0].status = 'SUBMITTED';
     const stuDelOk = await deleteStudentSubmissionAction(db.submissions[0].id);
     expect(stuDelOk.success).toBe(true);
+    expect(db.submissions).toHaveLength(0);
+  });
+
+  it('allows Admin to delete a submission only after the group supervisor grants permission', async () => {
+    db.markWindows[0].isLocked = false;
+    await uploadStudentSubmissionAction({
+      semester: 6,
+      docType: 'PROGRESS_REPORT',
+      fileName: 'final_doc.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 2048,
+      dataUrlOrBase64: 'data:application/pdf;base64,QQ==',
+    });
+
+    const subId = db.submissions[0].id;
+    const { auth } = await import('@/auth');
+
+    // 1. Admin cannot delete without supervisor permission
+    (auth as any).mockResolvedValue({ user: { id: 'admin-1', role: 'ADMIN' } });
+    const blocked = await adminDeleteSubmissionAction(subId);
+    expect(blocked.error).toContain('Supervisor permission is required');
+
+    // 2. Admin requests deletion
+    const reqRes = await requestAdminSubmissionDeleteAction(subId);
+    expect(reqRes.success).toBe(true);
+    expect(db.submissions[0].adminDeleteRequested).toBe(true);
+
+    // 3. Wrong supervisor cannot approve
+    (auth as any).mockResolvedValue({ user: { id: 'fac-other', role: 'FACULTY' } });
+    const wrongSup = await respondToAdminSubmissionDeleteAction(subId, true);
+    expect(wrongSup.error).toContain('Forbidden');
+
+    // 4. Assigned supervisor approves
+    (auth as any).mockResolvedValue({ user: { id: 'fac-1', role: 'FACULTY' } });
+    const approveRes = await respondToAdminSubmissionDeleteAction(subId, true);
+    expect(approveRes.success).toBe(true);
+    expect(db.submissions[0].adminDeleteApproved).toBe(true);
+
+    // 5. Admin now deletes successfully
+    (auth as any).mockResolvedValue({ user: { id: 'admin-1', role: 'ADMIN' } });
+    const delRes = await adminDeleteSubmissionAction(subId);
+    expect(delRes.success).toBe(true);
     expect(db.submissions).toHaveLength(0);
   });
 });

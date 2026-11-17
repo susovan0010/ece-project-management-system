@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import {
   getFacultySubmissionsAction,
   reviewFacultySubmissionAction,
+  respondToAdminSubmissionDeleteAction,
 } from '@/app/actions/submission';
 
 export default function FacultySubmissionPage() {
@@ -208,6 +209,56 @@ export default function FacultySubmissionPage() {
                           ) : (
                             <p className="text-[11px] font-semibold text-emerald-700 text-right">
                               ✓ Accepted &amp; shared with Admin (link only)
+                            </p>
+                          )}
+
+                          {s.adminDeleteRequested && !s.adminDeleteApproved && (
+                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 space-y-2">
+                              <p className="text-[11px] font-bold text-amber-900">
+                                ⚠️ Admin requested permission to delete this submission.
+                              </p>
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={async () => {
+                                    setProcessingId(s.id);
+                                    const res = await respondToAdminSubmissionDeleteAction(s.id, false);
+                                    setProcessingId(null);
+                                    if (res.error) setError(res.error);
+                                    else {
+                                      setSuccessMsg(res.message || 'Declined.');
+                                      await loadData();
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded text-[11px] font-bold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                                >
+                                  ✕ Decline
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={async () => {
+                                    setProcessingId(s.id);
+                                    const res = await respondToAdminSubmissionDeleteAction(s.id, true);
+                                    setProcessingId(null);
+                                    if (res.error) setError(res.error);
+                                    else {
+                                      setSuccessMsg(res.message || 'Approved.');
+                                      await loadData();
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white"
+                                >
+                                  ✓ Approve Admin Delete
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {s.adminDeleteApproved && (
+                            <p className="text-[11px] font-semibold text-red-700 text-right">
+                              ✓ Admin deletion approved by supervisor
                             </p>
                           )}
                         </div>

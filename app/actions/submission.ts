@@ -545,6 +545,8 @@ export async function getAdminCompletedSubmissionsAction(params?: {
       hostedOn: s.hostedOn,
       supervisorComment: s.supervisorComment,
       uploadedByName: s.uploadedByName,
+      adminDeleteRequested: s.adminDeleteRequested,
+      adminDeleteApproved: s.adminDeleteApproved,
       completedAt: s.completedAt ? s.completedAt.toISOString() : s.updatedAt.toISOString(),
       groupId: s.groupId,
       batchId: s.group.batchId,
@@ -579,5 +581,163 @@ export async function getAdminCompletedSubmissionsAction(params?: {
     };
   } catch (err) {
     return { error: `Failed to load completed submissions: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 6. Admin Request Delete -> Supervisor Permission -> Admin Delete
+// ----------------------------------------------------
+export async function requestAdminSubmissionDeleteAction(submissionId: string) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can request submission deletion.' };
+  }
+
+  try {
+    const existing = await prisma.semesterSubmission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, fileName: true, adminDeleteApproved: true },
+    });
+    if (!existing) return { error: 'Submission not found.' };
+    if (existing.adminDeleteApproved) {
+      return { success: true, message: 'Supervisor has already approved deletion.' };
+    }
+
+    await prisma.semesterSubmission.update({
+      where: { id: submissionId },
+      data: { adminDeleteRequested: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'ADMIN_REQUESTED_SUBMISSION_DELETE',
+        entity: 'SemesterSubmission',
+        entityId: submissionId,
+        payload: { fileName: existing.fileName },
+      },
+    });
+
+    revalidatePath('/admin/submission');
+    revalidatePath('/faculty/submission');
+    return {
+      success: true,
+      message: `Deletion permission requested from the group's supervisor for "${existing.fileName}".`,
+    };
+  } catch (err) {
+    return { error: `Failed to request deletion: ${(err as Error).message}` };
+  }
+}
+
+export async function respondToAdminSubmissionDeleteAction(
+  submissionId: string,
+  approve: boolean
+) {
+  const session = await auth();
+  const role = (session?.user as { role?: string })?.role;
+  if (!session?.user?.id || (role !== 'FACULTY' && role !== 'ADMIN')) {
+    return { error: 'Unauthorized: Supervisor access required.' };
+  }
+
+  try {
+    const existing = await prisma.semesterSubmission.findUnique({
+      where: { id: submissionId },
+      include: { group: { select: { supervisorId: true } } },
+    });
+    if (!existing) return { error: 'Submission not found.' };
+    if (existing.group.supervisorId !== session.user.id) {
+      return { error: 'Forbidden: Only the group supervisor can grant or decline deletion permission.' };
+    }
+
+    await prisma.semesterSubmission.update({
+      where: { id: submissionId },
+      data: {
+        adminDeleteApproved: approve,
+        adminDeleteRequested: false,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'SUPERVISOR_RESPONDED_ADMIN_SUBMISSION_DELETE',
+        entity: 'SemesterSubmission',
+        entityId: submissionId,
+        payload: { approve, fileName: existing.fileName },
+      },
+    });
+
+    revalidatePath('/faculty/submission');
+    revalidatePath('/admin/submission');
+    return {
+      success: true,
+      message: approve
+        ? `Approved Admin deletion for "${existing.fileName}".`
+        : `Declined Admin deletion request for "${existing.fileName}".`,
+    };
+  } catch (err) {
+    return { error: `Failed to respond to deletion request: ${(err as Error).message}` };
+  }
+}
+
+export async function adminDeleteSubmissionAction(submissionId: string) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can delete approved submissions.' };
+  }
+
+  try {
+    const existing = await prisma.semesterSubmission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        fileName: true,
+        driveFileId: true,
+        adminDeleteApproved: true,
+        groupId: true,
+        semester: true,
+      },
+    });
+    if (!existing) return { error: 'Submission not found.' };
+
+    if (!existing.adminDeleteApproved) {
+      return {
+        error:
+          'Forbidden: Supervisor permission is required before Admin can delete this submission. Click "Request Delete" first.',
+      };
+    }
+
+    await prisma.semesterSubmission.delete({
+      where: { id: submissionId },
+    });
+
+    if (existing.driveFileId) {
+      await deleteFileFromGoogleDrive(existing.driveFileId);
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'ADMIN_SUBMISSION_DELETED',
+        entity: 'SemesterSubmission',
+        entityId: submissionId,
+        payload: {
+          groupId: existing.groupId,
+          semester: existing.semester,
+          fileName: existing.fileName,
+        },
+      },
+    });
+
+    revalidatePath('/admin/submission');
+    revalidatePath('/faculty/submission');
+    revalidatePath('/student/submission');
+
+    return {
+      success: true,
+      message: `Deleted "${existing.fileName}" with supervisor permission.`,
+    };
+  } catch (err) {
+    return { error: `Failed to delete submission: ${(err as Error).message}` };
   }
 }

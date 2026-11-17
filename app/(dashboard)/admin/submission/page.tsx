@@ -1,12 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getAdminCompletedSubmissionsAction } from '@/app/actions/submission';
+import {
+  getAdminCompletedSubmissionsAction,
+  requestAdminSubmissionDeleteAction,
+  adminDeleteSubmissionAction,
+} from '@/app/actions/submission';
 
 export default function AdminSubmissionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const [sortBy, setSortBy] = useState<'group' | 'supervisor' | 'extension'>('group');
   const [extensionFilter, setExtensionFilter] = useState<'ALL' | 'DOC' | 'PDF' | 'PPT'>('ALL');
@@ -115,6 +121,11 @@ export default function AdminSubmissionPage() {
           {error}
         </div>
       )}
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-semibold">
+          {successMsg}
+        </div>
+      )}
 
       {loading ? (
         <div className="p-12 text-center text-slate-400 text-sm">Loading completed submissions...</div>
@@ -175,6 +186,55 @@ export default function AdminSubmissionPage() {
                 <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
                   <span>Uploaded by {s.uploadedByName}</span>
                   <span>{(s.fileSize / 1024).toFixed(1)} KB</span>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  {s.adminDeleteApproved ? (
+                    <button
+                      type="button"
+                      disabled={busyId === s.id}
+                      onClick={async () => {
+                        if (!window.confirm(`Delete "${s.fileName}"? Supervisor has approved deletion.`)) return;
+                        setBusyId(s.id);
+                        setError(null);
+                        setSuccessMsg(null);
+                        const res = await adminDeleteSubmissionAction(s.id);
+                        setBusyId(null);
+                        if (res.error) setError(res.error);
+                        else {
+                          setSuccessMsg(res.message || 'Deleted.');
+                          await loadData();
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                    >
+                      {busyId === s.id ? 'Deleting...' : '🗑 Delete (Supervisor Approved)'}
+                    </button>
+                  ) : s.adminDeleteRequested ? (
+                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                      ⏳ Awaiting Supervisor Permission
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busyId === s.id}
+                      onClick={async () => {
+                        setBusyId(s.id);
+                        setError(null);
+                        setSuccessMsg(null);
+                        const res = await requestAdminSubmissionDeleteAction(s.id);
+                        setBusyId(null);
+                        if (res.error) setError(res.error);
+                        else {
+                          setSuccessMsg(res.message || 'Permission requested.');
+                          await loadData();
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 hover:border-red-200 disabled:opacity-50"
+                    >
+                      {busyId === s.id ? 'Requesting...' : 'Request Delete'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
