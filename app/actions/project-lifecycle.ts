@@ -89,11 +89,18 @@ export async function claimAndConfirmBankTopicAction(topicId: string) {
       };
     }
 
-    if (existing.proposerId && existing.proposerId !== user.id) {
+    if (
+      existing.source !== 'SIH' &&
+      ((existing.proposerId && existing.proposerId !== user.id) ||
+        ((existing.status === TopicStatus.CONFIRMED || existing.status === TopicStatus.ALLOTTED) &&
+          existing.proposerId !== user.id))
+    ) {
       return {
-        error: `This topic has already been selected and confirmed by ${
+        error: `This ${
+          existing.source === 'UG_RESEARCH' ? 'UG Research' : 'Faculty'
+        } project has already been confirmed by ${
           existing.proposer?.name || 'another supervisor'
-        }.`,
+        } and cannot be submitted by others.`,
       };
     }
 

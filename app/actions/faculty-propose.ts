@@ -408,10 +408,21 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
     }
 
     if (existing) {
-      // 1. Authorization: Non-SIH topics cannot be edited if already claimed by another supervisor.
+      // 1. Authorization: Non-SIH (UG Research & Faculty) topics once claimed or confirmed by one supervisor
+      // CANNOT be submitted, claimed, or edited by others.
       // SIH topics allow multiple supervisors to adopt the same problem statement with their own subtitle & abstract.
-      if (existing.source !== TopicSource.SIH && existing.proposerId && existing.proposerId !== userId) {
-        return { error: 'This project has already been claimed and confirmed by another supervisor.' };
+      if (existing.source !== TopicSource.SIH) {
+        const claimedByOther = Boolean(existing.proposerId && existing.proposerId !== userId);
+        const alreadyConfirmedByOther =
+          (existing.status === TopicStatus.CONFIRMED || existing.status === TopicStatus.ALLOTTED) &&
+          existing.proposerId !== userId;
+        if (claimedByOther || alreadyConfirmedByOther) {
+          return {
+            error: `This ${
+              existing.source === TopicSource.UG_RESEARCH ? 'UG Research' : 'Faculty'
+            } project has already been confirmed by another supervisor and cannot be submitted by others.`,
+          };
+        }
       }
 
       // 1b. Confirmed Project Edit Lock:

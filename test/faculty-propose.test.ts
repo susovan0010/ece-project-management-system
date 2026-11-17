@@ -549,4 +549,66 @@ describe('Faculty Proposal: Project Editing, SIH Title Lock & Mandatory Abstract
     expect(unlockedRes.success).toBe(true);
     expect(unlockedRes.updated).toBe(true);
   });
+
+  it('prevents another supervisor from submitting or claiming a UG Research or Faculty project already confirmed by one supervisor', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'faculty-2', role: 'FACULTY', email: 'faculty2@heritageit.edu' },
+    } as any);
+
+    vi.spyOn(prisma.attribute, 'findMany').mockResolvedValue([
+      { id: 1, code: 'WP1', kind: 'WP', title: 'Depth', text: '...' },
+    ] as any);
+    vi.spyOn(prisma.setting, 'findUnique').mockResolvedValue({
+      key: 'project_invitation_state',
+      value: { enabled: true },
+    } as any);
+
+    // 1. UG Research already confirmed by faculty-1 -> faculty-2 rejected
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'ugr-1',
+      code: 'UGR-005',
+      title: 'Confirmed UG Research Project',
+      source: 'UG_RESEARCH',
+      status: 'CONFIRMED',
+      proposerId: 'faculty-1',
+      attributes: [],
+      sdgs: [],
+    } as any);
+
+    const ugrRes = await saveFacultyTopicProposalAction({
+      code: 'UGR-005',
+      title: 'Confirmed UG Research Project',
+      category: 'Hardware',
+      description: 'Attempting to submit someone else confirmed UGR.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+    expect(ugrRes.error).toContain('UG Research project has already been confirmed by another supervisor');
+
+    // 2. Faculty project already confirmed by faculty-1 -> faculty-2 rejected
+    vi.spyOn(prisma.topic, 'findUnique').mockResolvedValue({
+      id: 'fac-1',
+      code: 'FAC-2026-010',
+      title: 'Confirmed Faculty Project',
+      source: 'FACULTY',
+      status: 'CONFIRMED',
+      proposerId: 'faculty-1',
+      attributes: [],
+      sdgs: [],
+    } as any);
+
+    const facRes = await saveFacultyTopicProposalAction({
+      code: 'FAC-2026-010',
+      title: 'Confirmed Faculty Project',
+      category: 'Software',
+      description: 'Attempting to submit someone else confirmed Faculty project.',
+      tags: [],
+      status: 'CONFIRMED',
+      attributes: [],
+      sdgs: [],
+    });
+    expect(facRes.error).toContain('Faculty project has already been confirmed by another supervisor');
+  });
 });
