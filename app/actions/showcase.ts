@@ -142,7 +142,7 @@ export async function getShowcaseProductsAction() {
   }
 
   try {
-    const [products, groups] = await Promise.all([
+    const [products, groups, topics] = await Promise.all([
       prisma.showcaseProduct.findMany({
         orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
       }),
@@ -154,11 +154,22 @@ export async function getShowcaseProductsAction() {
         },
         orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
       }),
+      prisma.topic?.findMany
+        ? prisma.topic.findMany({ select: { id: true, code: true, title: true } })
+        : Promise.resolve([]),
     ]);
+
+    const topicById = new Map(topics.map((t) => [t.id, t]));
 
     return {
       success: true,
-      products: products.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),
+      products: products.map((p) => ({
+        ...p,
+        taggedTopics: (p.taggedTopicIds || [])
+          .map((tid) => topicById.get(tid))
+          .filter((t): t is NonNullable<typeof t> => Boolean(t)),
+        createdAt: p.createdAt.toISOString(),
+      })),
       groups: groups.map((g) => ({
         id: g.id,
         number: g.number,
@@ -373,9 +384,222 @@ export async function deleteIndustryCollaborationAction(id: string) {
 
   try {
     await prisma.industryCollaboration.delete({ where: { id } });
+    revalidatePath('/admin/showcase');
+    revalidatePath('/admin/showcase/products');
     revalidatePath('/admin/showcase/industry');
     return { success: true, message: 'Industry collaboration removed.' };
   } catch (err) {
     return { error: `Failed to delete collaboration: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
+// 4. Faculty / Product: Supervisor "Product Ready" Tagging
+// ----------------------------------------------------
+const FacultyProductSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(2, 'Product name / title is required.'),
+  description: z.string().min(10, 'Please describe your product (at least 10 characters).'),
+  category: z.string().min(2).default('Hardware Prototype'),
+  trlLevel: z.number().int().min(1).max(9).default(7),
+  demoUrl: z.string().max(400).optional(),
+  patentStatus: z.string().max(150).optional(),
+  taggedTopicIds: z.array(z.string()).min(1, 'Select at least one project leading to this product.'),
+});
+
+export async function getFacultyProductsAction() {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized: Faculty access required.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const [products, myTopics, supervisedGroups] = await Promise.all([
+      prisma.showcaseProduct.findMany({
+        where: { ownerUserId: userId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.topic.findMany({
+        where: { proposerId: userId },
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          status: true,
+          groups: {
+            select: {
+              id: true,
+              number: true,
+              batchId: true,
+              members: { include: { student: { select: { name: true, roll: true } } } },
+            },
+          },
+        },
+        orderBy: { code: 'asc' },
+      }),
+      prisma.group.findMany({
+        where: { supervisorId: userId },
+        include: {
+          topic: { select: { id: true, code: true, title: true, status: true } },
+          members: { include: { student: { select: { name: true, roll: true } } } },
+        },
+        orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
+      }),
+    ]);
+
+    const projectMap = new Map<
+      string,
+      {
+        id: string;
+        code: string;
+        title: string;
+        status: string;
+        groupId: string | null;
+        batchId: string | null;
+        groupLabel: string | null;
+        studentNames: string;
+      }
+    >();
+
+    for (const t of myTopics) {
+      const firstGrp = t.groups?.[0];
+      projectMap.set(t.id, {
+        id: t.id,
+        code: t.code,
+        title: t.title,
+        status: t.status,
+        groupId: firstGrp?.id || null,
+        batchId: firstGrp?.batchId || null,
+        groupLabel: firstGrp ? `Group ${firstGrp.number} (${firstGrp.batchId})` : null,
+        studentNames: firstGrp
+          ? firstGrp.members.map((m) => `${m.student.name} (${m.student.roll})`).join(', ')
+          : '',
+      });
+    }
+
+    for (const g of supervisedGroups) {
+      if (g.topic && !projectMap.has(g.topic.id)) {
+        projectMap.set(g.topic.id, {
+          id: g.topic.id,
+          code: g.topic.code,
+          title: g.topic.title,
+          status: g.topic.status,
+          groupId: g.id,
+          batchId: g.batchId,
+          groupLabel: `Group ${g.number} (${g.batchId})`,
+          studentNames: g.members.map((m) => `${m.student.name} (${m.student.roll})`).join(', '),
+        });
+      }
+    }
+
+    const projects = Array.from(projectMap.values());
+
+    return {
+      success: true,
+      projects,
+      products: products.map((p) => ({
+        ...p,
+        taggedTopics: (p.taggedTopicIds || [])
+          .map((tid) => projectMap.get(tid))
+          .filter((t): t is NonNullable<typeof t> => Boolean(t)),
+        createdAt: p.createdAt.toISOString(),
+      })),
+    };
+  } catch (err) {
+    return { error: `Failed to load Faculty Products: ${(err as Error).message}` };
+  }
+}
+
+export async function saveFacultyProductAction(input: z.infer<typeof FacultyProductSchema>) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized: Faculty access required.' };
+  }
+
+  const parsed = FacultyProductSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message || 'Invalid product details.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+
+    const taggedGroups = await prisma.group.findMany({
+      where: { topicId: { in: parsed.data.taggedTopicIds } },
+      include: {
+        members: { include: { student: { select: { name: true, roll: true } } } },
+      },
+      orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
+    });
+
+    const primaryGroup = taggedGroups[0] || null;
+    const allStudentNames = Array.from(
+      new Set(
+        taggedGroups.flatMap((g) => g.members.map((m) => `${m.student.name} (${m.student.roll})`))
+      )
+    ).join(', ');
+
+    const data = {
+      title: parsed.data.title.trim(),
+      description: parsed.data.description.trim(),
+      category: parsed.data.category.trim(),
+      trlLevel: parsed.data.trlLevel,
+      demoUrl: parsed.data.demoUrl?.trim() || null,
+      patentStatus: parsed.data.patentStatus?.trim() || null,
+      groupId: primaryGroup?.id || null,
+      batchId: primaryGroup?.batchId || null,
+      supervisorName: user?.name || session.user.name || 'Supervisor',
+      studentNames: allStudentNames || null,
+      ownerUserId: userId,
+      taggedTopicIds: parsed.data.taggedTopicIds,
+      featured: true,
+    };
+
+    if (parsed.data.id) {
+      const existing = await prisma.showcaseProduct.findUnique({ where: { id: parsed.data.id } });
+      if (!existing || existing.ownerUserId !== userId) {
+        return { error: 'Forbidden: You can only edit your own Product Ready entries.' };
+      }
+      await prisma.showcaseProduct.update({ where: { id: parsed.data.id }, data });
+    } else {
+      await prisma.showcaseProduct.create({ data });
+    }
+
+    revalidatePath('/faculty/product');
+    revalidatePath('/admin/showcase');
+    revalidatePath('/admin/showcase/products');
+
+    return { success: true, message: 'Product Ready entry saved and synced to Admin Showcase.' };
+  } catch (err) {
+    return { error: `Failed to save Product Ready entry: ${(err as Error).message}` };
+  }
+}
+
+export async function deleteFacultyProductAction(id: string) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized: Faculty access required.' };
+  }
+
+  try {
+    const existing = await prisma.showcaseProduct.findUnique({ where: { id } });
+    if (!existing || existing.ownerUserId !== session.user.id) {
+      return { error: 'Forbidden: You can only delete your own Product Ready entries.' };
+    }
+
+    await prisma.showcaseProduct.delete({ where: { id } });
+    revalidatePath('/faculty/product');
+    revalidatePath('/admin/showcase');
+    revalidatePath('/admin/showcase/products');
+    return { success: true, message: 'Product Ready entry removed.' };
+  } catch (err) {
+    return { error: `Failed to delete Product Ready entry: ${(err as Error).message}` };
   }
 }

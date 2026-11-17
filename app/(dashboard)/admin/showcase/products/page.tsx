@@ -20,6 +20,7 @@ type ShowcaseProduct = {
   batchId: string | null;
   supervisorName: string | null;
   studentNames: string | null;
+  taggedTopics?: Array<{ id: string; code: string; title: string }>;
   featured: boolean;
   createdAt: string;
 };
@@ -394,6 +395,18 @@ export default function AdminShowcaseProductsPage() {
                 </div>
                 <h3 className="mt-2.5 text-lg font-bold text-slate-900">{p.title}</h3>
                 <p className="mt-1.5 text-sm text-slate-600">{p.description}</p>
+                {p.taggedTopics && p.taggedTopics.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {p.taggedTopics.map((t) => (
+                      <span
+                        key={t.id}
+                        className="inline-block rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800"
+                      >
+                        <span className="font-mono font-bold">{t.code}</span> &mdash; {t.title}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-600 space-y-1">
                 {p.supervisorName && (

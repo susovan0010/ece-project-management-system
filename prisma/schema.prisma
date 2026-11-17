@@ -654,9 +654,13 @@ model ShowcaseProduct {
   batchId        String?
   supervisorName String?
   studentNames   String?
+  ownerUserId    String?
+  taggedTopicIds String[]
   featured       Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([ownerUserId])
 }
 
 model IndustryCollaboration {
