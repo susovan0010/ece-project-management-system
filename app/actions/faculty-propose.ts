@@ -119,19 +119,11 @@ export async function generateAiDescriptionDraftAction(input: GenerateAiDraftPar
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { preferredAiProvider: true },
-    });
-
     const providers = await getActiveAiProviders();
 
     const start = Date.now();
-    const res = await draftDescription(
-      providers,
-      input,
-      user?.preferredAiProvider || undefined
-    );
+    // Always follow Admin-configured Priority 1 -> Priority 2 -> Priority 3 failover order
+    const res = await draftDescription(providers, input);
     const latencyMs = Date.now() - start;
 
     // Log telemetry (both successes and failures)

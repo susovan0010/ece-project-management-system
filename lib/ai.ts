@@ -203,6 +203,12 @@ export async function callAiProvider(
           (activeModel.includes('1.5') || activeModel.includes('2.5'))
         ) {
           activeModel = 'gemini-3.8-flash';
+          throw new Error(`AI Provider ${provider.name} returned HTTP ${response.status}: ${errText}`);
+        }
+        // Do not retry on quota/credit/auth exhaustion — immediately fail over to next priority provider
+        if ([401, 402, 403, 404, 429].includes(response.status)) {
+          lastError = new Error(`AI Provider ${provider.name} returned HTTP ${response.status}: ${errText}`);
+          break;
         }
         throw new Error(`AI Provider ${provider.name} returned HTTP ${response.status}: ${errText}`);
       }
