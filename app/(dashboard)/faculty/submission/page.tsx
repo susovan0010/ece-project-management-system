@@ -164,16 +164,14 @@ export default function FacultySubmissionPage() {
                             >
                               Open / Inspect in Drive ↗
                             </a>
-                            {s.driveDownloadLink && (
-                              <a
-                                href={s.driveDownloadLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
-                              >
-                                ⬇ Download
-                              </a>
-                            )}
+                            <a
+                              href={`/api/submissions/${s.id}/download`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                            >
+                              ⬇ Download
+                            </a>
                           </div>
                         </div>
 
