@@ -6,6 +6,7 @@ import { MarkStatus, Scope } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { RUBRICS } from '@/prisma/catalogue-data';
+import { doesAuthorListMatchName } from '@/lib/publications';
 
 async function ensureRubricsSynced() {
   try {
@@ -162,12 +163,68 @@ export async function getGroupMarksAction(groupId: string, rubricCode: string) {
       },
     });
 
+    // 5. Auto-prefill full marks under "publication" rubric criterion if the group has a publication
+    const pubCriteria = rubric.criteria.filter(
+      (c) => c.key === 'publication' || c.label.toLowerCase().includes('publication')
+    );
+    let hasGroupPublication = false;
+    const prefilledMarks: any[] = [...existingMarks];
+
+    if (pubCriteria.length > 0 && prisma.publication?.findMany) {
+      const allPubs = await prisma.publication.findMany({
+        select: { id: true, groupId: true, topicId: true, authors: true },
+      });
+      const memberNames = group.members.map((m) => m.student.name);
+      hasGroupPublication = allPubs.some(
+        (pub) =>
+          pub.groupId === group.id ||
+          (group.topicId && pub.topicId === group.topicId) ||
+          memberNames.some((name) => doesAuthorListMatchName(pub.authors, name))
+      );
+
+      if (hasGroupPublication) {
+        for (const pc of pubCriteria) {
+          const alreadyHasMarks = existingMarks.some((m) => m.criterionId === pc.id);
+          if (!alreadyHasMarks) {
+            if (pc.scope === Scope.GROUP) {
+              prefilledMarks.push({
+                id: `prefill-${pc.id}-GROUP`,
+                groupId,
+                criterionId: pc.id,
+                studentId: null,
+                examinerSlot: 1,
+                marks: pc.maxMarks,
+                status: MarkStatus.DRAFT,
+                enteredById: userId,
+                enteredBy: { name: 'Auto-Prefill (Publication)' },
+              });
+            } else {
+              for (const m of group.members) {
+                prefilledMarks.push({
+                  id: `prefill-${pc.id}-${m.student.id}`,
+                  groupId,
+                  criterionId: pc.id,
+                  studentId: m.student.id,
+                  examinerSlot: 1,
+                  marks: pc.maxMarks,
+                  status: MarkStatus.DRAFT,
+                  enteredById: userId,
+                  enteredBy: { name: 'Auto-Prefill (Publication)' },
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
     return {
       group,
       rubric,
       isLocked,
       deadline: windowSetting?.deadline || null,
-      existingMarks,
+      existingMarks: prefilledMarks,
+      hasGroupPublication,
       students: group.members.map((m) => m.student),
     };
   } catch (err) {
