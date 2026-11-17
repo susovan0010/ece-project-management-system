@@ -69,6 +69,8 @@ model User {
   domainExpertise String[] @default([])
   preferredAiProvider String? // "Google Gemini" | "Groq" | "ChatGPT"
   maxGroupLoad Int         @default(2)
+  orcidId      String?
+  scholarUrl   String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -608,4 +610,61 @@ model SemesterSubmission {
   @@unique([groupId, semester, docType])
   @@index([semester, status])
   @@index([groupId, semester])
+}
+
+// ------------------------------------------
+// 12. Publications & Department Showcase
+// ------------------------------------------
+
+model Publication {
+  id             String   @id @default(cuid())
+  title          String
+  authors        String   @db.Text // Comma-separated author names
+  venue          String?
+  year           Int
+  pubType        String   @default("JOURNAL") // "JOURNAL" | "CONFERENCE" | "BOOK_CHAPTER" | "PATENT"
+  doiUrl         String?
+  openAlexId     String?
+  citationsCount Int      @default(0)
+  source         String   @default("MANUAL") // "OPENALEX" | "BIBTEX" | "MANUAL"
+  ownerUserId    String
+  groupId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([ownerUserId])
+  @@index([groupId])
+  @@index([year])
+}
+
+model ShowcaseProduct {
+  id             String   @id @default(cuid())
+  title          String
+  description    String   @db.Text
+  category       String   @default("Hardware Prototype")
+  trlLevel       Int      @default(4) // 1..9
+  demoUrl        String?
+  patentStatus   String?
+  groupId        String?
+  batchId        String?
+  supervisorName String?
+  studentNames   String?
+  featured       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model IndustryCollaboration {
+  id                String   @id @default(cuid())
+  companyName       String
+  collaborationType String   @default("Sponsored Project") // "MoU" | "Sponsored Project" | "Consultancy" | "Internship" | "Joint Research"
+  projectTitle      String
+  description       String?  @db.Text
+  contactPerson     String?
+  status            String   @default("ACTIVE") // "ACTIVE" | "COMPLETED"
+  startYear         Int
+  groupId           String?
+  supervisorName    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
