@@ -398,32 +398,25 @@ export default function MarksClient() {
         </div>
       )}
 
-      {/* Examiner Slot Switcher for Rubric D (Internal Project Panel) */}
+      {/* Single Examiner Indicator for Rubric D (Internal Project Panel) */}
       {rubricCode === 'D' && (
         <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
           <div>
             <h4 className="font-bold text-xs text-indigo-950 uppercase tracking-wider">
-              Rubric D Panel Evaluation (Average Across Examiners)
+              Rubric D Panel Evaluation (Examiner)
             </h4>
             <p className="text-[11px] text-indigo-700 mt-0.5">
-              Enter individual examiner scores from Form 7-P. The engine automatically averages marks across slots.
+              Enter examiner scores from Form 7-P.
             </p>
           </div>
-          <div className="flex gap-1.5 bg-white p-1 rounded-lg border border-indigo-200 self-start sm:self-auto">
-            {[1, 2, 3].map((slot) => (
-              <button
-                key={slot}
-                type="button"
-                onClick={() => setActiveSlot(slot)}
-                className={`px-3 py-1 rounded text-xs font-bold transition ${
-                  activeSlot === slot
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-indigo-900 hover:bg-indigo-50'
-                }`}
-              >
-                Examiner {slot}
-              </button>
-            ))}
+          <div className="flex bg-white p-1 rounded-lg border border-indigo-200 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setActiveSlot(1)}
+              className="px-3 py-1 rounded text-xs font-bold bg-indigo-600 text-white shadow-sm"
+            >
+              Examiner
+            </button>
           </div>
         </div>
       )}
@@ -449,7 +442,7 @@ export default function MarksClient() {
                 {!selectedGroupId
                   ? 'Evaluation criteria & mark weights for this rubric. Select an allotted group above to enter and save marks.'
                   : rubricCode === 'D'
-                  ? `Entering scores for Examiner Slot ${activeSlot}. Final score will average all slots.`
+                  ? 'Entering scores for Examiner.'
                   : 'Enter marks per criterion. Group criteria apply to all members.'}
               </p>
             </div>
