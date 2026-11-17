@@ -71,38 +71,34 @@ export default function StudentSubmissionPage() {
     setError(null);
     setSuccessMsg(null);
 
-    if (file.size > 15 * 1024 * 1024) {
-      setError('File size must not exceed 15 MB.');
+    if (file.size > 4 * 1024 * 1024) {
+      setError('File size must not exceed 4 MB.');
       return;
     }
 
     setUploadingKey(`${selectedSem}-${docType}`);
 
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('Failed to read selected file.'));
-        reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append('semester', String(selectedSem));
+      formData.append('docType', docType);
+      formData.append('file', file);
+
+      const response = await fetch('/api/submissions/upload', {
+        method: 'POST',
+        body: formData,
       });
 
-      const res = await uploadStudentSubmissionAction({
-        semester: selectedSem,
-        docType,
-        fileName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        fileSize: file.size,
-        dataUrlOrBase64: dataUrl,
-      });
+      const res = await response.json().catch(() => ({ error: 'Unexpected server response.' }));
 
-      if (res.error) {
-        setError(res.error);
+      if (!response.ok || res.error) {
+        setError(res.error || 'Upload failed.');
       } else {
         setSuccessMsg(res.message || 'Uploaded successfully.');
         await loadData();
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(`Could not read or upload "${file.name}": ${(err as Error).message}. If the file is open in Word/PowerPoint, please close it and try again.`);
     } finally {
       setUploadingKey(null);
     }
@@ -205,13 +201,13 @@ export default function StudentSubmissionPage() {
                 docType: 'PROGRESS_REPORT' as DocTypeValue,
                 title: 'Progress Report',
                 accept: '.doc,.docx,.pdf',
-                formatsLabel: 'DOC, DOCX, or PDF (Max 15 MB)',
+                formatsLabel: 'DOC, DOCX, or PDF (Max 4 MB)',
               },
               {
                 docType: 'PRESENTATION' as DocTypeValue,
                 title: 'Presentation (PPT / PDF)',
                 accept: '.ppt,.pptx,.pdf',
-                formatsLabel: 'PPT, PPTX, or PDF (Max 15 MB)',
+                formatsLabel: 'PPT, PPTX, or PDF (Max 4 MB)',
               },
             ] as const
           ).map((slot) => {

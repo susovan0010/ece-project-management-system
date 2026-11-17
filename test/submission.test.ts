@@ -24,6 +24,7 @@ vi.mock('@/lib/google-drive', () => ({
     downloadUrl: 'https://drive.google.com/uc?export=download&id=drive-file-999',
     hostedOn: 'GOOGLE_DRIVE',
   }),
+  deleteFileFromGoogleDrive: vi.fn().mockResolvedValue(true),
 }));
 
 const db = {

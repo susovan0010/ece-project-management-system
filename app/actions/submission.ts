@@ -2,7 +2,7 @@
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { uploadFileToGoogleDrive } from '@/lib/google-drive';
+import { uploadFileToGoogleDrive, deleteFileFromGoogleDrive } from '@/lib/google-drive';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -186,6 +186,7 @@ export async function uploadStudentSubmissionAction(input: z.infer<typeof Upload
       folderName: 'ECE_Capstone_Submissions',
       subFolder: `Batch_${group.batchId}_Sem${semester}_Group_${group.number}`,
       uploaderEmail: session.user.email || undefined,
+      replaceFileId: existing?.driveFileId || undefined,
     });
 
     if (driveRes.error) {
@@ -317,6 +318,10 @@ export async function deleteStudentSubmissionAction(submissionId: string) {
     await prisma.semesterSubmission.delete({
       where: { id: submissionId },
     });
+
+    if (existing.driveFileId) {
+      await deleteFileFromGoogleDrive(existing.driveFileId);
+    }
 
     await prisma.auditLog.create({
       data: {

@@ -62,6 +62,18 @@ function doPost(e) {
     }
 
     var data = JSON.parse(e.postData.contents);
+
+    // Optional Delete Action (e.g. when a student deletes a submission before completion)
+    if (data.action === "delete" && data.fileId) {
+      try {
+        DriveApp.getFileById(data.fileId).setTrashed(true);
+      } catch (delErr) {}
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        deletedFileId: data.fileId
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var rootFolderName = data.folderName || "ECE_Capstone_Forum_Attachments";
 
     // 1. Get or Create Root Folder
@@ -73,6 +85,13 @@ function doPost(e) {
     if (data.subFolder) {
       var subFolders = rootFolder.getFoldersByName(data.subFolder);
       targetFolder = subFolders.hasNext() ? subFolders.next() : rootFolder.createFolder(data.subFolder);
+    }
+
+    // 2b. Replace older file in Drive if replaceFileId is provided (saves Drive storage space)
+    if (data.replaceFileId) {
+      try {
+        DriveApp.getFileById(data.replaceFileId).setTrashed(true);
+      } catch (repErr) {}
     }
 
     // 3. Decode Base64 and Create File in Google Drive
@@ -266,6 +285,7 @@ export async function uploadFileToGoogleDrive(params: {
   uploaderEmail?: string;
   folderName?: string;
   subFolder?: string;
+  replaceFileId?: string;
 }): Promise<GoogleDriveUploadResult> {
   const { fileName, size, mimeType, dataUrlOrBase64, batchId, groupNumber, uploaderEmail } = params;
 
@@ -308,6 +328,7 @@ export async function uploadFileToGoogleDrive(params: {
       folderName,
       subFolder,
       uploader: uploaderEmail || OFFICIAL_DRIVE_ACCOUNT,
+      ...(params.replaceFileId ? { replaceFileId: params.replaceFileId } : {}),
     });
 
     if (response.status === 403) {
@@ -359,5 +380,23 @@ export async function uploadFileToGoogleDrive(params: {
       hostedOn: 'LOCAL_FALLBACK',
       error: (error as Error).message,
     };
+  }
+}
+
+/**
+ * Best-effort move of a file to Google Drive Trash via the configured Apps Script webhook.
+ */
+export async function deleteFileFromGoogleDrive(fileId: string): Promise<boolean> {
+  if (!fileId) return false;
+  try {
+    const config = await getGoogleDriveConfig();
+    if (!config.isConfigured || !config.webhookUrl) return false;
+    await googleDriveHttpClient.postJsonToAppsScript(config.webhookUrl, {
+      action: 'delete',
+      fileId,
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
