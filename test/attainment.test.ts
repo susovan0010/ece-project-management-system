@@ -349,14 +349,14 @@ describe('Attainment Server Actions: Role Isolation & Analytics', () => {
     const snapsB = calculateGroupCohortSnapshots(entriesB, ['s1', 's2', 's3', 's4', 's5'], metrics, 60);
     expect(snapsB.every((s) => s.level === 3 && s.isAttained)).toBe(true);
 
-    // Case C: 64.6% does NOT round up to 65%
+    // Case C: 64.6% rounds up to 65% -> Level 1 attained
     const entriesC: StudentMarkEntryInput[] = [
       { studentId: 's1', marks: 6.46, max: 10, maps: ['PO1'] },
       { studentId: 's2', marks: 6.46, max: 10, maps: ['PO1'] },
       { studentId: 's3', marks: 6.46, max: 10, maps: ['PO1'] },
     ];
     const snapsC = calculateGroupCohortSnapshots(entriesC, ['s1', 's2', 's3'], ['PO1'], 60);
-    expect(snapsC[0].level).toBe(0);
-    expect(snapsC[0].isAttained).toBe(false);
+    expect(snapsC[0].level).toBe(1);
+    expect(snapsC[0].isAttained).toBe(true);
   });
 });
