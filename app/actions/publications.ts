@@ -266,19 +266,67 @@ export async function importPublicationsBatchAction(
   try {
     const existing = await prisma.publication.findMany({
       where: { ownerUserId: userId },
-      select: { title: true, year: true },
+      select: {
+        id: true,
+        title: true,
+        year: true,
+        authors: true,
+        venue: true,
+        doiUrl: true,
+        openAlexId: true,
+        citationsCount: true,
+        groupId: true,
+      },
     });
-    const existingKeys = new Set(existing.map((e) => `${e.title.trim().toLowerCase()}::${e.year}`));
+    const existingByKey = new Map(
+      existing.map((e) => [`${e.title.trim().toLowerCase()}::${e.year}`, e])
+    );
 
     let importedCount = 0;
+    let updatedCount = 0;
     for (const item of items) {
       const key = `${item.title.trim().toLowerCase()}::${item.year}`;
-      if (existingKeys.has(key)) continue;
-      existingKeys.add(key);
+      const existingRow = existingByKey.get(key);
+      if (existingRow) {
+        // Enrich existing publication if newly fetched metadata has more complete details
+        const nextAuthors =
+          item.authors.trim().length > existingRow.authors.trim().length
+            ? item.authors.trim()
+            : existingRow.authors;
+        const nextVenue = existingRow.venue || item.venue?.trim() || null;
+        const nextDoiUrl = item.doiUrl?.trim() || existingRow.doiUrl || null;
+        const nextOpenAlexId = item.openAlexId || existingRow.openAlexId || null;
+        const nextCitations = Math.max(existingRow.citationsCount || 0, item.citationsCount || 0);
+        const nextGroupId = existingRow.groupId || (await resolveDefaultGroupId(userId, role, nextAuthors, groupId));
+
+        const hasChanges =
+          nextAuthors !== existingRow.authors ||
+          nextVenue !== existingRow.venue ||
+          nextDoiUrl !== existingRow.doiUrl ||
+          nextOpenAlexId !== existingRow.openAlexId ||
+          nextCitations !== existingRow.citationsCount ||
+          nextGroupId !== existingRow.groupId;
+
+        if (hasChanges) {
+          await prisma.publication.update({
+            where: { id: existingRow.id },
+            data: {
+              authors: nextAuthors,
+              venue: nextVenue,
+              doiUrl: nextDoiUrl,
+              openAlexId: nextOpenAlexId,
+              citationsCount: nextCitations,
+              groupId: nextGroupId,
+            },
+          });
+          updatedCount++;
+        }
+        continue;
+      }
 
       const resolvedGroupId = await resolveDefaultGroupId(userId, role, item.authors, groupId);
 
-      await prisma.publication.create({
+      const created = await prisma.publication.create({
         data: {
           title: item.title.trim(),
           authors: item.authors.trim(),
@@ -293,17 +341,22 @@ export async function importPublicationsBatchAction(
           groupId: resolvedGroupId,
         },
       });
+      existingByKey.set(key, created);
       importedCount++;
     }
 
     revalidatePath('/faculty/publications');
     revalidatePath('/student/publications');
     revalidatePath('/admin/showcase/publications');
+    revalidatePath('/admin/showcase');
 
     return {
       success: true,
       importedCount,
-      message: `Imported ${importedCount} new publication(s) (${items.length - importedCount} duplicate(s) skipped).`,
+      updatedCount,
+      message: `Imported ${importedCount} new publication(s)${
+        updatedCount > 0 ? `, updated ${updatedCount} existing record(s) with complete metadata` : ''
+      }.`,
     };
   } catch (err) {
     return { error: `Failed to import publications: ${(err as Error).message}` };

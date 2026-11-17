@@ -594,12 +594,16 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
                     <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-semibold">
                       {p.matchTag}
                     </span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-semibold">
+                      {p.source}
+                    </span>
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm">{p.title}</h3>
-                  <p className="text-xs text-slate-600">{p.authors}</p>
+                  <p className="text-xs text-slate-700">
+                    <span className="font-semibold text-slate-500">Authors:</span> {p.authors}
+                  </p>
                   <p className="text-[11px] text-slate-500">
-                    {p.venue || 'Venue not specified'}
-                    {p.citationsCount > 0 ? ` • Citations: ${p.citationsCount}` : ''}
+                    {p.venue || 'Venue not specified'} • {p.year} • {p.pubType} • Citations: {p.citationsCount}
                   </p>
                   {p.doiUrl && (
                     <div className="pt-0.5">
