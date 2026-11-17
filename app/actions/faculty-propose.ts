@@ -324,9 +324,12 @@ const SaveProposalSchema = z.object({
   ),
   isEditingExisting: z.boolean().optional(),
   reEvaluateAiOnConfirm: z.boolean().optional(),
+  isIndustryCollaborative: z.boolean().optional().default(false),
+  industryName: z.string().optional(),
+  industryDetails: z.string().optional(),
 });
 
-export async function saveFacultyTopicProposalAction(formData: z.infer<typeof SaveProposalSchema>) {
+export async function saveFacultyTopicProposalAction(formData: z.input<typeof SaveProposalSchema>) {
   const session = await auth();
   // Strict Role Guard: Only FACULTY can propose topics
   if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
@@ -353,7 +356,29 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
     attributes,
     sdgs,
     reEvaluateAiOnConfirm,
+    isIndustryCollaborative,
+    industryName,
+    industryDetails,
   } = parsed.data;
+
+  if (isIndustryCollaborative) {
+    if (!industryName || industryName.trim().length < 2) {
+      return {
+        error: 'Industry / Partner Organization Name is required for an Industry Collaborative Project.',
+      };
+    }
+    if (!industryDetails || industryDetails.trim().length === 0) {
+      return {
+        error: 'Industry Collaboration Project Details are required when marked as Industry Collaborative.',
+      };
+    }
+    const indWords = industryDetails.trim().split(/\s+/);
+    if (indWords.length > 500) {
+      return {
+        error: `Industry Collaboration Project Details exceed the 500-word limit (${indWords.length} words).`,
+      };
+    }
+  }
 
   // Strict Mandatory Title Check
   if (!title || title.trim().length === 0) {
@@ -523,6 +548,9 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
               description: description.trim(),
               tags,
               status: status === 'CONFIRMED' ? TopicStatus.CONFIRMED : TopicStatus.DRAFT,
+              isIndustryCollaborative: Boolean(isIndustryCollaborative),
+              industryName: isIndustryCollaborative ? industryName?.trim() || null : null,
+              industryDetails: isIndustryCollaborative ? industryDetails?.trim() || null : null,
               proposerId: userId,
             },
           });
@@ -603,6 +631,9 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
             description: description.trim(),
             tags,
             status: nextStatus,
+            isIndustryCollaborative: Boolean(isIndustryCollaborative),
+            industryName: isIndustryCollaborative ? industryName?.trim() || null : null,
+            industryDetails: isIndustryCollaborative ? industryDetails?.trim() || null : null,
             proposerId: userId,
           },
         });
@@ -694,6 +725,9 @@ export async function saveFacultyTopicProposalAction(formData: z.infer<typeof Sa
           description: description.trim(),
           tags,
           status: status === 'CONFIRMED' ? TopicStatus.CONFIRMED : TopicStatus.DRAFT,
+          isIndustryCollaborative: Boolean(isIndustryCollaborative),
+          industryName: isIndustryCollaborative ? industryName?.trim() || null : null,
+          industryDetails: isIndustryCollaborative ? industryDetails?.trim() || null : null,
           proposerId: userId,
         },
       });

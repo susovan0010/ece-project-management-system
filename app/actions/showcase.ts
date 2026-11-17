@@ -238,7 +238,7 @@ export async function getIndustryCollaborationsAction() {
   }
 
   try {
-    const [collaborations, groups] = await Promise.all([
+    const [collaborations, groups, industryTopics] = await Promise.all([
       prisma.industryCollaboration.findMany({
         orderBy: [{ startYear: 'desc' }, { createdAt: 'desc' }],
       }),
@@ -249,11 +249,71 @@ export async function getIndustryCollaborationsAction() {
         },
         orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
       }),
+      prisma.topic?.findMany
+        ? prisma.topic.findMany({
+            where: { isIndustryCollaborative: true },
+            include: {
+              proposer: { select: { name: true, email: true } },
+              groups: {
+                select: {
+                  id: true,
+                  number: true,
+                  batchId: true,
+                  supervisor: { select: { name: true } },
+                },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
     ]);
+
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+
+    const manualRows = collaborations.map((c) => {
+      const linkedGroup = c.groupId ? groupById.get(c.groupId) : undefined;
+      return {
+        ...c,
+        topicCode: linkedGroup?.topic?.code || null,
+        assignedGroupName: linkedGroup
+          ? `Group ${linkedGroup.number} (${linkedGroup.batchId})`
+          : 'Unassigned',
+        isFromTopic: false,
+        createdAt: c.createdAt.toISOString(),
+      };
+    });
+
+    const topicRows = industryTopics.map((t) => {
+      const assignedGroupNames =
+        t.groups && t.groups.length > 0
+          ? t.groups.map((g) => `Group ${g.number} (${g.batchId})`).join(', ')
+          : 'Not Assigned Yet';
+      const supName =
+        t.proposer?.name ||
+        t.groups?.[0]?.supervisor?.name ||
+        'Supervisor';
+
+      return {
+        id: `topic-${t.id}`,
+        companyName: t.industryName || t.organization || 'Industry Partner',
+        collaborationType: 'Industry Collaborative Project',
+        projectTitle: t.title,
+        topicCode: t.code,
+        assignedGroupName: assignedGroupNames,
+        description: t.industryDetails || t.description || null,
+        contactPerson: t.proposer?.email || null,
+        status: t.status === 'ALLOTTED' || t.status === 'CONFIRMED' ? 'ACTIVE' : t.status,
+        startYear: t.createdAt.getFullYear(),
+        groupId: t.groups?.[0]?.id || null,
+        supervisorName: supName,
+        isFromTopic: true,
+        createdAt: t.createdAt.toISOString(),
+      };
+    });
 
     return {
       success: true,
-      collaborations: collaborations.map((c) => ({ ...c, createdAt: c.createdAt.toISOString() })),
+      collaborations: [...topicRows, ...manualRows],
       groups: groups.map((g) => ({
         id: g.id,
         number: g.number,

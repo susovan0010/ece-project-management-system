@@ -57,6 +57,9 @@ export default function ProposeTopicClient() {
   const [description, setDescription] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [isIndustryCollaborative, setIsIndustryCollaborative] = useState(false);
+  const [industryName, setIndustryName] = useState('');
+  const [industryDetails, setIndustryDetails] = useState('');
 
   // AI draft state
   const [aiDrafting, setAiDrafting] = useState(false);
@@ -191,6 +194,9 @@ export default function ProposeTopicClient() {
           setOrganization(t.organization || '');
           setDescription(t.description || '');
           setTags(t.tags || []);
+          setIsIndustryCollaborative(Boolean((t as any).isIndustryCollaborative));
+          setIndustryName((t as any).industryName || '');
+          setIndustryDetails((t as any).industryDetails || '');
           setAutoRewriteEnabled(false);
 
           // Populate mapped attributes
@@ -591,6 +597,9 @@ export default function ProposeTopicClient() {
       sdgs: formattedSdgs,
       isEditingExisting: Boolean(editCode),
       reEvaluateAiOnConfirm: status === 'CONFIRMED',
+      isIndustryCollaborative,
+      industryName: isIndustryCollaborative ? industryName.trim() : undefined,
+      industryDetails: isIndustryCollaborative ? industryDetails.trim() : undefined,
     });
 
     setSubmitting(false);
@@ -808,6 +817,64 @@ export default function ProposeTopicClient() {
                   </span>
                 ))}
               </div>
+            </div>
+
+            {/* Industry Collaborative Project Checkbox & Conditional Details */}
+            <div className="pt-3 border-t border-slate-100 space-y-3">
+              <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isIndustryCollaborative}
+                  onChange={(e) => setIsIndustryCollaborative(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-xs font-bold text-slate-800">
+                  This is an Industry Collaborative Project
+                </span>
+              </label>
+
+              {isIndustryCollaborative && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      Industry / Partner Organization Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={industryName}
+                      onChange={(e) => setIndustryName(e.target.value)}
+                      placeholder="e.g. Texas Instruments, TCS Research, Tata Elxsi"
+                      className="w-full px-3 py-2 text-xs border border-amber-300 bg-white rounded-lg focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-800">
+                        Industry Collaboration Project Details <span className="text-red-500">*</span>
+                      </label>
+                      {(() => {
+                        const wc = industryDetails.trim() ? industryDetails.trim().split(/\s+/).length : 0;
+                        return (
+                          <span
+                            className={`text-[11px] font-semibold ${
+                              wc > 500 ? 'text-red-600' : 'text-slate-500'
+                            }`}
+                          >
+                            {wc} / 500 words
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <textarea
+                      rows={4}
+                      value={industryDetails}
+                      onChange={(e) => setIndustryDetails(e.target.value)}
+                      placeholder="Describe the industry problem statement, joint deliverables, hardware/software support, and mentorship details (max 500 words)..."
+                      className="w-full px-3 py-2 text-xs border border-amber-300 bg-white rounded-lg focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

@@ -6,19 +6,22 @@ import {
   getIndustryCollaborationsAction,
   saveIndustryCollaborationAction,
 } from "@/app/actions/showcase";
-import { Building2, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, FileText, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 
 type IndustryCollaboration = {
   id: string;
   companyName: string;
   collaborationType: string;
   projectTitle: string;
+  topicCode?: string | null;
+  assignedGroupName?: string;
   description: string | null;
   contactPerson: string | null;
   status: string;
   startYear: number;
   groupId: string | null;
   supervisorName: string | null;
+  isFromTopic?: boolean;
   createdAt: string;
 };
 
@@ -53,6 +56,7 @@ export default function AdminShowcaseIndustryPage() {
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [detailModalItem, setDetailModalItem] = useState<IndustryCollaboration | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -339,8 +343,8 @@ export default function AdminShowcaseIndustryPage() {
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
               <tr>
-                <th className="px-4 py-3">Company &amp; Type</th>
-                <th className="px-4 py-3">Project / Scope</th>
+                <th className="px-4 py-3">Industry Name &amp; Type</th>
+                <th className="px-4 py-3">Project Name &amp; Assigned Group</th>
                 <th className="px-4 py-3">Supervisor &amp; Contact</th>
                 <th className="px-4 py-3">Year / Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -351,25 +355,38 @@ export default function AdminShowcaseIndustryPage() {
                 <tr key={c.id} className="hover:bg-slate-50/70 align-top">
                   <td className="px-4 py-3.5">
                     <div className="font-semibold text-slate-900">{c.companyName}</div>
-                    <span className="mt-1 inline-block rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                    <span
+                      className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-medium ${
+                        c.isFromTopic
+                          ? "bg-amber-50 text-amber-800 border border-amber-200"
+                          : "bg-indigo-50 text-indigo-700"
+                      }`}
+                    >
                       {c.collaborationType}
                     </span>
                   </td>
                   <td className="px-4 py-3.5 max-w-md">
-                    <div className="font-medium text-slate-900">{c.projectTitle}</div>
-                    {c.description && (
-                      <div className="mt-1 text-xs text-slate-600">{c.description}</div>
+                    {c.topicCode && (
+                      <div className="text-xs font-mono font-semibold text-indigo-700">
+                        {c.topicCode}
+                      </div>
                     )}
+                    <div className="font-medium text-slate-900">{c.projectTitle}</div>
+                    <div className="mt-1">
+                      <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        Group: {c.assignedGroupName || "Unassigned"}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3.5 text-xs text-slate-700 space-y-1">
                     {c.supervisorName && (
                       <div>
-                        <span className="font-semibold">Faculty:</span> {c.supervisorName}
+                        <span className="font-semibold">Supervisor:</span> {c.supervisorName}
                       </div>
                     )}
                     {c.contactPerson && (
                       <div>
-                        <span className="font-semibold">Partner:</span> {c.contactPerson}
+                        <span className="font-semibold">Contact:</span> {c.contactPerson}
                       </div>
                     )}
                   </td>
@@ -377,7 +394,7 @@ export default function AdminShowcaseIndustryPage() {
                     <div className="font-semibold text-slate-900">{c.startYear}</div>
                     <span
                       className={`mt-1 inline-block rounded px-2 py-0.5 text-[11px] font-semibold ${
-                        c.status === "ACTIVE"
+                        c.status === "ACTIVE" || c.status === "CONFIRMED"
                           ? "bg-emerald-50 text-emerald-700"
                           : "bg-slate-100 text-slate-700"
                       }`}
@@ -386,25 +403,85 @@ export default function AdminShowcaseIndustryPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => startEdit(c)}
-                      className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                      title="Edit"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(c.id)}
-                      className="ml-1 rounded p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setDetailModalItem(c)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Project Details
+                      </button>
+                      {!c.isFromTopic && (
+                        <>
+                          <button
+                            onClick={() => startEdit(c)}
+                            className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(c.id)}
+                            className="rounded p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {detailModalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
+              <div>
+                <span className="inline-block rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  {detailModalItem.companyName}
+                </span>
+                <h3 className="mt-1.5 text-lg font-bold text-slate-900">
+                  {detailModalItem.projectTitle}
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {detailModalItem.topicCode ? `${detailModalItem.topicCode} • ` : ""}
+                  Assigned Group: {detailModalItem.assignedGroupName || "Unassigned"} • Supervisor:{" "}
+                  {detailModalItem.supervisorName || "N/A"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailModalItem(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Industry Collaboration Project Details
+              </div>
+              <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-800">
+                {detailModalItem.description || "No additional project details provided."}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-6 py-3">
+              <button
+                type="button"
+                onClick={() => setDetailModalItem(null)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -206,6 +206,9 @@ model Topic {
   tags          String[]
   status        TopicStatus          @default(DRAFT)
   editUnlockedByAdmin Boolean        @default(false)
+  isIndustryCollaborative Boolean    @default(false)
+  industryName  String?
+  industryDetails String?            @db.Text
   proposerId    String?
   proposer      User?                @relation("proposer", fields: [proposerId], references: [id])
   createdAt     DateTime             @default(now())
