@@ -305,6 +305,7 @@ model Group {
   markEntries  MarkEntry[]
   snapshots    AttainmentSnapshot[]
   forumPosts   ForumPost[]
+  submissions  SemesterSubmission[]
 
   @@unique([batchId, number])
   @@index([supervisorId, batchId])
@@ -559,4 +560,49 @@ model ForumMarkupVote {
   @@unique([supervisorId, replyId])
   @@index([targetUserId])
   @@index([supervisorId])
+}
+
+// ------------------------------------------
+// 11. Semester Progress Report & Presentation Submissions
+// ------------------------------------------
+
+enum SubmissionDocType {
+  PROGRESS_REPORT
+  PRESENTATION
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  REVISION_REQUESTED
+  COMPLETED
+}
+
+model SemesterSubmission {
+  id                String            @id @default(cuid())
+  groupId           String
+  semester          Int               // 6, 7, 8
+  docType           SubmissionDocType
+  fileName          String
+  fileExtension     String            // "doc" | "docx" | "pdf" | "ppt" | "pptx"
+  mimeType          String
+  fileSize          Int
+  driveFileId       String?
+  driveViewLink     String
+  driveDownloadLink String?
+  hostedOn          String            @default("GOOGLE_DRIVE")
+  status            SubmissionStatus  @default(SUBMITTED)
+  supervisorComment String?           @db.Text
+  uploadedByUserId  String
+  uploadedByName    String
+  uploadedAt        DateTime          @default(now())
+  reviewedAt        DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  group             Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, semester, docType])
+  @@index([semester, status])
+  @@index([groupId, semester])
 }

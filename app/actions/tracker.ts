@@ -68,7 +68,7 @@ export async function getMarksTrackerAction(batchId?: string, semesterFilter?: n
             semester: dw.semester,
             rubric: dw.rubric,
             deadline: d,
-            isLocked: false,
+            isLocked: true,
           },
         });
       }
