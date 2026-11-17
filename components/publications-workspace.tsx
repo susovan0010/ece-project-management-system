@@ -601,17 +601,40 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
                     {p.venue || 'Venue not specified'}
                     {p.citationsCount > 0 ? ` • Citations: ${p.citationsCount}` : ''}
                   </p>
+                  {p.doiUrl && (
+                    <div className="pt-0.5">
+                      <a
+                        href={
+                          p.doiUrl.startsWith('http')
+                            ? p.doiUrl
+                            : `https://doi.org/${p.doiUrl.replace(/^doi:\s*/i, '')}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline break-all"
+                      >
+                        {/^https?:\/\/(dx\.)?doi\.org\//i.test(p.doiUrl) || /^10\.\d{4,9}\//i.test(p.doiUrl)
+                          ? `DOI: ${p.doiUrl.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')}`
+                          : p.doiUrl}
+                        <ExternalLink className="w-3 h-3 shrink-0" />
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 self-start">
                   {p.doiUrl && (
                     <a
-                      href={p.doiUrl}
+                      href={
+                        p.doiUrl.startsWith('http')
+                          ? p.doiUrl
+                          : `https://doi.org/${p.doiUrl.replace(/^doi:\s*/i, '')}`
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold"
+                      className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold whitespace-nowrap"
                     >
-                      View Paper ↗
+                      Open Paper ↗
                     </a>
                   )}
                   {p.canDelete && (

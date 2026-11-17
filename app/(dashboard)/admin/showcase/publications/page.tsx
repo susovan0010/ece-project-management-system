@@ -258,12 +258,20 @@ export default function AdminShowcasePublicationsPage() {
                     <div className="font-semibold text-slate-900">{p.year}</div>
                     {p.doiUrl && (
                       <a
-                        href={p.doiUrl}
+                        href={
+                          p.doiUrl.startsWith("http")
+                            ? p.doiUrl
+                            : `https://doi.org/${p.doiUrl.replace(/^doi:\s*/i, "")}`
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
                       >
-                        View <ExternalLink className="h-3 w-3" />
+                        {/^https?:\/\/(dx\.)?doi\.org\//i.test(p.doiUrl) ||
+                        /^10\.\d{4,9}\//i.test(p.doiUrl)
+                          ? `DOI: ${p.doiUrl.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")}`
+                          : "Open Link"}{" "}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
                       </a>
                     )}
                   </td>
