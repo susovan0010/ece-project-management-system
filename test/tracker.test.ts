@@ -28,6 +28,7 @@ import {
   updateMarkWindowDeadlineAction,
   sendSupervisorReminderAction,
   sendBulkRemindersAction,
+  getAdminSemesterMarksExportAction,
 } from '../app/actions/tracker';
 import { GET as cronRemindersGet } from '../app/api/cron/reminders/route';
 import { prisma } from '../lib/prisma';
@@ -213,5 +214,69 @@ describe('Marks Tracker: Automated Reminders & Cron Endpoint', () => {
     expect(json.success).toBe(true);
     expect(json.dispatchedCount).toBe(1);
     expect(createLogSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports semester marks in Existing, Scale of 100, and Scale of 60/40 formats only after all groups submit marks', async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'fac-1', role: 'FACULTY' },
+    } as any);
+    const denied = await getAdminSemesterMarksExportAction('2023-2027', 6);
+    expect('error' in denied && denied.error).toContain('Unauthorized');
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'admin-1', role: 'ADMIN' },
+    } as any);
+
+    vi.spyOn(prisma.rubric, 'findMany').mockResolvedValue([
+      { code: 'A', semester: 6, maxMarks: 60, criteria: [{ id: 1 }, { id: 2 }] },
+      { code: 'B', semester: 6, maxMarks: 40, criteria: [{ id: 3 }] },
+    ] as any);
+
+    // 1. Incomplete group -> blocked
+    vi.spyOn(prisma.group, 'findMany').mockResolvedValue([
+      {
+        number: 1,
+        supervisor: { name: 'Prof. Roy' },
+        topic: { code: 'ECE-01' },
+        members: [{ student: { id: 's1', name: 'Aarav', roll: '2355001', universityRoll: '12600323001' } }],
+        markEntries: [
+          { criterionId: 1, studentId: 's1', marks: 25, criterion: { id: 1, rubricCode: 'A', maxMarks: 30, semester: 6 } },
+        ],
+      },
+    ] as any);
+
+    const incomplete = await getAdminSemesterMarksExportAction('2023-2027', 6);
+    expect('error' in incomplete && incomplete.error).toContain('still have pending marks');
+
+    // 2. All criteria completed -> returns exact Existing, Scale 100, and Scale 60/40 values
+    vi.spyOn(prisma.group, 'findMany').mockResolvedValue([
+      {
+        number: 1,
+        supervisor: { name: 'Prof. Roy' },
+        topic: { code: 'ECE-01' },
+        members: [{ student: { id: 's1', name: 'Aarav', roll: '2355001', universityRoll: '12600323001' } }],
+        markEntries: [
+          { criterionId: 1, studentId: 's1', marks: 25, criterion: { id: 1, rubricCode: 'A', maxMarks: 30, semester: 6 } },
+          { criterionId: 2, studentId: null, marks: 25, criterion: { id: 2, rubricCode: 'A', maxMarks: 30, semester: 6 } },
+          { criterionId: 3, studentId: 's1', marks: 30, criterion: { id: 3, rubricCode: 'B', maxMarks: 40, semester: 6 } },
+        ],
+      },
+    ] as any);
+
+    const ok = await getAdminSemesterMarksExportAction('2023-2027', 6);
+    expect('error' in ok).toBe(false);
+    if (!('error' in ok)) {
+      expect(ok.rows).toHaveLength(1);
+      const r = ok.rows[0];
+      expect(r.studentName).toBe('Aarav');
+      expect(r.collegeRoll).toBe('2355001');
+      expect(r.universityRoll).toBe('12600323001');
+      expect(r.supervisorMarks).toBe(50);
+      expect(r.examinerMarks).toBe(30);
+      expect(r.rawTotal).toBe(80);
+      expect(r.totalScale100).toBe(80);
+      expect(r.scale60).toBe(48);
+      expect(r.scale40).toBe(32);
+    }
   });
 });

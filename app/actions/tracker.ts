@@ -451,3 +451,200 @@ export async function sendBulkRemindersAction(semester: number) {
     return { error: `Failed to dispatch bulk reminders: ${(err as Error).message}` };
   }
 }
+
+// ----------------------------------------------------
+// 6. Admin Semester Marks Export (Existing, Scale 100, Scale 60/40)
+// ----------------------------------------------------
+export interface SemesterMarksExportRow {
+  groupNumber: number;
+  topicCode: string;
+  supervisorName: string;
+  studentName: string;
+  collegeRoll: string;
+  universityRoll: string;
+  supervisorMarks: number;
+  examinerMarks: number;
+  rawTotal: number;
+  totalScale100: number;
+  scale60: number;
+  scale40: number;
+}
+
+export interface SemesterMarksExportData {
+  success: boolean;
+  batchId: string;
+  semester: number;
+  supRubricCode: string;
+  supMax: number;
+  examRubricCode: string;
+  examMax: number;
+  rawMax: number;
+  rows: SemesterMarksExportRow[];
+}
+
+export async function getAdminSemesterMarksExportAction(
+  batchId: string,
+  semester: number
+): Promise<SemesterMarksExportData | { error: string }> {
+  const session = await auth();
+  if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Only Project Committee Admins can download semester marks.' };
+  }
+
+  if (!batchId || batchId === 'ALL') {
+    return { error: 'Please select a specific Batch to download semester marks.' };
+  }
+  if (![6, 7, 8].includes(semester)) {
+    return { error: 'Please select Semester 6, 7, or 8 to download marks.' };
+  }
+
+  const supRubricCode = semester === 6 ? 'A' : semester === 7 ? 'C' : 'E';
+  const examRubricCode = semester === 6 ? 'B' : semester === 7 ? 'D' : 'F';
+
+  try {
+    const [groups, rubrics] = await Promise.all([
+      prisma.group.findMany({
+        where: { batchId },
+        include: {
+          supervisor: { select: { name: true } },
+          topic: { select: { code: true } },
+          members: {
+            include: {
+              student: {
+                select: { id: true, name: true, roll: true, universityRoll: true },
+              },
+            },
+          },
+          markEntries: {
+            where: { criterion: { semester } },
+            include: {
+              criterion: {
+                select: { id: true, rubricCode: true, maxMarks: true, scope: true, semester: true },
+              },
+            },
+          },
+        },
+        orderBy: { number: 'asc' },
+      }),
+      prisma.rubric.findMany({
+        where: { semester },
+        include: { criteria: true },
+      }),
+    ]);
+
+    if (groups.length === 0) {
+      return { error: `No groups found in Batch ${batchId}.` };
+    }
+
+    const supRubric = rubrics.find((r) => r.code === supRubricCode);
+    const examRubric = rubrics.find((r) => r.code === examRubricCode);
+    const supCriteriaCount = supRubric?.criteria?.length || 0;
+    const examCriteriaCount = examRubric?.criteria?.length || 0;
+    const supMax = supRubric?.maxMarks ?? (semester === 6 ? 60 : semester === 7 ? 50 : 40);
+    const examMax = examRubric?.maxMarks ?? (semester === 6 ? 40 : semester === 7 ? 50 : 60);
+    const rawMax = supMax + examMax;
+
+    // Gate: Verify ALL groups have completed marks for both Supervisor and Examiner rubrics in this semester
+    const pendingGroups: number[] = [];
+    for (const g of groups) {
+      const supEntries = g.markEntries.filter((m) => m.criterion?.rubricCode === supRubricCode);
+      const examEntries = g.markEntries.filter((m) => m.criterion?.rubricCode === examRubricCode);
+      const supCovered = new Set(supEntries.map((m) => m.criterionId)).size;
+      const examCovered = new Set(examEntries.map((m) => m.criterionId)).size;
+
+      const supDone = supCriteriaCount > 0 ? supCovered >= supCriteriaCount : supEntries.length > 0;
+      const examDone = examCriteriaCount > 0 ? examCovered >= examCriteriaCount : examEntries.length > 0;
+
+      if (!supDone || !examDone) {
+        pendingGroups.push(g.number);
+      }
+    }
+
+    if (pendingGroups.length > 0) {
+      return {
+        error: `Cannot download Semester ${semester} marks yet: ${pendingGroups.length} group(s) (Group ${pendingGroups
+          .slice(0, 5)
+          .join(', ')}${pendingGroups.length > 5 ? '...' : ''}) still have pending marks.`,
+      };
+    }
+
+    // Helper to sum marks for a given rubric code for a specific student
+    const computeRubricMarksForStudent = (
+      entries: typeof groups[0]['markEntries'],
+      rubricCode: string,
+      studentId: string
+    ): number => {
+      const relevant = entries.filter((m) => m.criterion?.rubricCode === rubricCode);
+      const byCriterion = new Map<number, { studentVals: number[]; groupVals: number[] }>();
+
+      for (const e of relevant) {
+        const cId = e.criterionId;
+        if (!byCriterion.has(cId)) {
+          byCriterion.set(cId, { studentVals: [], groupVals: [] });
+        }
+        const bucket = byCriterion.get(cId)!;
+        if (e.studentId === studentId) {
+          bucket.studentVals.push(e.marks);
+        } else if (!e.studentId) {
+          bucket.groupVals.push(e.marks);
+        }
+      }
+
+      let total = 0;
+      for (const bucket of Array.from(byCriterion.values())) {
+        const vals = bucket.studentVals.length > 0 ? bucket.studentVals : bucket.groupVals;
+        if (vals.length > 0) {
+          total += vals.reduce((a, b) => a + b, 0) / vals.length;
+        }
+      }
+      return Number(total.toFixed(2));
+    };
+
+    const rows: SemesterMarksExportRow[] = [];
+
+    for (const g of groups) {
+      const sortedMembers = [...g.members].sort((a, b) =>
+        (a.student?.roll || '').localeCompare(b.student?.roll || '')
+      );
+
+      for (const m of sortedMembers) {
+        if (!m.student) continue;
+        const supervisorMarks = computeRubricMarksForStudent(g.markEntries, supRubricCode, m.student.id);
+        const examinerMarks = computeRubricMarksForStudent(g.markEntries, examRubricCode, m.student.id);
+        const rawTotal = Number((supervisorMarks + examinerMarks).toFixed(2));
+        const totalScale100 = Number(((rawTotal / (rawMax || 100)) * 100).toFixed(2));
+        const scale60 = Number((totalScale100 * 0.6).toFixed(2));
+        const scale40 = Number((totalScale100 * 0.4).toFixed(2));
+
+        rows.push({
+          groupNumber: g.number,
+          topicCode: g.topic?.code || 'N/A',
+          supervisorName: g.supervisor?.name || 'Unassigned',
+          studentName: m.student.name,
+          collegeRoll: m.student.roll,
+          universityRoll: m.student.universityRoll || '—',
+          supervisorMarks,
+          examinerMarks,
+          rawTotal,
+          totalScale100,
+          scale60,
+          scale40,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      batchId,
+      semester,
+      supRubricCode,
+      supMax,
+      examRubricCode,
+      examMax,
+      rawMax,
+      rows,
+    };
+  } catch (err) {
+    return { error: `Failed to export semester marks: ${(err as Error).message}` };
+  }
+}

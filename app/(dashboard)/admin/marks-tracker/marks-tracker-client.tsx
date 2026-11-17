@@ -1,15 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ExcelJS from 'exceljs';
 import {
   getMarksTrackerAction,
   toggleMarkWindowLockAction,
   updateMarkWindowDeadlineAction,
   sendSupervisorReminderAction,
   sendBulkRemindersAction,
+  getAdminSemesterMarksExportAction,
   RubricCompletionStat,
   SupervisorTrackerStat,
 } from '@/app/actions/tracker';
+import {
+  generateSemesterMarksPdfBlob,
+  MarksExportFormat,
+} from '@/components/marks-export-pdf';
 
 export default function AdminMarksTrackerClient() {
   const [loading, setLoading] = useState(true);
@@ -28,6 +34,8 @@ export default function AdminMarksTrackerClient() {
 
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [exportFormat, setExportFormat] = useState<MarksExportFormat>('EXISTING');
+  const [exportingType, setExportingType] = useState<'xlsx' | 'pdf' | null>(null);
 
   async function loadData(batch = selectedBatch, semester = selectedSemester) {
     setLoading(true);
@@ -118,6 +126,149 @@ export default function AdminMarksTrackerClient() {
       setSuccessMsg(res.message || 'Bulk reminders dispatched!');
       loadData(selectedBatch, selectedSemester);
       setTimeout(() => setSuccessMsg(null), 3500);
+    }
+  }
+
+  async function handleDownloadSemesterMarks(fileType: 'xlsx' | 'pdf') {
+    if (!selectedBatch || selectedBatch === 'ALL' || !selectedSemester) {
+      setError('Please select a specific Batch and Semester (6, 7, or 8) to download marks.');
+      return;
+    }
+
+    setExportingType(fileType);
+    setError(null);
+
+    const res = await getAdminSemesterMarksExportAction(selectedBatch, selectedSemester);
+    if ('error' in res) {
+      setError(res.error);
+      setExportingType(null);
+      return;
+    }
+
+    const formatTag =
+      exportFormat === 'EXISTING'
+        ? 'Existing_Format'
+        : exportFormat === 'SCALE_100'
+        ? 'Scale_100'
+        : 'Scale_60_40';
+
+    try {
+      if (fileType === 'pdf') {
+        const blob = await generateSemesterMarksPdfBlob(res, exportFormat);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Batch_${res.batchId}_Sem${res.semester}_Marks_${formatTag}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'HITK ECE Project Committee';
+        const sheet = wb.addWorksheet(`Sem ${res.semester} Marks`);
+
+        const headers =
+          exportFormat === 'EXISTING'
+            ? [
+                'Group No',
+                'Student Name',
+                'College Roll',
+                'University Roll',
+                `Supervisor Marks (/${res.supMax})`,
+                `Examiner Marks (/${res.examMax})`,
+                `Total Marks (/${res.rawMax})`,
+              ]
+            : exportFormat === 'SCALE_100'
+            ? [
+                'Group No',
+                'Student Name',
+                'College Roll',
+                'University Roll',
+                'Combined Total Marks (Out of 100)',
+              ]
+            : [
+                'Group No',
+                'Student Name',
+                'College Roll',
+                'University Roll',
+                'Total Marks (Out of 100)',
+                '60% Component (Out of 60)',
+                '40% Component (Out of 40)',
+              ];
+
+        const lastCol = String.fromCharCode(64 + headers.length);
+        sheet.mergeCells(`A1:${lastCol}1`);
+        sheet.getCell('A1').value = `HERITAGE INSTITUTE OF TECHNOLOGY, KOLKATA — ECE CAPSTONE SEMESTER ${res.semester} MARKS`;
+        sheet.getCell('A1').font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+        sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+        sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        sheet.mergeCells(`A2:${lastCol}2`);
+        sheet.getCell('A2').value = `Batch: ${res.batchId} | Format: ${formatTag.replace(/_/g, ' ')}`;
+        sheet.getCell('A2').font = { italic: true, size: 10 };
+        sheet.getCell('A2').alignment = { horizontal: 'center' };
+
+        const headerRow = sheet.addRow(headers);
+        headerRow.eachCell((cell) => {
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+        });
+
+        for (const r of res.rows) {
+          if (exportFormat === 'EXISTING') {
+            sheet.addRow([
+              r.groupNumber,
+              r.studentName,
+              r.collegeRoll,
+              r.universityRoll,
+              r.supervisorMarks,
+              r.examinerMarks,
+              r.rawTotal,
+            ]);
+          } else if (exportFormat === 'SCALE_100') {
+            sheet.addRow([
+              r.groupNumber,
+              r.studentName,
+              r.collegeRoll,
+              r.universityRoll,
+              r.totalScale100,
+            ]);
+          } else {
+            sheet.addRow([
+              r.groupNumber,
+              r.studentName,
+              r.collegeRoll,
+              r.universityRoll,
+              r.totalScale100,
+              r.scale60,
+              r.scale40,
+            ]);
+          }
+        }
+
+        sheet.columns.forEach((col) => {
+          col.width = 22;
+        });
+        if (sheet.getColumn(1)) sheet.getColumn(1).width = 12;
+
+        const buffer = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Batch_${res.batchId}_Sem${res.semester}_Marks_${formatTag}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      setError(`Export failed: ${(err as Error).message}`);
+    } finally {
+      setExportingType(null);
     }
   }
 
@@ -307,6 +458,106 @@ export default function AdminMarksTrackerClient() {
           </div>
         ))}
       </div>
+
+      {/* Admin Semester Marks Download Panel (Excel / PDF in 3 Formats) */}
+      {(() => {
+        const canSelectSem = Boolean(selectedBatch && selectedBatch !== 'ALL' && selectedSemester);
+        const semStats = selectedSemester
+          ? rubricStats.filter((r) => r.semester === selectedSemester)
+          : [];
+        const isSemComplete =
+          canSelectSem &&
+          semStats.length >= 2 &&
+          semStats.every((r) => r.totalGroups > 0 && r.pendingGroups === 0 && r.partialGroups === 0);
+
+        return (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col md:flex-row justify-between md:items-center gap-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">
+                  Download Semester Marks (Student Name, College Roll &amp; University Roll)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Enabled once all supervisors &amp; examiners have submitted marks for the selected Batch &amp; Semester.
+                </p>
+              </div>
+              {!canSelectSem ? (
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Select a specific Batch and Semester (6, 7, or 8) above
+                </span>
+              ) : isSemComplete ? (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  ✓ All Semester {selectedSemester} Marks Submitted — Ready to Download
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                  ⏳ Waiting for all supervisors to submit Semester {selectedSemester} marks
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {[
+                {
+                  id: 'EXISTING' as MarksExportFormat,
+                  title: '1) Existing Format',
+                  desc: 'Separated Supervisor marks and Examiner marks + Raw Total.',
+                },
+                {
+                  id: 'SCALE_100' as MarksExportFormat,
+                  title: '2) Scale of 100',
+                  desc: 'Combined Supervisor + Examiner marks on a 100-point scale.',
+                },
+                {
+                  id: 'SCALE_60_40' as MarksExportFormat,
+                  title: '3) Scale of 60 / 40',
+                  desc: 'Total (/100) plus two separate columns for 60% and 40% of total.',
+                },
+              ].map((opt) => (
+                <label
+                  key={opt.id}
+                  className={`p-3.5 rounded-xl border cursor-pointer transition flex items-start gap-2.5 ${
+                    exportFormat === opt.id
+                      ? 'bg-blue-50/70 border-blue-400 ring-1 ring-blue-300'
+                      : 'bg-slate-50/50 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="marksExportFormat"
+                    checked={exportFormat === opt.id}
+                    onChange={() => setExportFormat(opt.id)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">{opt.title}</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={!isSemComplete || exportingType !== null}
+                onClick={() => handleDownloadSemesterMarks('xlsx')}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {exportingType === 'xlsx' ? 'Generating Excel...' : '📊 Download Excel (.xlsx)'}
+              </button>
+              <button
+                type="button"
+                disabled={!isSemComplete || exportingType !== null}
+                onClick={() => handleDownloadSemesterMarks('pdf')}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {exportingType === 'pdf' ? 'Generating PDF...' : '📄 Download PDF (.pdf)'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Marking Windows Admin Control Panel */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
