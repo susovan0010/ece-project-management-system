@@ -273,6 +273,80 @@ export async function uploadStudentSubmissionAction(input: z.infer<typeof Upload
 }
 
 // ----------------------------------------------------
+// 2b. Student: Delete Own Group's Submission (Before Supervisor Marks Completed)
+// ----------------------------------------------------
+export async function deleteStudentSubmissionAction(submissionId: string) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'STUDENT') {
+    return { error: 'Unauthorized: Only student members of the group can delete a submission.' };
+  }
+
+  try {
+    const existing = await prisma.semesterSubmission.findUnique({
+      where: { id: submissionId },
+      include: {
+        group: {
+          include: {
+            members: {
+              include: {
+                student: { select: { userId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return { error: 'Submission not found.' };
+    }
+
+    const isGroupMember = existing.group.members.some(
+      (m) => m.student.userId === session.user!.id
+    );
+    if (!isGroupMember) {
+      return { error: 'Forbidden: You can only delete submissions belonging to your own group.' };
+    }
+
+    if (existing.status === 'COMPLETED') {
+      return {
+        error: 'Cannot delete: This submission has already been marked Completed by your supervisor.',
+      };
+    }
+
+    await prisma.semesterSubmission.delete({
+      where: { id: submissionId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'STUDENT_SUBMISSION_DELETED',
+        entity: 'SemesterSubmission',
+        entityId: submissionId,
+        payload: {
+          groupId: existing.groupId,
+          semester: existing.semester,
+          docType: existing.docType,
+          fileName: existing.fileName,
+        },
+      },
+    });
+
+    revalidatePath('/student/submission');
+    revalidatePath('/faculty/submission');
+    revalidatePath('/admin/submission');
+
+    return {
+      success: true,
+      message: `Deleted "${existing.fileName}" from Semester ${existing.semester}.`,
+    };
+  } catch (err) {
+    return { error: `Failed to delete submission: ${(err as Error).message}` };
+  }
+}
+
+// ----------------------------------------------------
 // 3. Faculty / Supervisor: Get Group Submissions (Strict Supervisor Isolation)
 // ----------------------------------------------------
 export async function getFacultySubmissionsAction() {

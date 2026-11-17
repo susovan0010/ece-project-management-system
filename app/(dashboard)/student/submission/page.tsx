@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import {
   getStudentSubmissionsAction,
   uploadStudentSubmissionAction,
+  deleteStudentSubmissionAction,
   DocTypeValue,
 } from '@/app/actions/submission';
 
@@ -28,6 +29,24 @@ export default function StudentSubmissionPage() {
   });
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDeleteSubmission(submissionId: string, fileName: string) {
+    if (!window.confirm(`Delete "${fileName}"? You can upload a new file while the semester is open.`)) {
+      return;
+    }
+    setDeletingId(submissionId);
+    setError(null);
+    setSuccessMsg(null);
+    const res = await deleteStudentSubmissionAction(submissionId);
+    setDeletingId(null);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setSuccessMsg(res.message || 'Submission deleted.');
+      await loadData();
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -250,16 +269,31 @@ export default function StudentSubmissionPage() {
                       Uploaded by <strong>{existing.uploadedByName}</strong> on{' '}
                       {new Date(existing.uploadedAt).toLocaleString('en-IN')}
                     </div>
-                    {existing.driveViewLink && (
-                      <a
-                        href={existing.driveViewLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 underline"
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      {existing.driveViewLink && (
+                        <a
+                          href={existing.driveViewLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 underline"
+                        >
+                          Open in Google Drive ↗
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isCompleted || deletingId === existing.id}
+                        onClick={() => handleDeleteSubmission(existing.id, existing.fileName)}
+                        title={
+                          isCompleted
+                            ? 'Disabled: Marked Completed by your supervisor.'
+                            : 'Delete this submission before supervisor marks it Completed'
+                        }
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition bg-red-50 hover:bg-red-100 text-red-700 border-red-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed"
                       >
-                        Open in Google Drive ↗
-                      </a>
-                    )}
+                        {deletingId === existing.id ? 'Deleting...' : '🗑 Delete'}
+                      </button>
+                    </div>
                     {existing.supervisorComment && (
                       <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-950">
                         <strong className="block text-[10px] uppercase tracking-wider text-amber-800">

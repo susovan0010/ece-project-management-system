@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   getStudentSubmissionsAction,
   uploadStudentSubmissionAction,
+  deleteStudentSubmissionAction,
   getFacultySubmissionsAction,
   reviewFacultySubmissionAction,
   getAdminCompletedSubmissionsAction,
@@ -107,6 +108,10 @@ vi.mock('@/lib/prisma', () => ({
         if (item) Object.assign(item, data, { updatedAt: new Date() });
         return item;
       }),
+      delete: vi.fn().mockImplementation(({ where }: any) => {
+        db.submissions = db.submissions.filter((s) => s.id !== where.id);
+        return { id: where.id };
+      }),
     },
     auditLog: {
       create: vi.fn().mockResolvedValue({}),
@@ -135,7 +140,7 @@ describe('Phase 75: Student Semester Submissions Workflow', () => {
         isArchived: false,
         topic: { code: 'ECE-01', title: 'IoT Telemetry' },
         supervisor: { id: 'fac-1', name: 'Prof. Roy', email: 'roy@hitk.edu' },
-        members: [{ student: { name: 'Aarav', roll: '2355001', universityRoll: '12600323001' } }],
+        members: [{ student: { userId: 'stu-u1', name: 'Aarav', roll: '2355001', universityRoll: '12600323001' } }],
       },
     ];
     db.students = [
@@ -256,5 +261,21 @@ describe('Phase 75: Student Semester Submissions Workflow', () => {
     expect(adminRes.success).toBe(true);
     expect(adminRes.submissions).toHaveLength(1);
     expect(adminRes.submissions![0].driveViewLink).toContain('drive.google.com');
+
+    // Supervisor cannot delete submission
+    (auth as any).mockResolvedValue({ user: { id: 'fac-1', role: 'FACULTY' } });
+    const facDel = await deleteStudentSubmissionAction(db.submissions[0].id);
+    expect(facDel.error).toContain('Only student members');
+
+    // Student cannot delete once Completed
+    (auth as any).mockResolvedValue({ user: { id: 'stu-u1', role: 'STUDENT' } });
+    const stuDelCompleted = await deleteStudentSubmissionAction(db.submissions[0].id);
+    expect(stuDelCompleted.error).toContain('already been marked Completed');
+
+    // Student CAN delete before Completed
+    db.submissions[0].status = 'SUBMITTED';
+    const stuDelOk = await deleteStudentSubmissionAction(db.submissions[0].id);
+    expect(stuDelOk.success).toBe(true);
+    expect(db.submissions).toHaveLength(0);
   });
 });
