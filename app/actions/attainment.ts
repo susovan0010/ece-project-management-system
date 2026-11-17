@@ -9,6 +9,7 @@ import {
   getAttainmentLevelDescription,
   calculateStudentAttainment,
   calculateCohortAttainmentLevel,
+  calculateGroupCohortSnapshots,
   DEFAULT_COHORT_STUDENT_TARGET_PCT,
   DEFAULT_ATTAINMENT_TARGET,
   MarkEntryInput,
@@ -30,6 +31,7 @@ export async function calculateAndSnapshotGroupAttainmentAction(groupId: string)
       where: { id: groupId },
       include: {
         topic: true,
+        members: { select: { studentId: true } },
         markEntries: {
           include: {
             criterion: {
@@ -97,18 +99,52 @@ export async function calculateAndSnapshotGroupAttainmentAction(groupId: string)
       target: number;
     }> = [];
 
-    for (const metric of metricsToEvaluate) {
-      const ratio = attainment(markInputs, metric);
-      if (ratio !== null) {
-        const attained = isMetricAttained(ratio, DEFAULT_ATTAINMENT_TARGET);
+    const memberIds = Array.from(
+      new Set([
+        ...((group.members || []).map((m) => m.studentId).filter(Boolean)),
+        ...((group.markEntries || []).map((m) => m.studentId).filter((id): id is string => Boolean(id))),
+      ])
+    );
+
+    if (memberIds.length > 0) {
+      const studentInputs: StudentMarkEntryInput[] = (group.markEntries || []).map((m) => ({
+        studentId: m.studentId,
+        marks: m.marks,
+        max: m.criterion?.maxMarks || 0,
+        maps: (m.criterion?.maps || []).map((map) => map.code),
+      }));
+
+      const groupCohortResults = calculateGroupCohortSnapshots(
+        studentInputs,
+        memberIds,
+        metricsToEvaluate,
+        DEFAULT_COHORT_STUDENT_TARGET_PCT
+      );
+
+      for (const r of groupCohortResults) {
         snapshotsToSave.push({
           topicId: group.topicId,
           groupId: group.id,
-          metric,
-          attainment: ratio,
-          isAttained: attained,
+          metric: r.metric,
+          attainment: r.attainment,
+          isAttained: r.isAttained,
           target: DEFAULT_ATTAINMENT_TARGET,
         });
+      }
+    } else {
+      for (const metric of metricsToEvaluate) {
+        const ratio = attainment(markInputs, metric);
+        if (ratio !== null) {
+          const attained = isMetricAttained(ratio, DEFAULT_ATTAINMENT_TARGET);
+          snapshotsToSave.push({
+            topicId: group.topicId,
+            groupId: group.id,
+            metric,
+            attainment: ratio,
+            isAttained: attained,
+            target: DEFAULT_ATTAINMENT_TARGET,
+          });
+        }
       }
     }
 
@@ -224,8 +260,25 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string, seme
         };
       });
 
-      let rawSnapshots = (g.snapshots || []);
-      if (semFilter) {
+      let rawSnapshots: any[] = g.snapshots || [];
+      const memberIds = (g.members || []).map((m) => m.studentId).filter(Boolean);
+      const groupCohortMap = new Map<string, ReturnType<typeof calculateGroupCohortSnapshots>[number]>();
+      if (memberIds.length > 0 && (g.markEntries || []).length > 0) {
+        const cohortResults = calculateGroupCohortSnapshots(
+          studentInputs,
+          memberIds,
+          metricsToEvaluate,
+          DEFAULT_COHORT_STUDENT_TARGET_PCT
+        );
+        cohortResults.forEach((r) => groupCohortMap.set(r.metric, r));
+        if (semFilter || rawSnapshots.length === 0) {
+          rawSnapshots = cohortResults.map((r) => ({
+            metric: r.metric,
+            attainment: r.attainment,
+            isAttained: r.isAttained,
+          }));
+        }
+      } else if (semFilter) {
         // Derive semester-specific group attainment directly from filtered rubric entries
         const entriesMap = new Map<number, { marksSum: number; max: number; count: number; maps: string[] }>();
         for (const m of (g.markEntries || [])) {
@@ -263,12 +316,18 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string, seme
           .filter(Boolean) as any[];
       }
 
-      const enrichedSnapshots = rawSnapshots.map((s: any) => ({
-        ...s,
-        percentage: Math.round(s.attainment * 100),
-        level: getAttainmentLevel(s.attainment),
-        levelDescription: getAttainmentLevelDescription(getAttainmentLevel(s.attainment)),
-      }));
+      const enrichedSnapshots = rawSnapshots.map((s: any) => {
+        const cohortEntry = groupCohortMap.get(s.metric);
+        const level = cohortEntry ? cohortEntry.level : getAttainmentLevel(s.attainment);
+        const isAttained = cohortEntry ? cohortEntry.isAttained : s.isAttained;
+        return {
+          ...s,
+          percentage: Math.round(s.attainment * 100),
+          level,
+          isAttained,
+          levelDescription: getAttainmentLevelDescription(level),
+        };
+      });
 
       return {
         ...g,
@@ -448,8 +507,25 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string, semest
         }
       });
 
-      let rawSnapshots = (g.snapshots || []);
-      if (semFilter) {
+      let rawSnapshots: any[] = g.snapshots || [];
+      const adminMemberIds = (g.members || []).map((m) => m.studentId).filter(Boolean);
+      const adminGroupCohortMap = new Map<string, ReturnType<typeof calculateGroupCohortSnapshots>[number]>();
+      if (adminMemberIds.length > 0 && (g.markEntries || []).length > 0) {
+        const cohortResults = calculateGroupCohortSnapshots(
+          studentInputs,
+          adminMemberIds,
+          metricsToEvaluate,
+          DEFAULT_COHORT_STUDENT_TARGET_PCT
+        );
+        cohortResults.forEach((r) => adminGroupCohortMap.set(r.metric, r));
+        if (semFilter || rawSnapshots.length === 0) {
+          rawSnapshots = cohortResults.map((r) => ({
+            metric: r.metric,
+            attainment: r.attainment,
+            isAttained: r.isAttained,
+          }));
+        }
+      } else if (semFilter) {
         // Derive semester-specific group attainment directly from filtered rubric entries
         const entriesMap = new Map<number, { marksSum: number; max: number; count: number; maps: string[] }>();
         for (const m of (g.markEntries || [])) {
@@ -488,7 +564,9 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string, semest
       }
 
       const enrichedSnapshots = rawSnapshots.map((s: any) => {
-        const lvl = getAttainmentLevel(s.attainment);
+        const cohortEntry = adminGroupCohortMap.get(s.metric);
+        const lvl = cohortEntry ? cohortEntry.level : getAttainmentLevel(s.attainment);
+        const isAttained = cohortEntry ? cohortEntry.isAttained : lvl >= 1;
         if (s.metric.startsWith('PO') && poStats[s.metric]) {
           poStats[s.metric].ratios.push(s.attainment);
           poStats[s.metric].levels.push(lvl);
@@ -497,8 +575,9 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string, semest
         }
         return {
           ...s,
-          percentage: Math.round(s.attainment * 100),
+          isAttained,
           level: lvl,
+          percentage: Math.round(s.attainment * 100),
           levelDescription: getAttainmentLevelDescription(lvl),
         };
       });

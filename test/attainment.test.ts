@@ -21,6 +21,7 @@ import {
   getAttainmentLevelDescription,
   calculateStudentAttainment,
   calculateCohortAttainmentLevel,
+  calculateGroupCohortSnapshots,
   DEFAULT_ATTAINMENT_TARGET,
   MarkEntryInput,
   StudentMarkEntryInput,
@@ -316,5 +317,46 @@ describe('Attainment Server Actions: Role Isolation & Analytics', () => {
     expect(res.groupsWithSnapshots).toBe(1);
     expect(res.poSummary).toBeDefined();
     expect(res.targetThreshold).toBe(65);
+  });
+
+  it('computes Group Attainment for POs, WPs, WKs, EAs using the 60% of students in that group rule (not raw group mean)', () => {
+    const metrics = ['PO1', 'PO2', 'PO6', 'WP1', 'WK1', 'EA1'];
+    const maps = ['PO1', 'PO2', 'PO6', 'WP1', 'WK1', 'EA1'];
+
+    // Case A: 2 of 4 students (50% < 60%) get 9/10 (90%), 2 of 4 get 7/10 (70%).
+    // Mean is 80%, but only 50% >= 75% whereas 100% >= 65% -> Group Level MUST be 1.
+    const entriesA: StudentMarkEntryInput[] = [
+      { studentId: 's1', marks: 9, max: 10, maps },
+      { studentId: 's2', marks: 9, max: 10, maps },
+      { studentId: 's3', marks: 7, max: 10, maps },
+      { studentId: 's4', marks: 7, max: 10, maps },
+    ];
+    const snapsA = calculateGroupCohortSnapshots(entriesA, ['s1', 's2', 's3', 's4'], metrics, 60);
+    expect(snapsA).toHaveLength(6);
+    for (const s of snapsA) {
+      expect(s.level).toBe(1);
+      expect(s.isAttained).toBe(true);
+    }
+
+    // Case B: 3 of 5 students (60%) get 8.6/10 (86%), 2 get 4/10 (40%) -> Group Level MUST be 3.
+    const entriesB: StudentMarkEntryInput[] = [
+      { studentId: 's1', marks: 8.6, max: 10, maps },
+      { studentId: 's2', marks: 8.6, max: 10, maps },
+      { studentId: 's3', marks: 8.6, max: 10, maps },
+      { studentId: 's4', marks: 4, max: 10, maps },
+      { studentId: 's5', marks: 4, max: 10, maps },
+    ];
+    const snapsB = calculateGroupCohortSnapshots(entriesB, ['s1', 's2', 's3', 's4', 's5'], metrics, 60);
+    expect(snapsB.every((s) => s.level === 3 && s.isAttained)).toBe(true);
+
+    // Case C: 64.6% does NOT round up to 65%
+    const entriesC: StudentMarkEntryInput[] = [
+      { studentId: 's1', marks: 6.46, max: 10, maps: ['PO1'] },
+      { studentId: 's2', marks: 6.46, max: 10, maps: ['PO1'] },
+      { studentId: 's3', marks: 6.46, max: 10, maps: ['PO1'] },
+    ];
+    const snapsC = calculateGroupCohortSnapshots(entriesC, ['s1', 's2', 's3'], ['PO1'], 60);
+    expect(snapsC[0].level).toBe(0);
+    expect(snapsC[0].isAttained).toBe(false);
   });
 });

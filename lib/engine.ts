@@ -206,17 +206,21 @@ export function calculateCohortAttainmentLevel(
   const countGte65 = studentPercentages.filter((p) => p >= 65).length;
   const countLt65 = studentPercentages.filter((p) => p < 65).length;
 
-  const pctGte85 = Math.round((countGte85 / total) * 100);
-  const pctGte75 = Math.round((countGte75 / total) * 100);
-  const pctGte65 = Math.round((countGte65 / total) * 100);
+  const exactPctGte85 = (countGte85 / total) * 100;
+  const exactPctGte75 = (countGte75 / total) * 100;
+  const exactPctGte65 = (countGte65 / total) * 100;
+
+  const pctGte85 = Math.round(exactPctGte85);
+  const pctGte75 = Math.round(exactPctGte75);
+  const pctGte65 = Math.round(exactPctGte65);
   const pctLt65 = Math.round((countLt65 / total) * 100);
 
   let attainmentLevel = 0;
-  if (pctGte85 >= cohortTargetPct) {
+  if (exactPctGte85 >= cohortTargetPct) {
     attainmentLevel = 3;
-  } else if (pctGte75 >= cohortTargetPct) {
+  } else if (exactPctGte75 >= cohortTargetPct) {
     attainmentLevel = 2;
-  } else if (pctGte65 >= cohortTargetPct) {
+  } else if (exactPctGte65 >= cohortTargetPct) {
     attainmentLevel = 1;
   } else {
     attainmentLevel = 0;
@@ -272,7 +276,7 @@ export function calculateStudentAttainment(
     if (maxTotal === 0) continue;
     const marksTotal = mapped.reduce((s, e) => s + e.marks, 0);
     const ratio = Number((marksTotal / maxTotal).toFixed(4));
-    const percentage = Math.round(ratio * 100);
+    const percentage = Number((ratio * 100).toFixed(2));
     const level = getAttainmentLevel(ratio);
     results[metric] = {
       metric,
@@ -283,6 +287,59 @@ export function calculateStudentAttainment(
     };
   }
   return results;
+}
+
+export interface GroupCohortSnapshotResult {
+  metric: string;
+  attainment: number; // Average student ratio (0..1)
+  level: number;      // 0..3 from 60% of students in group rule
+  isAttained: boolean;
+  cohortData: CohortCumulativeDistribution;
+}
+
+/**
+ * Computes Group-Level Attainment for POs, WPs, WKs, and EAs using the 60% Student Cohort Rule:
+ * - Level 3: >= 60% of students in the group scored >= 85%
+ * - Level 2: >= 60% of students in the group scored >= 75%
+ * - Level 1: >= 60% of students in the group scored >= 65%
+ * - Level 0: < 60% of students in the group scored >= 65%
+ */
+export function calculateGroupCohortSnapshots(
+  entries: StudentMarkEntryInput[],
+  studentIds: string[],
+  metrics: string[],
+  cohortTargetPct: number = DEFAULT_COHORT_STUDENT_TARGET_PCT
+): GroupCohortSnapshotResult[] {
+  if (studentIds.length === 0) {
+    return [];
+  }
+
+  const perStudent = studentIds.map((sid) => calculateStudentAttainment(entries, sid, metrics));
+  const out: GroupCohortSnapshotResult[] = [];
+
+  for (const metric of metrics) {
+    const studentResults = perStudent
+      .map((s) => s[metric])
+      .filter((r): r is MetricAttainmentResult => Boolean(r));
+
+    if (studentResults.length === 0) continue;
+
+    const percentages = studentResults.map((r) => r.percentage);
+    const avgRatio = Number(
+      (studentResults.reduce((sum, r) => sum + r.ratio, 0) / studentResults.length).toFixed(4)
+    );
+    const cohortData = calculateCohortAttainmentLevel(percentages, cohortTargetPct);
+
+    out.push({
+      metric,
+      attainment: avgRatio,
+      level: cohortData.attainmentLevel,
+      isAttained: cohortData.isAttained,
+      cohortData,
+    });
+  }
+
+  return out;
 }
 
 /**
