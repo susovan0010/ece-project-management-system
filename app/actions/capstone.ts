@@ -24,6 +24,7 @@ import {
   ArchivedGroupProfile,
 } from '@/lib/engine/archive-report-generator';
 import { buildForumArchiveZipBuffer } from '@/lib/engine/forum-archive-generator';
+import { buildSem8SubmissionsZipBuffer } from '@/lib/engine/submissions-archive-generator';
 import { uploadFileToGoogleDrive, OFFICIAL_DRIVE_ACCOUNT } from '@/lib/google-drive';
 import { revalidatePath } from 'next/cache';
 
@@ -850,6 +851,19 @@ export async function archiveBatchAction(
       }));
     };
 
+    // Fetch all SemesterSubmissions (Reports & PPTs) for this batch so completed Drive links
+    // are included in the Academic HTML Archive, Sem 8 docs are compressed, and Sem 6/7 docs cleaned up.
+    const batchGroupIds = groups.map((g) => g.id);
+    let batchSubmissions: any[] = [];
+    try {
+      batchSubmissions = await prisma.semesterSubmission.findMany({
+        where: { groupId: { in: batchGroupIds } },
+        orderBy: [{ semester: 'asc' }, { docType: 'asc' }],
+      });
+    } catch {
+      batchSubmissions = [];
+    }
+
     // 1. Build Archived Profiles for all Groups
     let totalStudents = 0;
     let capstoneCount = 0;
@@ -948,6 +962,14 @@ export async function archiveBatchAction(
           isCapstone,
           decisionYear,
           decisionNotes: decision?.notes || null,
+          completedSubmissions: batchSubmissions
+            .filter((sub: any) => sub.groupId === g.id && sub.status === 'COMPLETED')
+            .map((sub: any) => ({
+              semester: sub.semester,
+              docType: sub.docType,
+              fileName: sub.fileName,
+              driveViewLink: sub.driveViewLink,
+            })),
         };
       })
     );
@@ -1001,7 +1023,6 @@ export async function archiveBatchAction(
 
     // 3b. Compress & Archive ALL Forum Communications + Corresponding Documents/Images/PDFs to Google Drive
     // MUST execute BEFORE deleting student accounts and non-capstone forum rows.
-    const batchGroupIds = groups.map((g) => g.id);
     const batchForumPosts = await prisma.forumPost.findMany({
       where: { groupId: { in: batchGroupIds } },
       include: {
@@ -1075,6 +1096,41 @@ export async function archiveBatchAction(
       return {
         success: false,
         error: `Forum & attachments archive upload to Google Drive failed (${forumZipUploadRes.error}). Student accounts were NOT deleted.`,
+      };
+    }
+
+    // 3c. Compress & Archive 8th-Semester Progress Reports & Presentations (PPT/PDF) to Google Drive (Retained 4 Years)
+    const closureDate = new Date();
+    const sem8RetainUntil = new Date(closureDate);
+    sem8RetainUntil.setFullYear(sem8RetainUntil.getFullYear() + 4);
+
+    const sem8Submissions = batchSubmissions.filter((s: any) => s.semester === 8);
+    const groupNumberMap = new Map(groups.map((g) => [g.id, g.number]));
+    const sem8ArchiveRes = await buildSem8SubmissionsZipBuffer({
+      batchId,
+      archivedAt: archivedAtFormatted,
+      retainUntil: sem8RetainUntil.toISOString(),
+      archivedByAdmin: archivedByAdminName,
+      submissions: sem8Submissions.map((s: any) => ({
+        ...s,
+        groupNumber: groupNumberMap.get(s.groupId) ?? 0,
+      })),
+    });
+
+    const sem8ZipUploadRes = await uploadFileToGoogleDrive({
+      fileName: `Batch_${batchId}_Sem8_Submissions_Archive.zip`,
+      size: sem8ArchiveRes.zipBuffer.length,
+      mimeType: 'application/zip',
+      dataUrlOrBase64: sem8ArchiveRes.zipBuffer.toString('base64'),
+      folderName: 'ECE_Capstone_Academic_Archives',
+      subFolder: `Batch_${batchId}`,
+      uploaderEmail: session.user.email || OFFICIAL_DRIVE_ACCOUNT,
+    });
+
+    if (sem8ZipUploadRes.error) {
+      return {
+        success: false,
+        error: `8th-semester submissions ZIP upload to Google Drive failed (${sem8ZipUploadRes.error}). Student accounts and semester documents were NOT deleted.`,
       };
     }
 
@@ -1162,20 +1218,47 @@ export async function archiveBatchAction(
       });
     }
 
+    // 6b. Semester Submissions Lifecycle after successful closure:
+    // - Delete 6th & 7th semester submissions immediately
+    // - Retain 8th semester final reports & presentations for 4 years from closure
+    if (batchGroupIds.length > 0) {
+      try {
+        await prisma.semesterSubmission.deleteMany({
+          where: {
+            groupId: { in: batchGroupIds },
+            semester: { in: [6, 7] },
+          },
+        });
+
+        await prisma.semesterSubmission.updateMany({
+          where: {
+            groupId: { in: batchGroupIds },
+            semester: 8,
+          },
+          data: {
+            retainUntil: sem8RetainUntil,
+          },
+        });
+      } catch {
+        // Ignore if submission table/mock is unavailable
+      }
+    }
+
     // 7. Update Batch record with Google Drive reference and compact metadata
     const driveUrl = uploadRes.viewUrl || null;
     const forumDriveUrl = forumZipUploadRes.viewUrl || null;
+    const sem8SubmissionsDriveUrl = sem8ZipUploadRes.viewUrl || null;
     await prisma.batch.update({
       where: { id: batchId },
       data: {
         isArchived: true,
-        archivedAt: new Date(),
+        archivedAt: closureDate,
         isLocked: true,
         active: false,
         archiveDriveFileUrl: driveUrl,
         archiveDriveFileId: uploadRes.fileId || null,
         archiveReportSummary: {
-          archivedAt: new Date().toISOString(),
+          archivedAt: closureDate.toISOString(),
           totalGroups: groups.length,
           totalStudents,
           capstoneCount,
@@ -1187,6 +1270,10 @@ export async function archiveBatchAction(
           forumPostsArchivedCount: forumArchiveResult.postsCount,
           forumRepliesArchivedCount: forumArchiveResult.repliesCount,
           forumAttachmentsArchivedCount: forumArchiveResult.attachmentsArchivedCount,
+          sem8SubmissionsArchiveDriveUrl: sem8SubmissionsDriveUrl,
+          sem8SubmissionsArchiveDriveFileId: sem8ZipUploadRes.fileId || null,
+          sem8SubmissionsCount: sem8ArchiveRes.submissionsCount,
+          sem8SubmissionsRetainUntil: sem8RetainUntil.toISOString(),
           groups: archivedProfiles,
         } as any,
       },
@@ -1228,30 +1315,45 @@ export async function purgeExpiredArchivedProjectsAction(): Promise<{
   }
 
   try {
+    const now = new Date();
+    let expiredSubmissionsCount = 0;
+    try {
+      const expiredSubmissionsRes = await prisma.semesterSubmission.deleteMany({
+        where: {
+          retainUntil: { lte: now },
+        },
+      });
+      expiredSubmissionsCount = expiredSubmissionsRes?.count || 0;
+    } catch {
+      expiredSubmissionsCount = 0;
+    }
+
     const expiredGroups = await prisma.group.findMany({
       where: {
         isArchived: true,
         isCapstonePermanent: false,
-        purgeAt: { lte: new Date() },
+        purgeAt: { lte: now },
       },
       select: { id: true },
     });
 
-    if (expiredGroups.length === 0) {
-      return { success: true, purgedCount: 0, message: 'No expired non-capstone projects eligible for purging.' };
+    if (expiredGroups.length === 0 && expiredSubmissionsCount === 0) {
+      return { success: true, purgedCount: 0, message: 'No expired non-capstone projects or 4-year submissions eligible for purging.' };
     }
 
     const groupIds = expiredGroups.map((g) => g.id);
 
-    // Remove group members and mark entries
-    await prisma.groupMember.deleteMany({ where: { groupId: { in: groupIds } } });
-    await prisma.markEntry.deleteMany({ where: { groupId: { in: groupIds } } });
-    await prisma.group.deleteMany({ where: { id: { in: groupIds } } });
+    if (groupIds.length > 0) {
+      // Remove group members and mark entries
+      await prisma.groupMember.deleteMany({ where: { groupId: { in: groupIds } } });
+      await prisma.markEntry.deleteMany({ where: { groupId: { in: groupIds } } });
+      await prisma.group.deleteMany({ where: { id: { in: groupIds } } });
+    }
 
     return {
       success: true,
-      purgedCount: groupIds.length,
-      message: `Cleaned up ${groupIds.length} expired archived project record(s) older than 4 years. Capstone records remain untouched.`,
+      purgedCount: groupIds.length + expiredSubmissionsCount,
+      message: `Cleaned up ${groupIds.length} expired archived project record(s) and ${expiredSubmissionsCount} expired 8th-semester submission(s) older than 4 years. Capstone records remain untouched.`,
     };
   } catch (err) {
     return { success: false, error: (err as Error).message };

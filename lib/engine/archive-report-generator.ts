@@ -57,6 +57,12 @@ export interface ArchivedGroupProfile {
   isCapstone: boolean;
   decisionYear: number;
   decisionNotes?: string | null;
+  completedSubmissions?: Array<{
+    semester: number;
+    docType: string;
+    fileName: string;
+    driveViewLink: string;
+  }>;
 }
 
 export interface BatchArchiveReportPayload {
@@ -204,6 +210,26 @@ export function generateBatchStaticArchiveHtml(data: BatchArchiveReportPayload):
             <span class="section-label">Program Outcomes (PO) Attainment</span>
             <div class="group-po-grid">${poGrid}</div>
           </div>
+
+          ${
+            g.completedSubmissions && g.completedSubmissions.length > 0
+              ? `
+            <div class="card-section">
+              <span class="section-label">Completed Semester Submissions (Google Drive Links)</span>
+              <div class="pills-wrap">
+                ${g.completedSubmissions
+                  .map(
+                    (sub) =>
+                      `<a class="pill pill-attr" href="${escapeHtml(sub.driveViewLink)}" target="_blank" rel="noopener noreferrer">Sem ${sub.semester} ${
+                        sub.docType === 'PROGRESS_REPORT' ? 'Report' : 'PPT/Pres.'
+                      }: ${escapeHtml(sub.fileName)} ↗</a>`
+                  )
+                  .join('')}
+              </div>
+            </div>
+          `
+              : ''
+          }
 
           ${
             g.decisionNotes

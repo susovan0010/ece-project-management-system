@@ -41,6 +41,7 @@ let mockTopics: any[] = [];
 let mockDecisions: any[] = [];
 let mockComplexityDeclarations: any[] = [];
 let mockForumPosts: any[] = [];
+let mockSubmissions: any[] = [];
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -168,6 +169,31 @@ vi.mock('@/lib/prisma', () => ({
       }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    semesterSubmission: {
+      findMany: vi.fn().mockImplementation(({ where }: any) => {
+        const groupIds = where?.groupId?.in || [];
+        return mockSubmissions.filter((s) => groupIds.includes(s.groupId));
+      }),
+      deleteMany: vi.fn().mockImplementation(({ where }: any) => {
+        const before = mockSubmissions.length;
+        if (where?.semester?.in) {
+          mockSubmissions = mockSubmissions.filter(
+            (s) => !(where.groupId?.in?.includes(s.groupId) && where.semester.in.includes(s.semester))
+          );
+        } else if (where?.retainUntil?.lte) {
+          mockSubmissions = mockSubmissions.filter(
+            (s) => !(s.retainUntil && new Date(s.retainUntil) <= where.retainUntil.lte)
+          );
+        }
+        return { count: before - mockSubmissions.length };
+      }),
+      updateMany: vi.fn().mockImplementation(({ where, data }: any) => {
+        mockSubmissions
+          .filter((s) => where.groupId?.in?.includes(s.groupId) && s.semester === where.semester)
+          .forEach((s) => Object.assign(s, data));
+        return { count: 1 };
+      }),
+    },
     capstoneDecision: {
       update: vi.fn().mockImplementation(({ where, data }: any) => {
         const d = mockDecisions.find((item) => item.id === where.id);
@@ -238,6 +264,7 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
       { id: '2023-2027', active: true, isLocked: false, isArchived: false },
     ];
     mockForumPosts = [];
+    mockSubmissions = [];
 
     mockTopics = [
       {
@@ -572,6 +599,103 @@ describe('Phase 61: Close Session, Archival & Capstone Catalogue', () => {
     // Verify batch summary records forum archive counts
     expect(mockBatches[0].archiveReportSummary.forumPostsArchivedCount).toBe(1);
     expect(mockBatches[0].archiveReportSummary.forumAttachmentsArchivedCount).toBe(1);
+  });
+
+  it('4c. archiveBatchAction archives Sem 8 reports/PPTs in ZIP with 4-year retention, includes completed links in HTML, and deletes Sem 6 & 7 docs', async () => {
+    const { uploadFileToGoogleDrive } = await import('@/lib/google-drive');
+    (uploadFileToGoogleDrive as any).mockClear();
+
+    mockBatches[0].isLocked = true;
+    mockGroups[1].markEntries.push({
+      criterionId: 104,
+      marks: 75,
+      criterion: {
+        semester: 8,
+        maxMarks: 100,
+        maps: [{ code: 'PO1', kind: 'PO' }],
+      },
+    });
+
+    const sem8PdfBase64 = Buffer.from('%PDF-1.4\nSem 8 Final Report').toString('base64');
+    mockSubmissions = [
+      {
+        id: 'sub-6',
+        groupId: 'group-1',
+        semester: 6,
+        docType: 'PROGRESS_REPORT',
+        fileName: 'sem6_report.pdf',
+        fileExtension: 'pdf',
+        fileSize: 100,
+        driveViewLink: 'https://drive.google.com/file/d/sem6/view',
+        status: 'COMPLETED',
+        uploadedByName: 'Aarav',
+        uploadedAt: new Date(),
+      },
+      {
+        id: 'sub-7',
+        groupId: 'group-1',
+        semester: 7,
+        docType: 'PRESENTATION',
+        fileName: 'sem7_deck.pptx',
+        fileExtension: 'pptx',
+        fileSize: 200,
+        driveViewLink: 'https://drive.google.com/file/d/sem7/view',
+        status: 'COMPLETED',
+        uploadedByName: 'Aarav',
+        uploadedAt: new Date(),
+      },
+      {
+        id: 'sub-8',
+        groupId: 'group-1',
+        semester: 8,
+        docType: 'PROGRESS_REPORT',
+        fileName: 'sem8_final_report.pdf',
+        fileExtension: 'pdf',
+        fileSize: 300,
+        driveViewLink: `data:application/pdf;base64,${sem8PdfBase64}`,
+        status: 'COMPLETED',
+        uploadedByName: 'Aarav',
+        uploadedAt: new Date(),
+      },
+    ];
+
+    const res = await archiveBatchAction({
+      batchId: '2023-2027',
+      adminPassword: 'AdminSecret123!',
+      confirmationSentence: getBatchArchiveConfirmationSentence('2023-2027'),
+    });
+
+    expect(res.success).toBe(true);
+
+    // 1. Sem 8 ZIP uploaded to Google Drive
+    const calls = (uploadFileToGoogleDrive as any).mock.calls;
+    const sem8ZipCall = calls.find(
+      (c: any[]) => c[0]?.fileName === 'Batch_2023-2027_Sem8_Submissions_Archive.zip'
+    );
+    expect(sem8ZipCall).toBeDefined();
+    expect(sem8ZipCall[0].mimeType).toBe('application/zip');
+
+    // 2. HTML report includes completed submission Drive links
+    const htmlCall = calls.find(
+      (c: any[]) => c[0]?.fileName === 'Batch_2023-2027_Comprehensive_Academic_Archive.html'
+    );
+    const htmlDecoded = Buffer.from(htmlCall[0].dataUrlOrBase64, 'base64').toString('utf-8');
+    expect(htmlDecoded).toContain('sem6_report.pdf');
+    expect(htmlDecoded).toContain('sem8_final_report.pdf');
+
+    // 3. Sem 6 & 7 deleted after successful closure; Sem 8 retained with 4-year retainUntil
+    expect(mockSubmissions.some((s) => s.semester === 6)).toBe(false);
+    expect(mockSubmissions.some((s) => s.semester === 7)).toBe(false);
+    const remainingSem8 = mockSubmissions.find((s) => s.semester === 8);
+    expect(remainingSem8).toBeDefined();
+    expect(remainingSem8.retainUntil).toBeInstanceOf(Date);
+    expect(remainingSem8.retainUntil.getFullYear()).toBe(new Date().getFullYear() + 4);
+
+    // 4. Expired Sem 8 submission (> 4 years old) is purged by purgeExpiredArchivedProjectsAction
+    remainingSem8.retainUntil = new Date('2020-01-01');
+    const purgeRes = await purgeExpiredArchivedProjectsAction();
+    expect(purgeRes.success).toBe(true);
+    expect(mockSubmissions).toHaveLength(0);
   });
 
   it('5. purgeExpiredArchivedProjectsAction cleans only eligible expired non-capstones', async () => {
