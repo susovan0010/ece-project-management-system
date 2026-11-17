@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { ExternalLink } from 'lucide-react';
 import {
   getMyPublicationsAction,
   saveProfileScholarLinksAction,
@@ -517,11 +518,34 @@ export default function PublicationsWorkspace({ portalRole }: { portalRole: 'FAC
                     }}
                     className="mt-0.5"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="font-bold text-slate-900">{c.title}</div>
-                    <div className="text-[11px] text-slate-600 mt-0.5">{c.authors}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">
-                      {c.venue} • {c.year} • Citations: {c.citationsCount}
+                    <div className="text-[11px] text-slate-700 mt-0.5">
+                      <span className="font-semibold text-slate-500">Authors:</span> {c.authors}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500 mt-1">
+                      <span>{c.venue}</span>
+                      <span>•</span>
+                      <span>{c.year}</span>
+                      <span>•</span>
+                      <span>{c.pubType}</span>
+                      <span>•</span>
+                      <span>Citations: {c.citationsCount}</span>
+                      {c.doiUrl && (
+                        <>
+                          <span>•</span>
+                          <a
+                            href={c.doiUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-medium"
+                          >
+                            {c.doiUrl.replace(/^https?:\/\/(dx\.)?doi\.org\//i, 'DOI: ')}
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        </>
+                      )}
                     </div>
                   </div>
                 </label>

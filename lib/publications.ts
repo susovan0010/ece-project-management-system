@@ -203,47 +203,106 @@ async function fetchOrcidVerifiedWorks(
     return { works: [], matchedAuthorName };
   }
 
-  // Extract DOIs to enrich author lists & citation counts from OpenAlex in one batch call
-  const getDoiFromSummary = (s: any): string => {
-    const extIds: any[] = Array.isArray(s?.['external-ids']?.['external-id'])
-      ? s['external-ids']['external-id']
+  // Fetch full ORCID work records in bulk (up to 50 put-codes per request) so we get
+  // contributors (co-authors), BibTeX citations, URLs, and external IDs directly from ORCID.
+  const putCodes: number[] = orcidItems
+    .map((s) => Number(s?.['put-code']))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  const fullWorkByPutCode = new Map<number, any>();
+  if (putCodes.length > 0) {
+    const putCodeChunks: number[][] = [];
+    for (let i = 0; i < putCodes.length; i += 50) {
+      putCodeChunks.push(putCodes.slice(i, i + 50));
+    }
+    await Promise.all(
+      putCodeChunks.map(async (chunk) => {
+        try {
+          const bulkRes = await fetch(
+            `https://pub.orcid.org/v3.0/${encodeURIComponent(cleanOrcid)}/works/${chunk.join(',')}`,
+            { headers }
+          );
+          if (!bulkRes.ok) return;
+          const bulkJson = await bulkRes.json();
+          const bulkItems: any[] = Array.isArray(bulkJson?.bulk) ? bulkJson.bulk : [];
+          for (const item of bulkItems) {
+            const w = item?.work;
+            if (w && w['put-code']) {
+              fullWorkByPutCode.set(Number(w['put-code']), w);
+            }
+          }
+        } catch {
+          // ignore bulk metadata errors; summary still available
+        }
+      })
+    );
+  }
+
+  const getExternalIds = (obj: any): any[] =>
+    Array.isArray(obj?.['external-ids']?.['external-id'])
+      ? obj['external-ids']['external-id']
       : [];
-    const doiObj = extIds.find((e) => String(e?.['external-id-type']).toLowerCase() === 'doi');
+
+  const getDoiFromItem = (s: any, fullWork: any): string => {
+    const allExtIds = [...getExternalIds(fullWork), ...getExternalIds(s)];
+    const doiObj = allExtIds.find((e) => String(e?.['external-id-type']).toLowerCase() === 'doi');
     return doiObj?.['external-id-value'] ? normalizeDoi(String(doiObj['external-id-value'])) : '';
   };
 
+  const getFallbackUrlFromItem = (s: any, fullWork: any): string => {
+    const directUrl = fullWork?.url?.value || s?.url?.value;
+    if (directUrl) return String(directUrl).trim();
+    const allExtIds = [...getExternalIds(fullWork), ...getExternalIds(s)];
+    const withUrl = allExtIds.find((e) => e?.['external-id-url']?.value);
+    return withUrl?.['external-id-url']?.value ? String(withUrl['external-id-url'].value).trim() : '';
+  };
+
   const uniqueDois = Array.from(
-    new Set(orcidItems.map(getDoiFromSummary).filter(Boolean))
-  ).slice(0, 50);
+    new Set(
+      orcidItems
+        .map((s) => getDoiFromItem(s, fullWorkByPutCode.get(Number(s?.['put-code']))))
+        .filter(Boolean)
+    )
+  ).slice(0, 100);
 
   const openAlexByDoi = new Map<string, any>();
   if (uniqueDois.length > 0) {
-    try {
-      const doiFilter = uniqueDois.map((d) => `https://doi.org/${d}`).join('|');
-      const oaRes = await fetch(
-        `https://api.openalex.org/works?filter=doi:${encodeURIComponent(doiFilter)}&per-page=100`,
-        {
-          headers: {
-            'User-Agent': 'HITK-ECE-Capstone-Portal/1.0 (mailto:ece.project.committee@heritageit.edu)',
-          },
-        }
-      );
-      if (oaRes.ok) {
-        const oaJson = await oaRes.json();
-        const oaWorks: any[] = Array.isArray(oaJson?.results) ? oaJson.results : [];
-        for (const w of oaWorks) {
-          if (w?.doi) {
-            openAlexByDoi.set(normalizeDoi(String(w.doi)), w);
-          }
-        }
-      }
-    } catch {
-      // OpenAlex enrichment is optional; ORCID works still succeed
+    const doiChunks: string[][] = [];
+    for (let i = 0; i < uniqueDois.length; i += 25) {
+      doiChunks.push(uniqueDois.slice(i, i + 25));
     }
+    await Promise.all(
+      doiChunks.map(async (chunk) => {
+        try {
+          const doiFilter = chunk.map((d) => `https://doi.org/${d}`).join('|');
+          const oaRes = await fetch(
+            `https://api.openalex.org/works?filter=doi:${encodeURIComponent(doiFilter)}&per-page=50`,
+            {
+              headers: {
+                'User-Agent':
+                  'HITK-ECE-Capstone-Portal/1.0 (mailto:ece.project.committee@heritageit.edu)',
+              },
+            }
+          );
+          if (oaRes.ok) {
+            const oaJson = await oaRes.json();
+            const oaWorks: any[] = Array.isArray(oaJson?.results) ? oaJson.results : [];
+            for (const w of oaWorks) {
+              if (w?.doi) {
+                openAlexByDoi.set(normalizeDoi(String(w.doi)), w);
+              }
+            }
+          }
+        } catch {
+          // OpenAlex enrichment is optional; ORCID works still succeed
+        }
+      })
+    );
   }
 
   const works: ParsedPublicationCandidate[] = orcidItems.map((s) => {
-    const doi = getDoiFromSummary(s);
+    const fullWork = fullWorkByPutCode.get(Number(s?.['put-code']));
+    const doi = getDoiFromItem(s, fullWork);
     const oa = doi ? openAlexByDoi.get(doi) : undefined;
 
     const oaAuthors = Array.isArray(oa?.authorships)
@@ -253,24 +312,53 @@ async function fetchOrcidVerifiedWorks(
           .join(', ')
       : '';
 
-    const title = String(s.title.title.value).trim();
+    const orcidContributors = Array.isArray(fullWork?.contributors?.contributor)
+      ? fullWork.contributors.contributor
+          .map((c: any) => c?.['credit-name']?.value)
+          .filter(Boolean)
+          .join(', ')
+      : '';
+
+    const bibParsed =
+      fullWork?.citation?.['citation-type'] === 'bibtex' && fullWork?.citation?.['citation-value']
+        ? parseBibtexEntries(String(fullWork.citation['citation-value']))[0]
+        : undefined;
+
+    const title = String(
+      fullWork?.title?.title?.value || s.title.title.value || bibParsed?.title || ''
+    ).trim();
     const venue =
-      String(s?.['journal-title']?.value || '').trim() ||
+      String(fullWork?.['journal-title']?.value || s?.['journal-title']?.value || '').trim() ||
       oa?.primary_location?.source?.display_name ||
       oa?.host_venue?.display_name ||
+      bibParsed?.venue ||
       'ORCID Indexed';
     const year =
-      Number(s?.['publication-date']?.year?.value) ||
+      Number(fullWork?.['publication-date']?.year?.value || s?.['publication-date']?.year?.value) ||
       Number(oa?.publication_year) ||
+      bibParsed?.year ||
       new Date().getFullYear();
+
+    const doiUrl =
+      (doi ? `https://doi.org/${doi}` : '') ||
+      getFallbackUrlFromItem(s, fullWork) ||
+      bibParsed?.doiUrl ||
+      oa?.primary_location?.landing_page_url ||
+      oa?.id ||
+      '';
 
     return {
       title,
-      authors: oaAuthors || matchedAuthorName || 'ORCID Author',
+      authors:
+        oaAuthors ||
+        orcidContributors ||
+        bibParsed?.authors ||
+        matchedAuthorName ||
+        'ORCID Author',
       venue,
       year,
-      pubType: mapOrcidType(String(s?.type || '')),
-      doiUrl: doi ? `https://doi.org/${doi}` : String(s?.url?.value || ''),
+      pubType: mapOrcidType(String(fullWork?.type || s?.type || '')),
+      doiUrl,
       openAlexId: oa?.id || undefined,
       citationsCount: Number(oa?.cited_by_count) || 0,
       source: 'OPENALEX',
