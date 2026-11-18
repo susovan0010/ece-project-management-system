@@ -167,29 +167,63 @@ export default function CommunicationClient() {
     setLoading(false);
   }
 
-  // Auto-process any due scheduled emails on Communication load & every 60s while open
+  // Auto-process any due scheduled emails at exact scheduled IST time + 15s fallback while open
   useEffect(() => {
     let active = true;
     const sweepDue = async () => {
       try {
         const res = await processDueScheduledCommunicationsAction();
         if (active && res.success && res.dispatchedCount > 0) {
-          const refreshed = await getScheduledCommunicationsAction();
+          const [refreshed, histRes] = await Promise.all([
+            getScheduledCommunicationsAction(),
+            getCommunicationHistoryAction(),
+          ]);
           if (active && refreshed.jobs) {
             setScheduledJobs(refreshed.jobs);
           }
+          if (active && histRes) {
+            setHistory(histRes);
+          }
+          setSuccessMsg(res.message || `Automatically delivered ${res.dispatchedCount} scheduled email(s).`);
         }
       } catch {
         // ignore background sweep errors
       }
     };
-    sweepDue();
-    const timer = setInterval(sweepDue, 60000);
+
+    // Find the earliest pending occurrence across all ACTIVE jobs (interpreting naive timestamps as IST +05:30)
+    const pendingTimesMs: number[] = [];
+    for (const job of scheduledJobs) {
+      if (job.status !== 'ACTIVE') continue;
+      for (const occ of job.occurrences || []) {
+        if (occ.status !== 'PENDING') continue;
+        const s = occ.scheduledAt.trim();
+        const hasZone = /([zZ]|[+-]\d{2}:\d{2})$/.test(s);
+        const ms = new Date(hasZone ? s : `${s}+05:30`).getTime();
+        if (Number.isFinite(ms)) pendingTimesMs.push(ms);
+      }
+    }
+
+    let exactTimer: ReturnType<typeof setTimeout> | null = null;
+    if (pendingTimesMs.length > 0) {
+      const earliestMs = Math.min(...pendingTimesMs);
+      const delayMs = earliestMs - Date.now();
+      if (delayMs <= 0) {
+        sweepDue();
+      } else if (delayMs <= 2147483000) {
+        exactTimer = setTimeout(sweepDue, delayMs + 500);
+      }
+    }
+
+    const hasActive = scheduledJobs.some((j) => j.status === 'ACTIVE');
+    const intervalTimer = hasActive ? setInterval(sweepDue, 15000) : null;
+
     return () => {
       active = false;
-      clearInterval(timer);
+      if (exactTimer) clearTimeout(exactTimer);
+      if (intervalTimer) clearInterval(intervalTimer);
     };
-  }, []);
+  }, [scheduledJobs]);
 
   // Load Scheduled Emails
   async function loadSchedules() {
