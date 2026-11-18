@@ -299,13 +299,21 @@ const SaveProposalSchema = z.object({
     .refine((s) => s.trim().length >= 3, 'Project Title is mandatory and must be at least 3 characters.'),
   subtitle: z.string().optional(),
   category: z.enum(['Custom', 'Hardware', 'Software', 'Both']),
-  domain: z.string().optional(),
+  domain: z
+    .string()
+    .min(1, 'Project Theme is mandatory and cannot be blank.')
+    .refine((s) => s.trim().length >= 2, 'Project Theme is mandatory and must be at least 2 characters.'),
   organization: z.string().optional(),
   description: z
     .string()
     .min(1, 'Project Abstract is mandatory and cannot be blank.')
     .refine((s) => s.trim().length > 0, 'Project Abstract is mandatory and cannot be blank.'),
-  tags: z.array(z.string()).default([]),
+  tags: z
+    .array(z.string())
+    .refine(
+      (arr) => arr.map((t) => t.trim()).filter(Boolean).length >= 1,
+      'At least one Technical Keyword / Tag is mandatory.'
+    ),
   status: z.enum(['DRAFT', 'CONFIRMED']).default('CONFIRMED'),
   attributes: z.array(
     z.object({

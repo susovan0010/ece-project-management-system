@@ -564,6 +564,14 @@ export default function ProposeTopicClient() {
       setError('Project Subtitle is mandatory for SIH projects (at least 3 characters) to specify your proposed solution.');
       return;
     }
+    if (!domain.trim() || domain.trim().length < 2) {
+      setError('Project Theme is mandatory and cannot be blank.');
+      return;
+    }
+    if (tags.length === 0) {
+      setError('At least one Technical Keyword / Tag is mandatory. Type a keyword and click Add Tag.');
+      return;
+    }
     if (!description.trim()) {
       setError('Project Abstract is a mandatory field and cannot be blank. Both Title and Abstract are mandatory.');
       return;
@@ -598,7 +606,7 @@ export default function ProposeTopicClient() {
       title: title.trim(),
       subtitle: topicSource === 'SIH' ? subtitle.trim() : undefined,
       category,
-      domain: domain.trim() || undefined,
+      domain: domain.trim(),
       organization: organization.trim() || undefined,
       description: description.trim(),
       tags,
@@ -759,7 +767,7 @@ export default function ProposeTopicClient() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Project Theme <span className="text-indigo-600">(e.g. Disaster Management, Transportation &amp; Logistics)</span>
+                  Project Theme <span className="text-red-500">* (Mandatory)</span>
                 </label>
                 <input
                   type="text"
@@ -786,7 +794,7 @@ export default function ProposeTopicClient() {
             {/* Keyword Tags */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Technical Keywords / Tags
+                Technical Keywords / Tags <span className="text-red-500">* (Mandatory)</span>
               </label>
               <div className="flex gap-2 mb-2">
                 <input
@@ -1668,12 +1676,18 @@ export default function ProposeTopicClient() {
               const hasTaggedAttributes = Object.values(attrValues).some((v) => v.level > 0);
               const hasTaggedSdgs = Object.keys(selectedSdgs).length > 0;
               const hasAttributesAndSdgs = hasTaggedAttributes && hasTaggedSdgs;
+              const hasThemeAndTags = domain.trim().length >= 2 && tags.length > 0;
               return (
             <div className="pt-4 border-t border-slate-100 space-y-2">
               {!invitationOpen && (
                 <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
                   <strong>Invitation Closed:</strong> Confirming/offering projects is disabled until Admin enables{' '}
                   <em>&quot;Invite Project from Supervisors&quot;</em>. You can still add/edit this project in the Topic Bank as a Draft.
+                </div>
+              )}
+              {!hasThemeAndTags && (
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-900">
+                  <strong>Theme &amp; Tags Required:</strong> Enter a <em>Project Theme</em> and add at least one <em>Technical Keyword / Tag</em>.
                 </div>
               )}
               {!hasAttributesAndSdgs && (
@@ -1685,10 +1699,12 @@ export default function ProposeTopicClient() {
               <button
                 type="button"
                 onClick={() => handleSave('CONFIRMED')}
-                disabled={submitting || isOverWordLimit || !invitationOpen || !hasAttributesAndSdgs}
+                disabled={submitting || isOverWordLimit || !invitationOpen || !hasAttributesAndSdgs || !hasThemeAndTags}
                 title={
                   !invitationOpen
                     ? 'Disabled until Admin opens "Invite Project from Supervisors"'
+                    : !hasThemeAndTags
+                    ? 'Project Theme and at least one Technical Keyword / Tag are mandatory'
                     : !hasAttributesAndSdgs
                     ? 'Tag Attributes and SDGs via "Re-tag Attributes, SDGs & POs with AI" first'
                     : undefined
