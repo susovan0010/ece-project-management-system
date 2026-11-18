@@ -603,3 +603,252 @@ export async function deleteFacultyProductAction(id: string) {
     return { error: `Failed to delete Product Ready entry: ${(err as Error).message}` };
   }
 }
+
+// ----------------------------------------------------
+// 5. Faculty / Models & Admin Showcase Working Models
+// ----------------------------------------------------
+const WorkingModelSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(2, 'Model name / title is required.'),
+  platform: z.string().min(2).default('FPGA'),
+  objective: z.string().min(5, 'Please describe the objective of the working model.'),
+  functionality: z.string().min(5, 'Please describe the functionality of the working model.'),
+  componentsUsed: z.string().min(3, 'Please list the main components (microcontrollers, peripherals, ICs, etc.).'),
+  simulationResults: z.string().max(4000).optional(),
+  demoUrl: z.string().max(400).optional(),
+  taggedTopicIds: z.array(z.string()).min(1, 'Select at least one project that implemented this model.'),
+});
+
+export async function getFacultyModelsAction() {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized: Faculty access required.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const [models, myTopics, supervisedGroups] = await Promise.all([
+      prisma.workingModel.findMany({
+        where: { ownerUserId: userId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.topic.findMany({
+        where: { proposerId: userId },
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          status: true,
+          groups: {
+            select: {
+              id: true,
+              number: true,
+              batchId: true,
+              members: { include: { student: { select: { name: true, roll: true } } } },
+            },
+          },
+        },
+        orderBy: { code: 'asc' },
+      }),
+      prisma.group.findMany({
+        where: { supervisorId: userId },
+        include: {
+          topic: { select: { id: true, code: true, title: true, status: true } },
+          members: { include: { student: { select: { name: true, roll: true } } } },
+        },
+        orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
+      }),
+    ]);
+
+    const projectMap = new Map<
+      string,
+      {
+        id: string;
+        code: string;
+        title: string;
+        status: string;
+        groupLabel: string | null;
+        studentNames: string;
+      }
+    >();
+
+    for (const t of myTopics) {
+      const firstGrp = t.groups?.[0];
+      projectMap.set(t.id, {
+        id: t.id,
+        code: t.code,
+        title: t.title,
+        status: t.status,
+        groupLabel: firstGrp ? `Group ${firstGrp.number} (${firstGrp.batchId})` : null,
+        studentNames: firstGrp
+          ? firstGrp.members.map((m) => `${m.student.name} (${m.student.roll})`).join(', ')
+          : '',
+      });
+    }
+
+    for (const g of supervisedGroups) {
+      if (g.topic && !projectMap.has(g.topic.id)) {
+        projectMap.set(g.topic.id, {
+          id: g.topic.id,
+          code: g.topic.code,
+          title: g.topic.title,
+          status: g.topic.status,
+          groupLabel: `Group ${g.number} (${g.batchId})`,
+          studentNames: g.members.map((m) => `${m.student.name} (${m.student.roll})`).join(', '),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      projects: Array.from(projectMap.values()),
+      models: models.map((m) => ({
+        ...m,
+        taggedTopics: (m.taggedTopicIds || [])
+          .map((tid) => projectMap.get(tid))
+          .filter((t): t is NonNullable<typeof t> => Boolean(t)),
+        createdAt: m.createdAt.toISOString(),
+      })),
+    };
+  } catch (err) {
+    return { error: `Failed to load working models: ${(err as Error).message}` };
+  }
+}
+
+export async function saveFacultyModelAction(input: z.infer<typeof WorkingModelSchema>) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized: Faculty access required.' };
+  }
+
+  const parsed = WorkingModelSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message || 'Invalid model details.' };
+  }
+
+  const userId = session.user.id;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+
+    const taggedGroups = await prisma.group.findMany({
+      where: { topicId: { in: parsed.data.taggedTopicIds } },
+      include: {
+        members: { include: { student: { select: { name: true, roll: true } } } },
+      },
+      orderBy: [{ batchId: 'desc' }, { number: 'asc' }],
+    });
+
+    const primaryGroup = taggedGroups[0] || null;
+    const allStudentNames = Array.from(
+      new Set(
+        taggedGroups.flatMap((g) => g.members.map((m) => `${m.student.name} (${m.student.roll})`))
+      )
+    ).join(', ');
+
+    const data = {
+      title: parsed.data.title.trim(),
+      platform: parsed.data.platform.trim(),
+      objective: parsed.data.objective.trim(),
+      functionality: parsed.data.functionality.trim(),
+      componentsUsed: parsed.data.componentsUsed.trim(),
+      simulationResults: parsed.data.simulationResults?.trim() || null,
+      demoUrl: parsed.data.demoUrl?.trim() || null,
+      ownerUserId: userId,
+      supervisorName: user?.name || session.user.name || 'Supervisor',
+      groupId: primaryGroup?.id || null,
+      batchId: primaryGroup?.batchId || null,
+      studentNames: allStudentNames || null,
+      taggedTopicIds: parsed.data.taggedTopicIds,
+    };
+
+    if (parsed.data.id) {
+      const existing = await prisma.workingModel.findUnique({ where: { id: parsed.data.id } });
+      if (!existing || existing.ownerUserId !== userId) {
+        return { error: 'Forbidden: You can only edit your own Working Model entries.' };
+      }
+      await prisma.workingModel.update({ where: { id: parsed.data.id }, data });
+    } else {
+      await prisma.workingModel.create({ data });
+    }
+
+    revalidatePath('/faculty/models');
+    revalidatePath('/admin/showcase');
+    revalidatePath('/admin/showcase/models');
+
+    return { success: true, message: 'Working model saved and tagged to selected project(s).' };
+  } catch (err) {
+    return { error: `Failed to save working model: ${(err as Error).message}` };
+  }
+}
+
+export async function deleteFacultyModelAction(id: string) {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'FACULTY') {
+    return { error: 'Unauthorized: Faculty access required.' };
+  }
+
+  try {
+    const existing = await prisma.workingModel.findUnique({ where: { id } });
+    if (!existing || existing.ownerUserId !== session.user.id) {
+      return { error: 'Forbidden: You can only delete your own Working Model entries.' };
+    }
+
+    await prisma.workingModel.delete({ where: { id } });
+    revalidatePath('/faculty/models');
+    revalidatePath('/admin/showcase');
+    revalidatePath('/admin/showcase/models');
+    return { success: true, message: 'Working model removed.' };
+  } catch (err) {
+    return { error: `Failed to delete working model: ${(err as Error).message}` };
+  }
+}
+
+export async function getAdminShowcaseModelsAction() {
+  const session = await auth();
+  if (!session?.user?.id || (session.user as { role?: string }).role !== 'ADMIN') {
+    return { error: 'Unauthorized: Admin access required.' };
+  }
+
+  try {
+    const [models, topics] = await Promise.all([
+      prisma.workingModel.findMany({ orderBy: { createdAt: 'desc' } }),
+      prisma.topic.findMany({
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          groups: { select: { id: true, number: true, batchId: true } },
+        },
+      }),
+    ]);
+
+    const topicById = new Map(topics.map((t) => [t.id, t]));
+
+    return {
+      success: true,
+      models: models.map((m) => ({
+        ...m,
+        taggedTopics: (m.taggedTopicIds || [])
+          .map((tid) => topicById.get(tid))
+          .filter((t): t is NonNullable<typeof t> => Boolean(t))
+          .map((t) => ({
+            id: t.id,
+            code: t.code,
+            title: t.title,
+            groupLabel:
+              t.groups && t.groups.length > 0
+                ? t.groups.map((g) => `Group ${g.number} (${g.batchId})`).join(', ')
+                : null,
+          })),
+        createdAt: m.createdAt.toISOString(),
+      })),
+    };
+  } catch (err) {
+    return { error: `Failed to load working models: ${(err as Error).message}` };
+  }
+}

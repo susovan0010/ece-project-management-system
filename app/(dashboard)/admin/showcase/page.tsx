@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Cpu, Building2 } from "lucide-react";
+import { BookOpen, Cpu, Building2, CircuitBoard } from "lucide-react";
 import AdminShowcasePublicationsPage from "./publications/page";
 import AdminShowcaseProductsPage from "./products/page";
 import AdminShowcaseIndustryPage from "./industry/page";
+import AdminShowcaseModelsPage from "./models/page";
 
-type ShowcaseTab = "publications" | "products" | "industry";
+type ShowcaseTab = "publications" | "products" | "industry" | "models";
 
 export default function AdminShowcasePage() {
   const [activeTab, setActiveTab] = useState<ShowcaseTab>("publications");
@@ -18,6 +19,7 @@ export default function AdminShowcasePage() {
   }> = [
     { id: "publications", label: "Publications", icon: BookOpen },
     { id: "products", label: "Products", icon: Cpu },
+    { id: "models", label: "Working Models", icon: CircuitBoard },
     { id: "industry", label: "Industry Collaborations", icon: Building2 },
   ];
 
@@ -49,6 +51,7 @@ export default function AdminShowcasePage() {
 
       {activeTab === "publications" && <AdminShowcasePublicationsPage />}
       {activeTab === "products" && <AdminShowcaseProductsPage />}
+      {activeTab === "models" && <AdminShowcaseModelsPage />}
       {activeTab === "industry" && <AdminShowcaseIndustryPage />}
     </div>
   );

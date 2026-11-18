@@ -677,3 +677,24 @@ model IndustryCollaboration {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+model WorkingModel {
+  id                String   @id @default(cuid())
+  title             String
+  platform          String   @default("FPGA") // "FPGA" | "ATMEL / AVR" | "Raspberry Pi" | "RISC-V" | "ESP32 / Arduino" | "STM32 / ARM" | "VLSI / ASIC" | "Other"
+  objective         String   @db.Text
+  functionality     String   @db.Text
+  componentsUsed    String   @db.Text
+  simulationResults String?  @db.Text
+  demoUrl           String?
+  ownerUserId       String
+  supervisorName    String?
+  groupId           String?
+  batchId           String?
+  studentNames      String?
+  taggedTopicIds    String[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([ownerUserId])
+}
