@@ -9,14 +9,32 @@ interface EvaluationRubricsViewProps {
 
 export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRubricsViewProps) {
   const [activeSemester, setActiveSemester] = useState<6 | 7 | 8>(7);
+  const [sheetFilter, setSheetFilter] = useState<'ALL' | 'SUPERVISOR' | 'EXAMINER'>('ALL');
+
+  const examinerLabel =
+    activeSemester === 6
+      ? 'Co-Examiner Sheet (Form 6-C)'
+      : activeSemester === 7
+      ? 'Panellist Sheet (Form 7-P)'
+      : 'External Examiner Sheet (Form 8-E)';
+
+  const supervisorLabel =
+    activeSemester === 6
+      ? 'Supervisor Sheet (Form 6-S)'
+      : activeSemester === 7
+      ? 'Supervisor Sheet (Form 7-S)'
+      : 'Supervisor Sheet (Form 8-S)';
 
   useEffect(() => {
     // Trigger background DB sync of Rubrics A through F
     getPrintableRubricsAction().catch(() => {});
   }, []);
 
-  function handlePrint() {
-    window.print();
+  function handlePrintScope(scope: 'ALL' | 'SUPERVISOR' | 'EXAMINER') {
+    setSheetFilter(scope);
+    setTimeout(() => {
+      window.print();
+    }, 80);
   }
 
   return (
@@ -47,20 +65,45 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
           </p>
         </div>
 
-        <button
-          onClick={handlePrint}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-            />
-          </svg>
-          <span>Print Evaluation Sheet</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handlePrintScope('SUPERVISOR')}
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+              />
+            </svg>
+            <span>Print {supervisorLabel}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePrintScope('EXAMINER')}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+              />
+            </svg>
+            <span>Print {examinerLabel}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePrintScope('ALL')}
+            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-1.5"
+          >
+            <span>Print Both</span>
+          </button>
+        </div>
       </div>
 
       {/* Semester Selector Tabs (Hidden during print) */}
@@ -378,6 +421,48 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
         )}
       </div>
 
+      {/* Sheet Filter Bar (Hidden during print) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 no-print print:hidden">
+        <span className="text-xs font-semibold text-slate-600">
+          Preview &amp; Print Sheet Selection:
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSheetFilter('ALL')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+              sheetFilter === 'ALL'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Both Sheets
+          </button>
+          <button
+            type="button"
+            onClick={() => setSheetFilter('SUPERVISOR')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+              sheetFilter === 'SUPERVISOR'
+                ? 'bg-slate-900 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            {supervisorLabel} Only
+          </button>
+          <button
+            type="button"
+            onClick={() => setSheetFilter('EXAMINER')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+              sheetFilter === 'EXAMINER'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            {examinerLabel} Only
+          </button>
+        </div>
+      </div>
+
       {/* Printable Sheet Document */}
       <div className="bg-white border border-slate-300 rounded-sm p-10 shadow-sm space-y-6 text-slate-900 print:border-none print:shadow-none print:p-0 print:space-y-4">
         {/* Top-right running header with thin rule */}
@@ -397,7 +482,8 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
 
         {activeSemester === 6 && (
           <>
-            {/* Form 6-S: 6th Semester – Supervisor's Evaluation Sheet (Rubric A) */}
+            {sheetFilter !== 'EXAMINER' && (
+            /* Form 6-S: 6th Semester – Supervisor's Evaluation Sheet (Rubric A) */
             <div className="space-y-2.5 pt-2 print:pt-1 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 6-S: 6th Semester – Supervisor’s Evaluation Sheet (Rubric A)
@@ -458,8 +544,10 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
                 <span className="inline-block w-64 border-b border-slate-900 ml-1"></span>
               </div>
             </div>
+            )}
 
-            {/* Form 6-C: 6th Semester – Co-examiner's Evaluation Sheet (Rubric B) */}
+            {sheetFilter !== 'SUPERVISOR' && (
+            /* Form 6-C: 6th Semester – Co-examiner's Evaluation Sheet (Rubric B) */
             <div className="space-y-2.5 pt-6 print:pt-3 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 6-C: 6th Semester – Co-examiner’s Evaluation Sheet (Rubric B)
@@ -518,12 +606,14 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
                 <span className="inline-block w-64 border-b border-slate-900 ml-1"></span>
               </div>
             </div>
+            )}
           </>
         )}
 
         {activeSemester === 7 && (
           <>
-            {/* Form 7-S: 7th Semester – Supervisor's Evaluation Sheet (Rubric C) */}
+            {sheetFilter !== 'EXAMINER' && (
+            /* Form 7-S: 7th Semester – Supervisor's Evaluation Sheet (Rubric C) */
             <div className="space-y-2.5 pt-2 print:pt-1 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 7-S: 7th Semester – Supervisor’s Evaluation Sheet (Rubric C)
@@ -582,8 +672,10 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
                 <span className="inline-block w-64 border-b border-slate-900 ml-1"></span>
               </div>
             </div>
+            )}
 
-            {/* Form 7-P: 7th Semester – Panellist's Evaluation Sheet (Rubric D) */}
+            {sheetFilter !== 'SUPERVISOR' && (
+            /* Form 7-P: 7th Semester – Panellist's Evaluation Sheet (Rubric D) */
             <div className="space-y-2.5 pt-6 print:pt-3 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 7-P: 7th Semester – Panellist’s Evaluation Sheet (Rubric D) | Panel No.:{' '}
@@ -661,12 +753,14 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
                 <span className="inline-block w-64 border-b border-slate-900 ml-1"></span>
               </div>
             </div>
+            )}
           </>
         )}
 
         {activeSemester === 8 && (
           <>
-            {/* Form 8-S: 8th Semester – Supervisor's Evaluation Sheet (Rubric E) */}
+            {sheetFilter !== 'EXAMINER' && (
+            /* Form 8-S: 8th Semester – Supervisor's Evaluation Sheet (Rubric E) */
             <div className="space-y-2.5 pt-2 print:pt-1 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 8-S: 8th Semester – Supervisor’s Evaluation Sheet (Rubric E)
@@ -725,8 +819,10 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
                 <span className="inline-block w-64 border-b border-slate-900 ml-1"></span>
               </div>
             </div>
+            )}
 
-            {/* Form 8-E: 8th Semester – External Examiner's Evaluation Sheet (Rubric F) */}
+            {sheetFilter !== 'SUPERVISOR' && (
+            /* Form 8-E: 8th Semester – External Examiner's Evaluation Sheet (Rubric F) */
             <div className="space-y-2.5 pt-6 print:pt-3 break-inside-avoid">
               <h3 className="text-sm font-bold text-[#1F4E79]">
                 Form 8-E: 8th Semester – External Examiner’s Evaluation Sheet (Rubric F)
@@ -803,6 +899,7 @@ export default function EvaluationRubricsView({ role = 'STUDENT' }: EvaluationRu
                 <span className="inline-block w-64 border-b border-slate-900 ml-1"></span>
               </div>
             </div>
+            )}
           </>
         )}
       </div>
