@@ -73,6 +73,7 @@ export default function ProposeTopicClient() {
     Record<string, { level: number; reason: string; origin: 'RULE' | 'AI' | 'FACULTY' }>
   >({});
   const [aiEvaluating, setAiEvaluating] = useState(false);
+  const [hasFreshAiTagging, setHasFreshAiTagging] = useState(false);
 
   // SDG state: { [sdgId]: { target?: string, reason?: string } }
   const [selectedSdgs, setSelectedSdgs] = useState<
@@ -219,6 +220,9 @@ export default function ProposeTopicClient() {
             };
           }
           setSelectedSdgs(adoptedSdgs);
+          setHasFreshAiTagging(
+            (t.attributes?.length || 0) > 0 && (t.sdgs?.length || 0) > 0
+          );
         } else {
           setCode(res.nextCode || '');
         }
@@ -405,6 +409,7 @@ export default function ProposeTopicClient() {
       setError(res.error);
     } else if (res.description) {
       setDescription(res.description);
+      setHasFreshAiTagging(false);
       if (res.isAi) {
         setAiDraftResult(`Drafted via ${res.providerUsed} (${res.wordCount} words) — Supervisor notes prioritized & statement-grounded`);
       } else {
@@ -528,6 +533,11 @@ export default function ProposeTopicClient() {
       }
       setSelectedSdgs(updatedSdgs);
       triggerSdgCompatibilityCheck(updatedSdgs);
+      const anyAttr = Object.values(updated).some((v) => v.level > 0);
+      const anySdg = Object.keys(updatedSdgs).length > 0;
+      if (anyAttr && anySdg) {
+        setHasFreshAiTagging(true);
+      }
       setAiDraftResult(`Complexity evaluated & suitable SDGs auto-mapped via ${res.providerUsed}`);
     }
   }
@@ -951,7 +961,10 @@ export default function ProposeTopicClient() {
               <textarea
                 rows={9}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setHasFreshAiTagging(false);
+                }}
                 placeholder="Detail the Problem Statement, Engineering Methodology, Expected Hardware/Software Prototype Deliverables, and Relevance to Sustainable Development Goals..."
                 className={`w-full p-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 leading-relaxed font-sans ${
                   isOverWordLimit
@@ -995,8 +1008,13 @@ export default function ProposeTopicClient() {
                 <button
                   type="button"
                   onClick={handleEvaluateAiComplexity}
-                  disabled={aiEvaluating || !description.trim()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50 shrink-0"
+                  disabled={aiEvaluating || !description.trim() || hasFreshAiTagging}
+                  title={
+                    hasFreshAiTagging
+                      ? 'Attributes & SDGs already tagged for this abstract. Edit the abstract to enable re-tagging.'
+                      : undefined
+                  }
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                 >
                   {aiEvaluating ? (
                     <>
@@ -1005,6 +1023,13 @@ export default function ProposeTopicClient() {
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                       </svg>
                       Re-tagging with AI...
+                    </>
+                  ) : hasFreshAiTagging ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Tagged (Edit Abstract to Re-tag)
                     </>
                   ) : (
                     <>
@@ -1639,6 +1664,11 @@ export default function ProposeTopicClient() {
             )}
 
             {/* Actions */}
+            {(() => {
+              const hasTaggedAttributes = Object.values(attrValues).some((v) => v.level > 0);
+              const hasTaggedSdgs = Object.keys(selectedSdgs).length > 0;
+              const hasAttributesAndSdgs = hasTaggedAttributes && hasTaggedSdgs;
+              return (
             <div className="pt-4 border-t border-slate-100 space-y-2">
               {!invitationOpen && (
                 <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
@@ -1646,13 +1676,21 @@ export default function ProposeTopicClient() {
                   <em>&quot;Invite Project from Supervisors&quot;</em>. You can still add/edit this project in the Topic Bank as a Draft.
                 </div>
               )}
+              {!hasAttributesAndSdgs && (
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-900">
+                  <strong>Attributes &amp; SDGs Required:</strong> Click{' '}
+                  <em>&quot;Re-tag Attributes, SDGs &amp; POs with AI&quot;</em> after entering your abstract before confirming.
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => handleSave('CONFIRMED')}
-                disabled={submitting || isOverWordLimit || !invitationOpen}
+                disabled={submitting || isOverWordLimit || !invitationOpen || !hasAttributesAndSdgs}
                 title={
                   !invitationOpen
                     ? 'Disabled until Admin opens "Invite Project from Supervisors"'
+                    : !hasAttributesAndSdgs
+                    ? 'Tag Attributes and SDGs via "Re-tag Attributes, SDGs & POs with AI" first'
                     : undefined
                 }
                 className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -1669,6 +1707,8 @@ export default function ProposeTopicClient() {
                 Save to Topic Bank (Draft)
               </button>
             </div>
+              );
+            })()}
           </div>
         </div>
       </div>
