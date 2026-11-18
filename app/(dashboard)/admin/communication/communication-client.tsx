@@ -167,6 +167,30 @@ export default function CommunicationClient() {
     setLoading(false);
   }
 
+  // Auto-process any due scheduled emails on Communication load & every 60s while open
+  useEffect(() => {
+    let active = true;
+    const sweepDue = async () => {
+      try {
+        const res = await processDueScheduledCommunicationsAction();
+        if (active && res.success && res.dispatchedCount > 0) {
+          const refreshed = await getScheduledCommunicationsAction();
+          if (active && refreshed.jobs) {
+            setScheduledJobs(refreshed.jobs);
+          }
+        }
+      } catch {
+        // ignore background sweep errors
+      }
+    };
+    sweepDue();
+    const timer = setInterval(sweepDue, 60000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   // Load Scheduled Emails
   async function loadSchedules() {
     setScheduledLoading(true);

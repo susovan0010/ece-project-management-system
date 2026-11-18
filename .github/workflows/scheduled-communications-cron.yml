@@ -1,0 +1,19 @@
+name: Scheduled Communications Cron
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-scheduled-emails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Scheduled Communications Endpoint
+        run: |
+          SECRET="${{ secrets.CRON_SECRET }}"
+          if [ -z "$SECRET" ]; then
+            SECRET="dev-cron-secret-2026"
+          fi
+          curl -fsS -H "Authorization: Bearer $SECRET" \
+            "https://ece-project-management-system.vercel.app/api/cron/scheduled-communications"

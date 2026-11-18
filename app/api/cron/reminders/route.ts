@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { processDueScheduledCommunicationsAction } from '@/app/actions/communication-schedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,9 @@ export async function GET(req: NextRequest) {
         isLocked: false,
       },
     });
+
+    // Always process any due scheduled communications during daily cron
+    await processDueScheduledCommunicationsAction().catch(() => {});
 
     if (activeWindows.length === 0) {
       return NextResponse.json({

@@ -214,6 +214,14 @@ export function generateScheduleOccurrences(
   return occurrences;
 }
 
+function parseScheduledAtMs(scheduledAt: string): number {
+  const s = (scheduledAt || '').trim();
+  // Treat timezone-naive timestamps (e.g. "2026-11-18T18:30:00") as IST (+05:30)
+  // so Vercel UTC servers evaluate schedules in the institute's local timezone.
+  const hasZone = /([zZ]|[+-]\d{2}:\d{2})$/.test(s);
+  return new Date(hasZone ? s : `${s}+05:30`).getTime();
+}
+
 /**
  * Calculates the next pending execution timestamp
  */
@@ -223,8 +231,8 @@ export function calculateNextRun(
 ): ScheduleOccurrence | null {
   const nowMs = now.getTime();
   const pending = occurrences
-    .filter((o) => o.status === 'PENDING' && new Date(o.scheduledAt).getTime() >= nowMs)
-    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+    .filter((o) => o.status === 'PENDING' && parseScheduledAtMs(o.scheduledAt) >= nowMs)
+    .sort((a, b) => parseScheduledAtMs(a.scheduledAt) - parseScheduledAtMs(b.scheduledAt));
 
   return pending[0] || null;
 }
@@ -237,5 +245,5 @@ export function getDueOccurrences(
   now = new Date()
 ): ScheduleOccurrence[] {
   const nowMs = now.getTime();
-  return occurrences.filter((o) => o.status === 'PENDING' && new Date(o.scheduledAt).getTime() <= nowMs);
+  return occurrences.filter((o) => o.status === 'PENDING' && parseScheduledAtMs(o.scheduledAt) <= nowMs);
 }

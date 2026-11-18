@@ -154,7 +154,16 @@ describe('Communication Scheduler Engine: Time Slots & Occurrence Generation', (
     const dueAt15 = getDueOccurrences(occurrences, new Date('2026-11-10T15:00:00'));
     expect(dueAt15.length).toBe(2);
 
-    const nextRun = calculateNextRun(occurrences, new Date('2026-11-10T12:00:00'));
+    const nextRun = calculateNextRun(occurrences, new Date('2026-11-10T12:00:00+05:30'));
     expect(nextRun?.id).toBe('occ-2');
+  });
+
+  it('evaluates timezone-naive scheduledAt strings in IST (+05:30) rather than server UTC', () => {
+    const occurrences = [
+      { id: 'occ-ist', scheduledAt: '2026-11-18T18:30:00', status: 'PENDING' as const },
+    ];
+    // 18:30 IST = 13:00 UTC. At 12:59 UTC it is NOT due yet; at 13:01 UTC it IS due.
+    expect(getDueOccurrences(occurrences, new Date('2026-11-18T12:59:00Z'))).toHaveLength(0);
+    expect(getDueOccurrences(occurrences, new Date('2026-11-18T13:01:00Z'))).toHaveLength(1);
   });
 });
