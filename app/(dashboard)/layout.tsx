@@ -9,6 +9,7 @@ import { HodConsentBanner } from '@/components/hod-consent-banner';
 import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-engine';
 import BatchDeadlineBanner from '@/components/batch-deadline-banner';
 import { getActiveBatchDeadlinesAction } from '@/app/actions/system-health';
+import { ScheduledEmailKeeper } from '@/components/scheduled-email-keeper';
 
 export default async function DashboardLayout({
   children,
@@ -161,6 +162,8 @@ export default async function DashboardLayout({
             deadlines={activeBatchDeadlines.deadlines}
           />
         )}
+
+        {role === 'ADMIN' && <ScheduledEmailKeeper />}
 
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto print:p-0 print:overflow-visible">{children}</main>

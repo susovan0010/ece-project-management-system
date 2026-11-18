@@ -218,10 +218,20 @@ export default function CommunicationClient() {
     const hasActive = scheduledJobs.some((j) => j.status === 'ACTIVE');
     const intervalTimer = hasActive ? setInterval(sweepDue, 15000) : null;
 
+    const onFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        sweepDue();
+      }
+    };
+    window.addEventListener('focus', sweepDue);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
     return () => {
       active = false;
       if (exactTimer) clearTimeout(exactTimer);
       if (intervalTimer) clearInterval(intervalTimer);
+      window.removeEventListener('focus', sweepDue);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
     };
   }, [scheduledJobs]);
 
