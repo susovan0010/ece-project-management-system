@@ -14,6 +14,7 @@ export default function FacultySubmissionPage() {
   const [groups, setGroups] = useState<any[]>([]);
   const [comments, setComments] = useState<Record<string, string>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [selectedSemester, setSelectedSemester] = useState<6 | 7 | 8 | 'ALL'>('ALL');
 
   async function loadData() {
     setLoading(true);
@@ -84,6 +85,33 @@ export default function FacultySubmissionPage() {
         </div>
       )}
 
+      {/* Semester-wise Tabs */}
+      {!loading && groups.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-xl p-2 shadow-sm">
+          {(['ALL', 6, 7, 8] as const).map((sem) => {
+            const count = groups.reduce((acc, g) => {
+              const subs = g.submissions || [];
+              return acc + (sem === 'ALL' ? subs.length : subs.filter((s: any) => s.semester === sem).length);
+            }, 0);
+            const active = selectedSemester === sem;
+            return (
+              <button
+                key={String(sem)}
+                type="button"
+                onClick={() => setSelectedSemester(sem)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+                  active
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {sem === 'ALL' ? 'All Semesters' : `${sem}th Semester`} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {loading ? (
         <div className="p-12 text-center text-slate-400 text-sm">Loading group submissions...</div>
       ) : groups.length === 0 ? (
@@ -109,13 +137,41 @@ export default function FacultySubmissionPage() {
                 </div>
               </div>
 
-              {g.submissions.length === 0 ? (
-                <div className="p-6 text-xs text-slate-400 italic">
-                  No documents uploaded by Group {g.number} yet.
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {g.submissions.map((s: any) => {
+              {(() => {
+                const semestersToShow = selectedSemester === 'ALL' ? [6, 7, 8] : [selectedSemester];
+                const filteredSubs = (g.submissions || []).filter((s: any) =>
+                  selectedSemester === 'ALL' ? true : s.semester === selectedSemester
+                );
+                if (filteredSubs.length === 0) {
+                  return (
+                    <div className="p-6 text-xs text-slate-400 italic">
+                      {selectedSemester === 'ALL'
+                        ? `No documents uploaded by Group ${g.number} yet.`
+                        : `No ${selectedSemester}th Semester documents uploaded by Group ${g.number} yet.`}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="divide-y divide-slate-200">
+                    {semestersToShow.map((sem) => {
+                      const semSubs = filteredSubs
+                        .filter((s: any) => s.semester === sem)
+                        .sort((a: any, b: any) =>
+                          a.docType === b.docType ? 0 : a.docType === 'PROGRESS_REPORT' ? -1 : 1
+                        );
+                      if (semSubs.length === 0) return null;
+                      return (
+                        <div key={sem}>
+                          <div className="px-6 py-2 bg-indigo-50/70 border-b border-indigo-100 flex items-center justify-between">
+                            <span className="text-xs font-bold text-indigo-900">
+                              {sem}th Semester Submissions
+                            </span>
+                            <span className="text-[11px] font-semibold text-indigo-700">
+                              {semSubs.length} document(s)
+                            </span>
+                          </div>
+                          <div className="divide-y divide-slate-100">
+                            {semSubs.map((s: any) => {
                     const isCompleted = s.status === 'COMPLETED';
                     const isBusy = processingId === s.id;
                     return (
@@ -264,9 +320,14 @@ export default function FacultySubmissionPage() {
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              )}
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
