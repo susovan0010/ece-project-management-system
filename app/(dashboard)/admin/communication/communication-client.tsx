@@ -98,7 +98,7 @@ export default function CommunicationClient() {
   const [selectedBatch, setSelectedBatch] = useState<string>('ALL');
   const [groups, setGroups] = useState<CommunicationGroupSummary[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
-  const [includeStudents, setIncludeStudents] = useState(true);
+  const [includeStudents, setIncludeStudents] = useState(false);
   const [includeFaculty, setIncludeFaculty] = useState(false);
 
   // Recipient Editing State
@@ -153,7 +153,6 @@ export default function CommunicationClient() {
       setBatches(rosterRes.batches || []);
       setGroups(rosterRes.groups || []);
       setFacultyList(rosterRes.facultyList || []);
-      setSelectedGroupIds(rosterRes.groups?.map((g) => g.id) || []);
     }
 
     if (histRes) {
@@ -689,7 +688,7 @@ export default function CommunicationClient() {
       customRecipients.length > 0;
 
     if (!hasAnyTarget) {
-      setError('Please select at least one recipient (Faculty Google Group, Faculty Supervisors, Project Groups, or Custom Recipients).');
+      setError('Please select at least one recipient (Faculty Supervisors, Project Groups, or Custom Recipients).');
       return;
     }
 
@@ -849,7 +848,7 @@ export default function CommunicationClient() {
             Communication &amp; Official Messaging Portal
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Dispatch announcements, meeting notices, and evaluation deadlines directly to individual supervisors, the faculty Google Group, or student project groups.
+            Dispatch announcements, meeting notices, and evaluation deadlines directly to individual supervisors or student project groups.
           </p>
         </div>
 
@@ -1050,49 +1049,19 @@ export default function CommunicationClient() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Target Channels (5 Cols) */}
         <div className="lg:col-span-5 space-y-5">
-          {/* Channel A: Department Faculty & Google Group */}
+          {/* Channel A: Department Faculty & Admins */}
           <div className="bg-white border-2 border-purple-200 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-purple-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-                  Faculty Supervisors, Admins &amp; Google Group
+                  Faculty Supervisors &amp; Admins
                 </h3>
-                <p className="text-xs text-slate-500">Target individual supervisor/admin login accounts and/or the Google Group.</p>
+                <p className="text-xs text-slate-500">Target individual supervisor and admin login accounts.</p>
               </div>
               <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
                 {facultyList.length} Faculty &amp; Admins
               </span>
-            </div>
-
-            {/* 1-Click Faculty Google Group Toggle */}
-            <div className={`p-3.5 rounded-xl border transition ${
-              sendToFacultyGoogleGroup
-                ? 'bg-purple-50/70 border-purple-400 shadow-xs'
-                : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
-            }`}>
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={sendToFacultyGoogleGroup}
-                  onChange={(e) => setSendToFacultyGoogleGroup(e.target.checked)}
-                  className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
-                />
-                <div>
-                  <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                    Send to Faculty Google Group
-                    <span className="text-[10px] bg-purple-200 text-purple-900 font-mono px-1.5 py-0.2 rounded font-semibold">
-                      Broadcast
-                    </span>
-                  </div>
-                  <div className="font-mono text-xs text-purple-800 font-semibold mt-0.5">
-                    {FACULTY_GOOGLE_GROUP_EMAIL}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    Broadcasts message to all department faculty members in one email.
-                  </div>
-                </div>
-              </label>
             </div>
 
             {/* Individual Faculty Supervisors Directory */}
@@ -1829,7 +1798,7 @@ export default function CommunicationClient() {
                   {totalCalculatedRecipients === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
-                        No recipients selected yet. Check Faculty Google Group, select supervisors, or choose project groups.
+                        No recipients selected yet. Select supervisors, choose project groups, or add custom recipients.
                       </td>
                     </tr>
                   ) : (
