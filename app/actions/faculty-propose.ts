@@ -310,8 +310,18 @@ const SaveProposalSchema = z.object({
     .refine((s) => s.trim().length > 0, 'Project Abstract is mandatory and cannot be blank.'),
   tags: z
     .array(z.string())
+    .transform((arr) =>
+      Array.from(
+        new Set(
+          arr
+            .flatMap((t) => t.split(','))
+            .map((t) => t.trim())
+            .filter(Boolean)
+        )
+      )
+    )
     .refine(
-      (arr) => arr.map((t) => t.trim()).filter(Boolean).length >= 1,
+      (arr) => arr.length >= 1,
       'At least one Technical Keyword / Tag is mandatory.'
     ),
   status: z.enum(['DRAFT', 'CONFIRMED']).default('CONFIRMED'),

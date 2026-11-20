@@ -542,12 +542,24 @@ export default function ProposeTopicClient() {
     }
   }
 
-  // Tag helper
+  // Tag helper (supports comma-separated keywords, e.g. "CST, LoRa, FPGA")
   function handleAddTag() {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput('');
+    const incoming = tagInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (incoming.length === 0) return;
+
+    const existingLower = new Set(tags.map((t) => t.toLowerCase()));
+    const nextTags = [...tags];
+    for (const kw of incoming) {
+      if (!existingLower.has(kw.toLowerCase())) {
+        existingLower.add(kw.toLowerCase());
+        nextTags.push(kw);
+      }
     }
+    setTags(nextTags);
+    setTagInput('');
   }
 
   function handleRemoveTag(t: string) {
