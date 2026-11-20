@@ -57,7 +57,7 @@ export async function getSem7PanelOverviewAction(
         where: { batchId: targetBatchId },
         orderBy: { number: 'asc' },
         include: {
-          topic: { select: { id: true, code: true, title: true, category: true } },
+          topic: { select: { id: true, code: true, title: true, category: true, domain: true, tags: true } },
           supervisor: { select: { id: true, name: true, email: true } },
           members: {
             include: {
@@ -108,6 +108,8 @@ export async function getSem7PanelOverviewAction(
       topicCode: g.topic?.code || `GRP-${g.number}`,
       topicTitle: g.topic?.title || 'Capstone Project',
       topicCategory: g.topic?.category || undefined,
+      topicDomain: (g.topic as any)?.domain || undefined,
+      topicTags: Array.isArray((g.topic as any)?.tags) ? (g.topic as any).tags : [],
       supervisorId: g.supervisorId,
       supervisorName: g.supervisor?.name || 'Department Supervisor',
       studentNames: g.members.map((m) => `${m.student.name} (${m.student.roll})`),
@@ -191,6 +193,7 @@ export async function generateAndSaveSem7PanelsAction(input: {
   batchId: string;
   reservedMTechIds?: string[];
   maxGroupsPerPanel?: number;
+  roomNumbers?: string[];
 }): Promise<PanelGenerationResult> {
   const session = await auth();
   if (!session?.user || (session.user as { role?: string }).role !== 'ADMIN') {
@@ -210,7 +213,7 @@ export async function generateAndSaveSem7PanelsAction(input: {
     };
   }
 
-  const { batchId, reservedMTechIds = [], maxGroupsPerPanel = 10 } = input;
+  const { batchId, reservedMTechIds = [], maxGroupsPerPanel = 10, roomNumbers } = input;
 
   try {
     // 1. Fetch current groups and faculty
@@ -219,7 +222,7 @@ export async function generateAndSaveSem7PanelsAction(input: {
         where: { batchId },
         orderBy: { number: 'asc' },
         include: {
-          topic: { select: { id: true, code: true, title: true, category: true } },
+          topic: { select: { id: true, code: true, title: true, category: true, domain: true, tags: true } },
           supervisor: { select: { id: true, name: true, email: true } },
           members: {
             include: {
@@ -260,6 +263,8 @@ export async function generateAndSaveSem7PanelsAction(input: {
       topicCode: g.topic?.code || `GRP-${g.number}`,
       topicTitle: g.topic?.title || 'Capstone Project',
       topicCategory: g.topic?.category || undefined,
+      topicDomain: (g.topic as any)?.domain || undefined,
+      topicTags: Array.isArray((g.topic as any)?.tags) ? (g.topic as any).tags : [],
       supervisorId: g.supervisorId,
       supervisorName: g.supervisor?.name || 'Department Supervisor',
       studentNames: g.members.map((m) => `${m.student.name} (${m.student.roll})`),
@@ -271,6 +276,7 @@ export async function generateAndSaveSem7PanelsAction(input: {
       faculty: facultyList,
       reservedMTechIds,
       maxGroupsPerPanel,
+      roomNumbers,
     });
 
     if (result.success) {

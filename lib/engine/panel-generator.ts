@@ -21,6 +21,8 @@ export interface PanelGroupCandidate {
   topicCode: string;
   topicTitle: string;
   topicCategory?: string;
+  topicDomain?: string;
+  topicTags?: string[];
   supervisorId: string;
   supervisorName: string;
   studentNames: string[];
@@ -28,6 +30,7 @@ export interface PanelGroupCandidate {
 
 export interface GeneratedPanel {
   panelNumber: number;
+  roomNumber?: string;
   members: PanelFacultyCandidate[];
   groups: PanelGroupCandidate[];
   coveredCategories: string[];
@@ -120,19 +123,26 @@ export function distributeFacultyByDomainDiversity(
       const panel = panelHolders[i];
       if (panel.members.length >= panel.capacity) continue;
 
-      // Calculate marginal domain and category gain
+      // Calculate marginal domain and category gain vs duplicate domain penalty
       let newCatsGain = 0;
       facultyCats.forEach((c) => {
         if (!panel.coveredCategories.has(c)) newCatsGain++;
       });
 
       let newDomainsGain = 0;
+      let duplicateDomainCount = 0;
       faculty.domainExpertise.forEach((d) => {
         if (!panel.coveredDomains.has(d)) newDomainsGain++;
+        else duplicateDomainCount++;
       });
 
-      // Score: high weight for new category, medium weight for new domain, balance size
-      const score = newCatsGain * 10 + newDomainsGain * 2 - panel.members.length;
+      // Score: prioritize covering new domains & categories evenly across all panels,
+      // avoid stacking identical domains in the same panel, and balance member counts.
+      const score =
+        newCatsGain * 12 +
+        newDomainsGain * 5 -
+        duplicateDomainCount * 3 -
+        panel.members.length * 2;
 
       if (score > highestScore) {
         highestScore = score;
@@ -163,9 +173,73 @@ export function distributeFacultyByDomainDiversity(
   return panelHolders;
 }
 
+const STOP_TOKENS = new Set(['and', 'the', 'for', 'with', 'using', 'based', 'system', 'systems', 'design', 'analysis']);
+
+function tokenizeKeywords(text: string): string[] {
+  return (text || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2 && !STOP_TOKENS.has(t));
+}
+
 /**
- * 4. Assign groups to panels strictly enforcing that no member evaluates their own group.
- * Group counts per panel must follow groupQuotas (balanced within +/- 1).
+ * Counts how many distinct domain expertises of a panel's members match
+ * a project's Technical Keywords (tags) and/or Project Theme (domain).
+ */
+export function countGroupPanelDomainMatches(
+  group: PanelGroupCandidate,
+  panelMembers: PanelFacultyCandidate[]
+): number {
+  const distinctDomains = new Set<string>();
+  for (const m of panelMembers) {
+    for (const d of m.domainExpertise || []) {
+      if (d.trim()) distinctDomains.add(d.trim());
+    }
+  }
+  if (distinctDomains.size === 0) return 0;
+
+  const projectPhrases = [
+    ...(group.topicTags || []),
+    ...(group.topicDomain ? group.topicDomain.split(/[,/&;]+/) : []),
+  ]
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length >= 2);
+
+  const projectTokens = new Set<string>([
+    ...tokenizeKeywords(group.topicDomain || ''),
+    ...tokenizeKeywords((group.topicTags || []).join(' ')),
+  ]);
+
+  // Fallback to title tokens only when neither domain nor tags were provided
+  if (projectTokens.size === 0 && projectPhrases.length === 0) {
+    for (const tok of tokenizeKeywords(group.topicTitle || '')) {
+      projectTokens.add(tok);
+    }
+  }
+
+  let matchCount = 0;
+  for (const domain of Array.from(distinctDomains)) {
+    const domLower = domain.toLowerCase();
+    const domTokens = tokenizeKeywords(domain);
+
+    const phraseMatch = projectPhrases.some(
+      (p) => domLower.includes(p) || p.includes(domLower)
+    );
+    const tokenMatch = domTokens.some((dt) => projectTokens.has(dt));
+
+    if (phraseMatch || tokenMatch) {
+      matchCount++;
+    }
+  }
+
+  return matchCount;
+}
+
+/**
+ * 4. Assign groups to panels strictly enforcing that no member evaluates their own group,
+ * while prioritizing panels where at least 2 domain expertises of panel members match
+ * the project's Technical Keywords and/or Project Theme.
  */
 export function assignGroupsStrictlyNoSelfSupervision(
   groups: PanelGroupCandidate[],
@@ -188,22 +262,36 @@ export function assignGroupsStrictlyNoSelfSupervision(
   const assigned = Array.from({ length: panelCount }, () => [] as PanelGroupCandidate[]);
   const unassigned: PanelGroupCandidate[] = [];
 
-  // Sort groups: groups whose supervisors are panel members have fewer eligible panels (P-1),
-  // so assign them first! (Most constrained first)
+  // Precompute domain match scores (groupId -> panelIndex -> matchCount)
+  const matchCache = new Map<string, number[]>();
+  for (const g of groups) {
+    const scores = panelMembers.map((pm) => countGroupPanelDomainMatches(g, pm.members));
+    matchCache.set(g.id, scores);
+  }
+
+  // Sort groups: most constrained first (highest supervisor conflicts, then fewest panels with >=2 domain matches)
   const sortedGroups = [...groups].sort((a, b) => {
     let aConflictCount = 0;
     let bConflictCount = 0;
+    let aTwoMatchCount = 0;
+    let bTwoMatchCount = 0;
+    const aScores = matchCache.get(a.id) || [];
+    const bScores = matchCache.get(b.id) || [];
     for (let i = 0; i < panelCount; i++) {
       if (forbiddenMap.get(i)?.has(a.supervisorId)) aConflictCount++;
+      else if ((aScores[i] || 0) >= 2) aTwoMatchCount++;
       if (forbiddenMap.get(i)?.has(b.supervisorId)) bConflictCount++;
+      else if ((bScores[i] || 0) >= 2) bTwoMatchCount++;
     }
-    return bConflictCount - aConflictCount;
+    if (bConflictCount !== aConflictCount) return bConflictCount - aConflictCount;
+    return aTwoMatchCount - bTwoMatchCount;
   });
 
-  // Assign groups using backtracking/quota filling
+  // Assign groups preferring panels with >= 2 domain matches & balanced quota
   for (const group of sortedGroups) {
+    const scores = matchCache.get(group.id) || [];
     let bestPanelIdx = -1;
-    let bestPanelLoad = Infinity;
+    let bestCompositeScore = -Infinity;
 
     // Find allowable panel that hasn't reached its quota
     for (let pIdx = 0; pIdx < panelCount; pIdx++) {
@@ -214,8 +302,11 @@ export function assignGroupsStrictlyNoSelfSupervision(
       const targetQuota = groupQuotas[pIdx];
 
       if (currentCount < targetQuota) {
-        if (currentCount < bestPanelLoad) {
-          bestPanelLoad = currentCount;
+        const domainMatches = scores[pIdx] || 0;
+        const meetsTwoDomainRule = domainMatches >= 2 ? 1000 : domainMatches * 100;
+        const compositeScore = meetsTwoDomainRule + domainMatches * 10 - currentCount * 5;
+        if (compositeScore > bestCompositeScore) {
+          bestCompositeScore = compositeScore;
           bestPanelIdx = pIdx;
         }
       }
@@ -289,8 +380,9 @@ export function generateSem7Panels(params: {
   faculty: PanelFacultyCandidate[];
   reservedMTechIds?: string[];
   maxGroupsPerPanel?: number;
+  roomNumbers?: string[];
 }): PanelGenerationResult {
-  const { groups, faculty, reservedMTechIds = [], maxGroupsPerPanel = 10 } = params;
+  const { groups, faculty, reservedMTechIds = [], maxGroupsPerPanel = 10, roomNumbers } = params;
 
   const reservedSet = new Set(reservedMTechIds);
   const availableFaculty = faculty.filter((f) => !reservedSet.has(f.id));
@@ -318,6 +410,26 @@ export function generateSem7Panels(params: {
   }
 
   const panelCount = calculatePanelCount(totalGroups, maxGroupsPerPanel);
+
+  if (roomNumbers !== undefined) {
+    const cleanRooms = roomNumbers.map((r) => r.trim()).filter(Boolean);
+    if (cleanRooms.length !== panelCount) {
+      return {
+        success: false,
+        error: `Please provide exactly ${panelCount} comma-separated room number(s) (1 per panel). You provided ${cleanRooms.length}.`,
+        panelCount,
+        totalGroups,
+        totalFaculty,
+        reservedMTechCount,
+        availableFacultyCount,
+        groupsPerPanelAvg: 0,
+        membersPerPanelAvg: 0,
+        panels: [],
+        conflictsDetected: 0,
+        unassignedGroups: [],
+      };
+    }
+  }
 
   if (availableFacultyCount < panelCount) {
     return {
@@ -361,6 +473,7 @@ export function generateSem7Panels(params: {
 
     return {
       panelNumber: idx + 1,
+      roomNumber: roomNumbers?.[idx]?.trim() || undefined,
       members: dp.members,
       groups: assignedForPanel,
       coveredCategories: Array.from(dp.coveredCategories),

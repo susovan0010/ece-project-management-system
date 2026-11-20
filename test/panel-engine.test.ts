@@ -168,4 +168,67 @@ describe('Panel Generator: Strict Conflict of Interest Exclusion', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('Not enough available faculty');
   });
+
+  it('validates roomNumbers count against panelCount and attaches roomNumber to panels', () => {
+    const mismatch = generateSem7Panels({
+      groups: mockGroups, // 22 groups -> 3 panels required
+      faculty: mockFaculty,
+      reservedMTechIds: [],
+      roomNumbers: ['EC-301', 'EC-302'], // Only 2 rooms for 3 panels
+    });
+
+    expect(mismatch.success).toBe(false);
+    expect(mismatch.error).toContain('Please provide exactly 3 comma-separated room number');
+
+    const valid = generateSem7Panels({
+      groups: mockGroups,
+      faculty: mockFaculty,
+      reservedMTechIds: [],
+      roomNumbers: ['EC-301', 'EC-302', 'EC-303'],
+    });
+
+    expect(valid.success).toBe(true);
+    expect(valid.panels.map((p) => p.roomNumber)).toEqual(['EC-301', 'EC-302', 'EC-303']);
+  });
+
+  it('prefers panels where >= 2 member domain expertises match topicDomain/topicTags without self-supervision', () => {
+    const facultyWithDomains: PanelFacultyCandidate[] = [
+      { id: 'f1', name: 'Dr. VLSI', email: 'f1@ece.edu', role: 'FACULTY', domainExpertise: ['VLSI Design'] },
+      { id: 'f2', name: 'Dr. Embedded', email: 'f2@ece.edu', role: 'FACULTY', domainExpertise: ['Embedded Systems'] },
+      { id: 'f3', name: 'Dr. AI', email: 'f3@ece.edu', role: 'FACULTY', domainExpertise: ['Machine Learning'] },
+      { id: 'f4', name: 'Dr. Comm', email: 'f4@ece.edu', role: 'FACULTY', domainExpertise: ['Wireless Communication'] },
+      { id: 'f5', name: 'Dr. Mentor', email: 'f5@ece.edu', role: 'FACULTY', domainExpertise: ['VLSI Design', 'Embedded Systems'] },
+    ];
+
+    const groupsWithTags: PanelGroupCandidate[] = Array.from({ length: 12 }, (_, idx) => ({
+      id: `grp-${idx + 1}`,
+      number: idx + 1,
+      batchId: '2026',
+      topicId: `topic-${idx + 1}`,
+      topicCode: `ECE-${idx + 1}`,
+      topicTitle: idx === 0 ? 'Smart Edge Chip' : `Generic Project ${idx + 1}`,
+      topicDomain: idx === 0 ? 'VLSI Design' : 'Wireless Communication',
+      topicTags: idx === 0 ? ['Embedded Systems', 'ASIC'] : ['5G'],
+      supervisorId: 'f5',
+      supervisorName: 'Dr. Mentor',
+      studentNames: [`Student ${idx + 1}`],
+    }));
+
+    const result = generateSem7Panels({
+      groups: groupsWithTags,
+      faculty: facultyWithDomains,
+      reservedMTechIds: [],
+      maxGroupsPerPanel: 10,
+      roomNumbers: ['R-101', 'R-102'],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.conflictsDetected).toBe(0);
+
+    // Find which panel received grp-1
+    const panelWithGrp1 = result.panels.find((p) => p.groups.some((g) => g.id === 'grp-1'));
+    expect(panelWithGrp1).toBeDefined();
+    // Supervisor f5 must NOT be on that panel
+    expect(panelWithGrp1!.members.some((m) => m.id === 'f5')).toBe(false);
+  });
 });
