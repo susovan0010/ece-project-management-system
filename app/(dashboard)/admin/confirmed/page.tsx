@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import ExcelJS from 'exceljs';
+import { LatexText } from '@/components/latex-text';
 import {
   getAdminConfirmedTopicsAction,
   updateTopicStatusAction,
@@ -1079,8 +1080,12 @@ export default function AdminConfirmedTopicsPage() {
                 <h4 className="font-bold text-slate-900 uppercase tracking-wider mb-1">
                   Project Abstract (500 Words)
                 </h4>
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg leading-relaxed whitespace-pre-line text-slate-800">
-                  {viewingTopic.description || 'No description recorded.'}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg leading-relaxed text-slate-800">
+                  {viewingTopic.description ? (
+                    <LatexText text={viewingTopic.description} />
+                  ) : (
+                    'No description recorded.'
+                  )}
                 </div>
               </div>
 

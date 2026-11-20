@@ -15,6 +15,7 @@ import {
 import { getFacultyTopicDetailAction } from '@/app/actions/faculty-topics';
 import { getProjectInvitationStatusAction } from '@/app/actions/project-invitation';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
+import { LatexAbstractEditor } from '@/components/latex-abstract-editor';
 import { ATTRIBUTE_METADATA, SDG_METADATA } from '@/lib/attributes-metadata';
 import { deriveMappedPoCodes } from '@/lib/engine';
 
@@ -978,19 +979,15 @@ export default function ProposeTopicClient() {
             )}
 
             <div>
-              <textarea
+              <LatexAbstractEditor
                 rows={9}
                 value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
+                isOverWordLimit={isOverWordLimit}
+                onChange={(nextValue) => {
+                  setDescription(nextValue);
                   setHasFreshAiTagging(false);
                 }}
-                placeholder="Detail the Problem Statement, Engineering Methodology, Expected Hardware/Software Prototype Deliverables, and Relevance to Sustainable Development Goals..."
-                className={`w-full p-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 leading-relaxed font-sans ${
-                  isOverWordLimit
-                    ? 'border-red-400 focus:border-red-500 bg-red-50/20 text-red-900'
-                    : 'border-slate-300 text-slate-900'
-                }`}
+                placeholder="Detail the Problem Statement, Engineering Methodology, Expected Hardware/Software Prototype Deliverables, and Relevance to Sustainable Development Goals... (Supports LaTeX equations like $E=mc^2$ or $$H(s)=\\frac{1}{s+1}$$)"
               />
 
               {/* Word Count Indicator */}

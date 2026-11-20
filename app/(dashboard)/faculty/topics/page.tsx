@@ -17,6 +17,7 @@ import { getProjectInvitationStatusAction } from '@/app/actions/project-invitati
 import { deriveMappedPoCodes } from '@/lib/engine';
 import { evaluateRules } from '@/lib/rules';
 import { SupervisorAiPicker } from '@/components/supervisor-ai-picker';
+import { LatexText } from '@/components/latex-text';
 
 interface TopicItem {
   id: string;
@@ -725,8 +726,12 @@ export default function FacultyTopicsSearchPage() {
                   <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-1">
                     Project Abstract (Max 500 Words)
                   </h4>
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs leading-relaxed text-slate-800 whitespace-pre-line">
-                    {detailTopic.description || 'No abstract recorded.'}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs leading-relaxed text-slate-800">
+                    {detailTopic.description ? (
+                      <LatexText text={detailTopic.description} />
+                    ) : (
+                      'No abstract recorded.'
+                    )}
                   </div>
                 </div>
 
