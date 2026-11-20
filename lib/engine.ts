@@ -174,11 +174,11 @@ export interface CohortCumulativeDistribution {
 }
 
 /**
- * Computes NBA Department PO Attainment Level based on the 60% Cumulative Student Cohort Rule:
- * - Level 3: >= 60% of students scored >= 85% marks
- * - Level 2: >= 60% of students scored >= 75% marks (cumulative: includes >= 85% and 75%-85%)
- * - Level 1: >= 60% of students scored >= 65% marks (cumulative: includes all >= 65%)
- * - Level 0: < 60% of students scored >= 65% marks (Not Attained)
+ * Computes NBA Department PO Attainment Level based on the 65% Target & 60%/70%/80% Cohort Rule:
+ * - Level 3: >= 80% of students scored >= 65% merged marks
+ * - Level 2: >= 70% of students scored >= 65% merged marks
+ * - Level 1: >= 60% (cohortTargetPct) of students scored >= 65% merged marks
+ * - Level 0: < 60% of students scored >= 65% merged marks (Not Attained)
  */
 export function calculateCohortAttainmentLevel(
   studentPercentages: number[],
@@ -212,9 +212,9 @@ export function calculateCohortAttainmentLevel(
   const pctLt65 = Math.round((countLt65 / total) * 100);
 
   let attainmentLevel = 0;
-  if (pctGte85 >= cohortTargetPct) {
+  if (pctGte65 >= 80) {
     attainmentLevel = 3;
-  } else if (pctGte75 >= cohortTargetPct) {
+  } else if (pctGte65 >= 70) {
     attainmentLevel = 2;
   } else if (pctGte65 >= cohortTargetPct) {
     attainmentLevel = 1;
@@ -294,9 +294,10 @@ export interface GroupCohortSnapshotResult {
 }
 
 /**
- * Computes Group-Level Attainment for POs, WPs, WKs, and EAs using the 60% Student Cohort Rule:
- * - Level 3: >= 60% of students in the group scored >= 85%
- * - Level 2: >= 60% of students in the group scored >= 75%
+ * Computes Group-Level Attainment for POs, WPs, WKs, and EAs using the merged student percentage P_s(X)
+ * and the 65% target threshold with 80%/70%/60% Student Cohort Rule:
+ * - Level 3: >= 80% of students in the group scored >= 65%
+ * - Level 2: >= 70% of students in the group scored >= 65%
  * - Level 1: >= 60% of students in the group scored >= 65%
  * - Level 0: < 60% of students in the group scored >= 65%
  */

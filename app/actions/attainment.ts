@@ -271,7 +271,7 @@ export async function getFacultyAttainmentAnalyticsAction(batchId?: string, seme
           DEFAULT_COHORT_STUDENT_TARGET_PCT
         );
         cohortResults.forEach((r) => groupCohortMap.set(r.metric, r));
-        if (semFilter || rawSnapshots.length === 0) {
+        if (cohortResults.length > 0) {
           rawSnapshots = cohortResults.map((r) => ({
             metric: r.metric,
             attainment: r.attainment,
@@ -518,7 +518,7 @@ export async function getAdminAttainmentAnalyticsAction(batchId?: string, semest
           DEFAULT_COHORT_STUDENT_TARGET_PCT
         );
         cohortResults.forEach((r) => adminGroupCohortMap.set(r.metric, r));
-        if (semFilter || rawSnapshots.length === 0) {
+        if (cohortResults.length > 0) {
           rawSnapshots = cohortResults.map((r) => ({
             metric: r.metric,
             attainment: r.attainment,

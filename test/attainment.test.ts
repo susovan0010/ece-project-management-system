@@ -136,38 +136,47 @@ describe('Attainment Pure Engine: 65% Benchmark & Ratio Calculation', () => {
     expect(st2Attainments.PO3.level).toBe(2);
   });
 
-  it('evaluates NBA 60% cumulative student cohort rule for department PO attainment', () => {
-    // Case 1: >= 60% of students achieved >= 85% marks -> Level 3
-    const cohortL3 = [90, 88, 86, 85, 78, 62]; // 4 of 6 (67%) >= 85
+  it('evaluates NBA 65% target threshold with 80%/70%/60% student cohort rule for PO attainment', () => {
+    // Case 1: >= 80% of students achieved >= 65% marks -> Level 3
+    const cohortL3 = [90, 80, 72, 68, 65, 62]; // 5 of 6 (83%) >= 65%
     const resL3 = calculateCohortAttainmentLevel(cohortL3, 60);
     expect(resL3.attainmentLevel).toBe(3);
     expect(resL3.isAttained).toBe(true);
-    expect(resL3.pctGte85).toBe(67);
+    expect(resL3.pctGte65).toBe(83);
 
-    // Case 2: Cumulative Level 2:
-    // Only 2 of 6 (33%) >= 85%, BUT 3 are between 75-85%. Total >= 75% is 5 of 6 (83%) >= 60% -> Level 2
-    const cohortL2 = [90, 86, 80, 78, 76, 60];
+    // Case 2: >= 70% (and < 80%) of students achieved >= 65% marks -> Level 2
+    const cohortL2 = [90, 86, 80, 70, 66, 60, 55]; // 5 of 7 (71%) >= 65%
     const resL2 = calculateCohortAttainmentLevel(cohortL2, 60);
     expect(resL2.attainmentLevel).toBe(2);
     expect(resL2.isAttained).toBe(true);
-    expect(resL2.pctGte75).toBe(83);
-    expect(resL2.pctGte85).toBe(33);
+    expect(resL2.pctGte65).toBe(71);
 
-    // Case 3: Cumulative Level 1:
-    // Only 1 of 5 (20%) >= 75%, but 4 of 5 (80%) >= 65% -> Level 1
-    const cohortL1 = [78, 72, 70, 66, 55];
+    // Case 3: >= 60% (and < 70%) of students achieved >= 65% marks -> Level 1
+    const cohortL1 = [85, 72, 66, 60, 55]; // 3 of 5 (60%) >= 65%
     const resL1 = calculateCohortAttainmentLevel(cohortL1, 60);
     expect(resL1.attainmentLevel).toBe(1);
     expect(resL1.isAttained).toBe(true);
-    expect(resL1.pctGte65).toBe(80);
+    expect(resL1.pctGte65).toBe(60);
 
-    // Case 4: Level 0 (Not Attained):
-    // Only 2 of 5 (40%) >= 65% (< 60% threshold) -> Level 0
-    const cohortL0 = [80, 70, 60, 58, 50];
+    // Case 4: < 60% of students achieved >= 65% marks -> Level 0 (Not Attained)
+    const cohortL0 = [80, 70, 60, 58, 50]; // 2 of 5 (40%) >= 65%
     const resL0 = calculateCohortAttainmentLevel(cohortL0, 60);
     expect(resL0.attainmentLevel).toBe(0);
     expect(resL0.isAttained).toBe(false);
     expect(resL0.pctGte65).toBe(40);
+  });
+
+  it('merges multiple rubrics of different full marks into one Total-Marks-Weighted P_s(X) per student', () => {
+    // Rubric 1 (max 10): student gets 4/10 (40%). Rubric 2 (max 30): student gets 24/30 (80%).
+    // Simple average would be (40 + 80)/2 = 60% (< 65%, Not Attained),
+    // whereas Total-Marks-Weighted P_s(PO1) = (4 + 24) / (10 + 30) = 28/40 = 70% (>= 65%, Attained).
+    const entries: StudentMarkEntryInput[] = [
+      { studentId: 's1', marks: 4, max: 10, maps: ['PO1'] },
+      { studentId: 's1', marks: 24, max: 30, maps: ['PO1'] },
+    ];
+    const res = calculateStudentAttainment(entries, 's1', ['PO1']);
+    expect(res.PO1.percentage).toBe(70);
+    expect(res.PO1.isAttained).toBe(true);
   });
 });
 
@@ -319,12 +328,11 @@ describe('Attainment Server Actions: Role Isolation & Analytics', () => {
     expect(res.targetThreshold).toBe(65);
   });
 
-  it('computes Group Attainment for POs, WPs, WKs, EAs using the 60% of students in that group rule (not raw group mean)', () => {
+  it('computes Group Attainment for POs, WPs, WKs, EAs using 65% target and 80%/70%/60% cohort rule', () => {
     const metrics = ['PO1', 'PO2', 'PO6', 'WP1', 'WK1', 'EA1'];
     const maps = ['PO1', 'PO2', 'PO6', 'WP1', 'WK1', 'EA1'];
 
-    // Case A: 2 of 4 students (50% < 60%) get 9/10 (90%), 2 of 4 get 7/10 (70%).
-    // Mean is 80%, but only 50% >= 75% whereas 100% >= 65% -> Group Level MUST be 1.
+    // Case A: 4 of 4 students (100% >= 80%) get >= 65% -> Group Level MUST be 3.
     const entriesA: StudentMarkEntryInput[] = [
       { studentId: 's1', marks: 9, max: 10, maps },
       { studentId: 's2', marks: 9, max: 10, maps },
@@ -334,11 +342,11 @@ describe('Attainment Server Actions: Role Isolation & Analytics', () => {
     const snapsA = calculateGroupCohortSnapshots(entriesA, ['s1', 's2', 's3', 's4'], metrics, 60);
     expect(snapsA).toHaveLength(6);
     for (const s of snapsA) {
-      expect(s.level).toBe(1);
+      expect(s.level).toBe(3);
       expect(s.isAttained).toBe(true);
     }
 
-    // Case B: 3 of 5 students (60%) get 8.6/10 (86%), 2 get 4/10 (40%) -> Group Level MUST be 3.
+    // Case B: 3 of 5 students (60%) get >= 65%, 2 get 40% (< 65%) -> Group Level MUST be 1.
     const entriesB: StudentMarkEntryInput[] = [
       { studentId: 's1', marks: 8.6, max: 10, maps },
       { studentId: 's2', marks: 8.6, max: 10, maps },
@@ -347,16 +355,16 @@ describe('Attainment Server Actions: Role Isolation & Analytics', () => {
       { studentId: 's5', marks: 4, max: 10, maps },
     ];
     const snapsB = calculateGroupCohortSnapshots(entriesB, ['s1', 's2', 's3', 's4', 's5'], metrics, 60);
-    expect(snapsB.every((s) => s.level === 3 && s.isAttained)).toBe(true);
+    expect(snapsB.every((s) => s.level === 1 && s.isAttained)).toBe(true);
 
-    // Case C: 64.6% rounds up to 65% -> Level 1 attained
+    // Case C: 64.6% rounds up to 65% -> 100% of students >= 65% -> Attained (Level 3)
     const entriesC: StudentMarkEntryInput[] = [
       { studentId: 's1', marks: 6.46, max: 10, maps: ['PO1'] },
       { studentId: 's2', marks: 6.46, max: 10, maps: ['PO1'] },
       { studentId: 's3', marks: 6.46, max: 10, maps: ['PO1'] },
     ];
     const snapsC = calculateGroupCohortSnapshots(entriesC, ['s1', 's2', 's3'], ['PO1'], 60);
-    expect(snapsC[0].level).toBe(1);
+    expect(snapsC[0].level).toBe(3);
     expect(snapsC[0].isAttained).toBe(true);
   });
 });
