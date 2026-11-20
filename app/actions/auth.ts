@@ -92,6 +92,10 @@ export async function logoutAction() {
   await signOut({ redirectTo: '/login' });
 }
 
+export async function idleLogoutAction() {
+  await signOut({ redirectTo: '/login?reason=idle' });
+}
+
 // ----------------------------------------------------
 // 2. Admin Create Invite Action (Rule 1: Role check on server)
 // ----------------------------------------------------

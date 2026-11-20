@@ -10,6 +10,7 @@ import { calculateStudentBadges, StudentBadgeSummary } from '@/lib/engine/badge-
 import BatchDeadlineBanner from '@/components/batch-deadline-banner';
 import { getActiveBatchDeadlinesAction } from '@/app/actions/system-health';
 import { ScheduledEmailKeeper } from '@/components/scheduled-email-keeper';
+import { IdleLogoutMonitor } from '@/components/idle-logout-monitor';
 
 export default async function DashboardLayout({
   children,
@@ -164,6 +165,9 @@ export default async function DashboardLayout({
         )}
 
         {role === 'ADMIN' && <ScheduledEmailKeeper />}
+        <IdleLogoutMonitor
+          loginAt={(session.user as { loginAt?: number })?.loginAt}
+        />
 
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto print:p-0 print:overflow-visible">{children}</main>

@@ -54,6 +54,7 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id;
         token.role = (user as unknown as { role: string }).role;
+        token.loginAt = Date.now();
       }
       return token;
     },
@@ -61,6 +62,8 @@ export const authConfig: NextAuthConfig = {
       if (token && session.user) {
         session.user.id = token.id as string;
         (session.user as unknown as { role: string }).role = token.role as string;
+        (session.user as unknown as { loginAt?: number }).loginAt =
+          typeof token.loginAt === 'number' ? token.loginAt : undefined;
       }
       return session;
     },

@@ -1,15 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { loginAction } from '@/app/actions/auth';
+import { IDLE_ACTIVITY_STORAGE_KEY } from '@/lib/idle-session';
 
 export default function LoginPage() {
   const router = useRouter();
   const [loginRole, setLoginRole] = useState<'FACULTY' | 'ADMIN' | 'STUDENT'>('FACULTY');
   const [error, setError] = useState<string | null>(null);
+  const [idleNotice, setIdleNotice] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') === 'idle') {
+      setIdleNotice(true);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,6 +33,11 @@ export default function LoginPage() {
       setError(result.error);
       setLoading(false);
     } else if (result.success && result.redirectTo) {
+      try {
+        localStorage.setItem(IDLE_ACTIVITY_STORAGE_KEY, String(Date.now()));
+      } catch {
+        // Ignore storage errors
+      }
       router.push(result.redirectTo);
       router.refresh();
     }
@@ -46,6 +60,16 @@ export default function LoginPage() {
             Heritage Institute of Technology, Kolkata
           </p>
         </div>
+
+        {idleNotice && !error && (
+          <div
+            role="status"
+            className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900 flex items-start gap-2"
+          >
+            <span className="font-semibold">Session Expired:</span>
+            <span>You were automatically signed out after 8 minutes of inactivity.</span>
+          </div>
+        )}
 
         {error && (
           <div

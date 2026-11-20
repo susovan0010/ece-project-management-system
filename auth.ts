@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from './lib/prisma';
 import { authConfig } from './auth.config';
+import { IDLE_TIMEOUT_SECONDS } from './lib/idle-session';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
@@ -75,6 +76,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   session: {
     strategy: 'jwt',
+    maxAge: IDLE_TIMEOUT_SECONDS,
+    updateAge: 60,
   },
   secret: process.env.AUTH_SECRET,
 });
