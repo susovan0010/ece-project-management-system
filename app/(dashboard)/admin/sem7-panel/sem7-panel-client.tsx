@@ -387,8 +387,15 @@ export default function Sem7PanelClient() {
               <span className="w-2 h-2 rounded-full bg-[#1985A1]"></span>
               Mathematical Panel Allocation Parameters
             </h3>
-            <p className="text-[11px] text-slate-500">
-              $P = \lceil G / 10 \rceil$ panels, $Q = (N - M) / P$ members per panel, uniform group quotas $G / P$.
+            <p className="text-xs text-slate-600 mt-0.5">
+              <span className="font-serif italic font-semibold text-slate-800">P</span> = ⌈
+              <span className="font-serif italic text-slate-800">G</span> / 10⌉ panels,{' '}
+              <span className="font-serif italic font-semibold text-slate-800">Q</span> = (
+              <span className="font-serif italic text-slate-800">N</span> −{' '}
+              <span className="font-serif italic text-slate-800">M</span>) /{' '}
+              <span className="font-serif italic text-slate-800">P</span> members per panel, uniform group quotas{' '}
+              <span className="font-serif italic text-slate-800">G</span> /{' '}
+              <span className="font-serif italic text-slate-800">P</span>.
             </p>
           </div>
 
