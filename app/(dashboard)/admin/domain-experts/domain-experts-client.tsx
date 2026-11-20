@@ -9,10 +9,12 @@ import {
   DomainExpertFacultyItem,
 } from '@/app/actions/domain-experts';
 import { ECE_DOMAIN_CATEGORIES } from '@/lib/constants/domains';
+import { downloadDomainExpertsPdf } from '@/components/domain-experts-export-pdf';
 
 export default function DomainExpertsClient() {
   const [data, setData] = useState<DomainExpertsOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // View state
@@ -92,6 +94,18 @@ export default function DomainExpertsClient() {
     document.body.removeChild(link);
   }
 
+  async function handleExportPDF() {
+    if (!data) return;
+    setExportingPdf(true);
+    try {
+      await downloadDomainExpertsPdf(data);
+    } catch (err) {
+      setError(`Failed to generate PDF: ${(err as Error).message}`);
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   const query = searchQuery.trim().toLowerCase();
 
   return (
@@ -126,6 +140,18 @@ export default function DomainExpertsClient() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            disabled={!data || data.facultyList.length === 0 || exportingPdf}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {exportingPdf ? 'Generating PDF...' : 'Download PDF'}
           </button>
 
           <button
