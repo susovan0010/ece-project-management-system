@@ -22,7 +22,8 @@ export default auth((req) => {
     pathname.endsWith('.ico') ||
     pathname.endsWith('.svg') ||
     pathname.endsWith('.webp') ||
-    pathname.startsWith('/api/auth');
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/cron/');
 
   if (isPublic) {
     return NextResponse.next();
